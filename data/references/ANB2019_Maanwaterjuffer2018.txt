@@ -1,0 +1,120 @@
+vlaanderen_20m_met_maas.asc
+
+// Voortplanting (min 10m²): Voedselarme wateren: Aom, Ao
+// Niet: Ae, Aer, Kn, Ap, ad
+// Visloos
+
+// Directe omgeving (10 ha): bos (qb, qs, vn, va, vm, vo, vt, so, ppm*, pm*, n) en struweel (so, sz, sf, sm) en boomopslag (ceb) samen >50%, natte heide (ce, cm), zuur laagveen (ms)
+// Niet: droge heide, heischraal grasland (cg, cp, cd, cv, dm, ha), ruderale ruigte (ku, hr)
+
+// Ruime omgeving (patch 50 ha)
+// Hoofdzakelijk struktuurrijk bos (qb, qs, vn, va, vm, vo, vt, so, ppm*, pm*, n) en struweel (so, sz, sf, sm) en boomopslag (ceb) >50 % bos
+
+// Habitattypisch voor: 3110, 3130, 3160
+
+// waterbiotoop
+
+assign(maanwaterjuffer_waterbiotoop_bwk1, bwk(ao, ao+, ao-, 3160%, 7140%, 7150%, aom, aom+, aom-, 3110%, 3130%))
+assign(maanwaterjuffer_waterbiotoop_notbwk, bwk(ad%, ae%, 2190%, 3140%, 3150%, aer%, ap%, kn%))
+assign(maanwaterjuffer_waterbiotoop_bwk, and(maanwaterjuffer_waterbiotoop_bwk1, not(maanwaterjuffer_waterbiotoop_notbwk)))
+
+deleteVariable(maanwaterjuffer_waterbiotoop_bwk1)
+deleteVariable(maanwaterjuffer_waterbiotoop_notbwk)
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het waterbiotoop
+assign(maanwaterjuffer_waterbiotoop_bwk_cluster, fuzzyClusterIdU(maanwaterjuffer_waterbiotoop_bwk, 50, meter))
+
+// waterbiotoop moet minimaal 10 m² groot zijn
+assign(maanwaterjuffer_waterbiotoop1, cFilterGeArea(maanwaterjuffer_waterbiotoop_bwk_cluster, 0.04, hectare))
+//write('maanwaterjuffer_waterbiotoop1.asc', IsNonZero(maanwaterjuffer_waterbiotoop1))
+
+deleteVariable(maanwaterjuffer_waterbiotoop_bwk)
+deleteVariable(maanwaterjuffer_waterbiotoop_bwk_cluster)
+
+// omgevend landbiotoop nabij
+
+assign(maanwaterjuffer_landbiotoop_bwk1, bwk(ce%, 4010%, 7150%, ceb%, cm%, 2310%, 4030%, ms%, 7140%, n, n-, n+, ppm%, rbbppm%, pm%, qb%, 9190%, qs%, sf%, 91E0%, rbbsf%, sm%, 4010%, 7230%, rbbsm%, so%, rbbso%, sz%, va%, vm%, vn%, vo%, vt%, 91D0%))
+assign(maanwaterjuffer_landbiotoop_notbwk, bwk(cd%, 2310%, 4030%, cg%, cp%, 9120%, cv%, dm%, 2330%, ha%, 6230_ha%, hr%, 6430%, ku%, 3270%))
+assign(maanwaterjuffer_landbiotoop_bwk, and(maanwaterjuffer_landbiotoop_bwk1, not(maanwaterjuffer_landbiotoop_notbwk)))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het landbiotoop
+
+assign(maanwaterjuffer_landbiotoop_bwk_cluster, fuzzyClusterIdU(maanwaterjuffer_landbiotoop_bwk, 50, meter))
+
+deleteVariable(maanwaterjuffer_landbiotoop_bwk)
+
+// landbiotoop moet minimaal 10 ha groot zijn
+
+assign(maanwaterjuffer_landbiotoop1, cFilterGeArea(maanwaterjuffer_landbiotoop_bwk_cluster, 10, hectare))
+//write('maanwaterjuffer_landbiotoop1.asc', IsNonZero(maanwaterjuffer_landbiotoop1))
+
+deleteVariable(maanwaterjuffer_landbiotoop_bwk_cluster)
+
+assign(maanwaterjuffer_landbiotoop_bos, bwk(ceb%, 4010%, 7150%, n, n-, n+, ppm%, rbbppm%, pm%, qb%, 9190%, qs%, sf%, 91E0%, rbbsf%, sm%, 7140%, 7230%, rbbsm%, so%, rbbso%, sz%, va%, vm%, vn%, vo%, vt%, 91D0%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het landbiotoop
+
+assign(maanwaterjuffer_landbiotoop_bos_cluster, fuzzyClusterIdU(maanwaterjuffer_landbiotoop_bos, 50, meter))
+
+deleteVariable(maanwaterjuffer_landbiotoop_bos)
+
+// landbiotoop moet minimaal 5 ha groot zijn
+
+assign(maanwaterjuffer_landbiotoop_bos1, cFilterGeArea(maanwaterjuffer_landbiotoop_bos_cluster, 5, hectare))
+//write('maanwaterjuffer_landbiotoop_bos1.asc', IsNonZero(maanwaterjuffer_landbiotoop_bos1))
+
+deleteVariable(maanwaterjuffer_landbiotoop_bos_cluster)
+deleteVariable(maanwaterjuffer_landbiotoop_bwk1)
+deleteVariable(maanwaterjuffer_landbiotoop_notbwk)
+
+// landbiotoop_bos moet deel uitmaken van landbiotoop_rest
+assign(maanwaterjuffer_landbiotoop_nabij, and(maanwaterjuffer_landbiotoop1, cellDistanceLe(maanwaterjuffer_landbiotoop_bos1, 10, meter)))
+//write('maanwaterjuffer_landbiotoop_nabij.asc', IsNonZero(maanwaterjuffer_landbiotoop_nabij))
+
+deleteVariable(maanwaterjuffer_landbiotoop_bos1)
+
+// omgevend landbiotoop ruimere omgeving
+
+assign(maanwaterjuffer_landbiotoop_bwk_ruim, bwk(ceb%, 4010%, 7150%, n, n-, n+, ppm%, rbbppm%, pm%, qb%, 9190%, qs%, sf%, 91E0%, rbbsf%, sm%, 4010%, 7140%, 7230%, rbbsm%, so%, rbbso%, sz%, va%, vm%, vn%, vo%, vt%, 91D0%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het landbiotoop
+
+assign(maanwaterjuffer_landbiotoop_bwk_ruim_cluster, fuzzyClusterIdU(maanwaterjuffer_landbiotoop_bwk_ruim, 50, meter))
+
+deleteVariable(maanwaterjuffer_landbiotoop_bwk_ruim)
+
+// landbiotoop moet minimaal 25 ha groot zijn
+
+assign(maanwaterjuffer_landbiotoop_ruim, cFilterGeArea(maanwaterjuffer_landbiotoop_bwk_ruim_cluster, 25, hectare))
+//write('maanwaterjuffer_landbiotoop_ruim.asc', IsNonZero(maanwaterjuffer_landbiotoop_ruim))
+
+deleteVariable(maanwaterjuffer_landbiotoop_bwk_ruim_cluster)
+
+// landbiotoop2 moet in de buurt van waterbiotoop liggen
+
+assign(maanwaterjuffer_waterbiotoop2, and(maanwaterjuffer_waterbiotoop1, cellDistanceLe(maanwaterjuffer_landbiotoop_nabij, 100, meter)))
+//write('maanwaterjuffer_waterbiotoop2.asc', IsNonZero(maanwaterjuffer_waterbiotoop2))
+
+assign(maanwaterjuffer_landbiotoop2, and(maanwaterjuffer_landbiotoop_nabij, cellDistanceLe(maanwaterjuffer_waterbiotoop1, 100, meter)))
+//write('maanwaterjuffer_landbiotoop2.asc', IsNonZero(maanwaterjuffer_landbiotoop2))
+
+deleteVariable(maanwaterjuffer_landbiotoop1)
+deleteVariable(maanwaterjuffer_landbiotoop2)
+deleteVariable(maanwaterjuffer_landbiotoop_nabij)
+deleteVariable(maanwaterjuffer_waterbiotoop1)
+
+assign(maanwaterjuffer_waterbiotoop, and(maanwaterjuffer_waterbiotoop2, cellDistanceLe(maanwaterjuffer_landbiotoop_ruim, 500, meter)))
+//write('maanwaterjuffer_waterbiotoop.asc', IsNonZero(maanwaterjuffer_waterbiotoop))
+
+assign(maanwaterjuffer_landbiotoop, and(maanwaterjuffer_landbiotoop_ruim, cellDistanceLe(maanwaterjuffer_waterbiotoop2, 500, meter)))
+//write('maanwaterjuffer_landbiotoop.asc', IsNonZero(maanwaterjuffer_landbiotoop))
+
+assign(maanwaterjuffer_leefgebied, or(maanwaterjuffer_landbiotoop, maanwaterjuffer_waterbiotoop))
+write('ANB2019_Maanwaterjuffer2018.asc', IsNonZero(maanwaterjuffer_leefgebied))
+deleteVariable(maanwaterjuffer_leefgebied)
+
+
+deleteVariable(maanwaterjuffer_landbiotoop)
+deleteVariable(maanwaterjuffer_waterbiotoop)
+deleteVariable(maanwaterjuffer_landbiotoop_ruim)
+deleteVariable(maanwaterjuffer_waterbiotoop2)

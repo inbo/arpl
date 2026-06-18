@@ -1,0 +1,66 @@
+vlaanderen_20m_met_maas.asc
+
+// waterlopen
+
+assign(rivierrombout_waterlopen1, OrEq('rastert_huetzon1.asc', 1, 2, 8, 9, 10, 17, 18, 19))
+//write('rivierrombout_waterlopen1.asc', IsNonZero(rivierrombout_waterlopen1))
+
+assign(rivierrombout_waterlopen2, eq('maas.asc', 1))
+
+assign(rivierrombout_waterlopen, or(rivierrombout_waterlopen1, rivierrombout_waterlopen2))
+
+deleteVariable(rivierrombout_waterlopen1)
+deleteVariable(rivierrombout_waterlopen2)
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het waterbiotoop
+
+assign(rivierrombout_waterlopen_cluster, fuzzyClusterIdU(rivierrombout_waterlopen, 50, meter))
+deleteVariable(rivierrombout_waterlopen)
+
+// waterbiotoop moet minimaal 5ha groot zijn
+
+assign(rivierrombout_waterbiotoop, cFilterGeArea(rivierrombout_waterlopen_cluster, 5, hectare))
+
+deleteVariable(rivierrombout_waterlopen_cluster)
+
+// omgevend landbiotoop
+
+assign(rivierrombout_landbiotoop_bwk, bwk(hc%, 6410%, rbbhc%, hf%, 6430%, rbbhf%, hj%, hr%, hu%, 6510%, kb%, kd%, kh%, khw%, ks%, ku%, 3270%, kz%, lhb%, lhi%, mc%, rbbmc%, md%, 7140%, 91E0%, mm%, 7210%, mr%, rbbmr%, n, n+, n-, sf%, 2180%, rbbsf%, sm%, 7230%, rbbsm%, sp%, rbbsp%, sz%, va%, vm%, vn%, 3260%, 3270%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het landbiotoop
+
+assign(rivierrombout_landbiotoop_cluster, fuzzyClusterIdU(rivierrombout_landbiotoop_bwk, 50, meter))
+
+deleteVariable(rivierrombout_landbiotoop_bwk)
+
+// landbiotoop moet minimaal 5ha groot zijn
+
+assign(rivierrombout_landbiotoop, cFilterGeArea(rivierrombout_landbiotoop_cluster, 5, hectare))
+
+deleteVariable(rivierrombout_landbiotoop_cluster)
+
+// zoek voortplantingsgebieden die binnen de 1 km van foerageergebieden liggen
+
+assign(rivierrombout_voortplanting1, and(rivierrombout_waterbiotoop, cellDistanceLe(rivierrombout_landbiotoop, 1000, meter)))
+//write('rivierrombout_voortplanting.asc', IsNonZero(rivierrombout_voortplanting1))
+assign(rivierrombout_foerageer1, and(rivierrombout_landbiotoop, cellDistanceLe(rivierrombout_waterbiotoop, 1000, meter)))
+deleteVariable(rivierrombout_landbiotoop)
+deleteVariable(rivierrombout_waterbiotoop)
+
+assign(rivierrombout_ecodistrict, Ge('ecoregio.asc', 1))
+
+assign(rivierrombout_voortplanting_ecodistrict, and(rivierrombout_voortplanting1, rivierrombout_ecodistrict))
+deleteVariable(rivierrombout_voortplanting1)
+
+assign(rivierrombout_foerageer_ecodistrict, and(rivierrombout_foerageer1, rivierrombout_ecodistrict))
+deleteVariable(rivierrombout_foerageer1)
+deleteVariable(rivierrombout_ecodistrict)
+
+//write('rivierrombout_foerageer_ecodistrict.asc', IsNonZero(rivierrombout_foerageer_ecodistrict))
+
+assign(rivierrombout_leefgebied, or(rivierrombout_voortplanting_ecodistrict, rivierrombout_foerageer_ecodistrict))
+deleteVariable(rivierrombout_voortplanting_ecodistrict)
+deleteVariable(rivierrombout_foerageer_ecodistrict)
+write('ANB2019_Rivierrombout2018.asc', IsNonZero(rivierrombout_leefgebied))
+deleteVariable(rivierrombout_leefgebied)
+

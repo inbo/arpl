@@ -1,0 +1,74 @@
+Vlaanderen_20m.asc
+
+
+//Een koppel Wulpen heeft 100-150 ha leefgebied nodig dat bestaat uit
+//open, natte graslanden, heides & venen (BWK: da, ds, ah, ao, aom, aoo, cg, ce ces, dm, ha, t, hpr, hpr+, hp & hp+).
+//Buiten de heidegebieden broeden Wulpen enkel in graslanden op de zandgronden van de Kempen en in de poldergraslanden van de Ijzervallei.
+
+//Wat met waarnemingen in ecoregio van de zuidoostelijke heuvelzone? En de enkele waarnemingen in Oost-Vlaanderen?
+
+//veranderingen t.o.v. vorige versie
+//hp uit biotoop_grasland_nat en naar biotoop_extra
+//biotoop_extra ook verengd tot de valleigronden, net zoals biotoop_grasland_nat
+//complexen van hx of hp met akkers erin expliciet uitgesloten onder biotoop_extra
+//ha bij biotoop overig gestoken, vanwege droog grasland en dus geen zin om te beperken tot valleien; en hab% eruit vanwege eis tot openheid
+//hooggroen (groenkaart2013) weggeknipt uit de geschikte biotopen indien groter dan 20 are
+
+
+//Externe lagen
+//assign(Textuur, 'bodem_textuur.asc')
+assign(Profontw, 'bodem_profiel.asc')
+assign(Drainage, 'bodem_drainage.asc')
+//assign(Ecoregio, 'Ecoregio.asc')
+assign(OVSTR, 'OVSTRGEV2014_20m.asc')
+assign(Groenkaart, 'groenkaart2013_20m.asc')
+
+
+//Biotopen
+
+assign(wulp_biotoop_grasland_nat, bwk(hpr, 1310%, 1330%, hpr+, hp+, 2190%, rbbkam%, rbbzil%, rbbvos%))
+assign(wulp_biotoop_overig, bwk(ah%, rbbah%, ao%, 3160%, 3110%, 3130%, 7140%, 7150%, ce%, 4010%, cg%, 2310%, 4030%, da%, 1310%, 1320%, 1330%, dm%, 2330%, ds%, 1130%, 1140%, 3270%, ha%, 6230_ha%, 2130%, 2130_had%, 2150%, t, t+, 7110%))
+//extra biotoop meenemen
+assign(wulp_biotoop_extra_nat, and(bwk(hp, hx, hx+), not(bwk(b%))))
+
+//enkel graslanden en extra biotoop dat gelegen is in valleigebieden (geen profielontwikkeling, of drainageklassen natter dan of gelijk aan d, of in overstromingsgevoelig gebied)
+
+assign(wulp_biotoop_grasland_nat, and(wulp_biotoop_grasland_nat, or(ge(OVSTR, 1), reclass('bodem_drainage_d_en_natter.tab', Drainage), eq(Profontw, 1), eq(Profontw, 6))))
+assign(wulp_biotoop_extra_nat, and(wulp_biotoop_extra_nat, or(ge(OVSTR, 1), reclass('bodem_drainage_d_en_natter.tab', Drainage), eq(Profontw, 1), eq(Profontw, 6))))
+deleteVariable(Drainage)
+deleteVariable(OVSTR)
+deleteVariable(Profontw)
+
+assign(verbossing, isnonzero(cfilter(clusterid(eq(Groenkaart, 1)), ge(csum(clusterid(eq(Groenkaart, 1)), 1), 5))))
+deleteVariable(Groenkaart)
+
+assign(biotoop_geschikt, and(or(wulp_biotoop_grasland_nat, biotoop_extra_nat, wulp_biotoop_overig), not(verbossing)))
+deleteVariable(wulp_biotoop_extra_nat)
+deleteVariable(wulp_biotoop_grasland_nat)
+deleteVariable(wulp_biotoop_overig)
+deleteVariable(verbossing)
+
+//Write('wulp_geschikte_biotopen_d_bis.asc', biotoop_geschikt)
+
+
+//Clustering met bufferafstand van 100 m
+
+assign(id, fuzzyclusterid(biotoop_geschikt, 100/cellsize))
+deleteVariable(biotoop_geschikt)
+
+//oppervlaktevereiste van 100 ha
+
+assign(id_100ha, cFilter(id, ge(cSum(id, 1), 100*10000/cellsize2)))
+deleteVariable(id)
+
+//Write('wulp_clusters_100ha_100m_d_bis.asc', id_100ha)
+
+//geen beperking op ecodistrict
+
+assign(wulp_ecodistrict, Ge('ecoregio.asc', 1))
+assign(id_100ha_ecodistrict, and(id_100ha, wulp_ecodistrict))
+deleteVariable(wulp_ecodistrict)
+deleteVariable(id_100ha)
+
+write('ANB2019_Wulp_bv2018.asc', IsNonZero(id_100ha_ecodistrict))
+deleteVariable(id_100ha_ecodistrict)

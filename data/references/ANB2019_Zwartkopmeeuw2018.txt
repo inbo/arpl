@@ -1,0 +1,67 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af
+
+assign(zwartkopmeeuw_voortplanting1, bwk(ad%, ae%, 2190%, 3140%, 3150%, da%, 1310%, 1320%, 1330%, ku%, 3270%, 6430%, kz%))
+
+// voortplantingsclusters moeten minimaal 30ha groot zijn
+
+assign(zwartkopmeeuw_voortplanting1_cluster, fuzzyClusterIdU(zwartkopmeeuw_voortplanting1, 50, meter))
+deleteVariable(zwartkopmeeuw_voortplanting1)
+
+assign(zwartkopmeeuw_voortplanting2, cFilterGeArea(zwartkopmeeuw_voortplanting1_cluster, 30, hectare))
+deleteVariable(zwartkopmeeuw_voortplanting1_cluster)
+
+// moet in de buurt van water liggen: 5 km?
+
+assign(zwartkopmeeuw_water1, bwk(ad%, ae%, 3140%, 3150%, 2190%, aer%, aev%, ah%, rbbah%, ao%, 3160%, 7140%, 7150%, 3110%, 3130%, aom%, aoo%, ap%, apo%, app%, zee%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het cluster en water moet minstens 2 ha groot zijn
+
+assign(zwartkopmeeuw_water1_cluster, fuzzyClusterIdU(zwartkopmeeuw_water1, 50, meter))
+deleteVariable(zwartkopmeeuw_water1)
+
+assign(zwartkopmeeuw_water2, cFilterGeArea(zwartkopmeeuw_water1_cluster, 2, hectare))
+deleteVariable(zwartkopmeeuw_water1_cluster)
+
+assign(zwartkopmeeuw_voortplanting3, and(zwartkopmeeuw_voortplanting2, cellDistanceLe(zwartkopmeeuw_water2, 5000, meter)))
+deleteVariable(zwartkopmeeuw_voortplanting2)
+
+assign(zwartkopmeeuw_water3, and(zwartkopmeeuw_water2, cellDistanceLe(zwartkopmeeuw_voortplanting3, 5000, meter)))
+deleteVariable(zwartkopmeeuw_water2)
+deleteVariable(zwartkopmeeuw_water3)
+
+// voortplantingscluster moet vrij dicht bij vochtige weilanden liggen, 5km?
+
+assign(zwartkopmeeuw_foerageer1, bwk(bl%, bs%, bu%, hp%, hpr%, 1310%, 1330%, 2190%, rbbkam%, rbbzil%, hx%, ku%, 3270%, 6430%))
+
+// foerageerclusters moeten minimaal 200ha groot zijn
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het cluster
+
+assign(zwartkopmeeuw_foerageer1_cluster, fuzzyClusterIdU(zwartkopmeeuw_foerageer1, 50, meter))
+deleteVariable(zwartkopmeeuw_foerageer1)
+
+assign(zwartkopmeeuw_foerageer2, cFilterGeArea(zwartkopmeeuw_foerageer1_cluster, 200, hectare))
+deleteVariable(zwartkopmeeuw_foerageer1_cluster)
+
+// geschikte foerageergebieden liggen minder dan 20 km van voortplantingsgebieden en omgekeerd
+
+assign(zwartkopmeeuw_voortplanting4, and(zwartkopmeeuw_voortplanting3, cellDistanceLe(zwartkopmeeuw_foerageer2, 20000, meter)))
+deleteVariable(zwartkopmeeuw_voortplanting3)
+
+assign(zwartkopmeeuw_foerageer4, and(zwartkopmeeuw_foerageer2, cellDistanceLe(zwartkopmeeuw_voortplanting4, 20000, meter)))
+deleteVariable(zwartkopmeeuw_foerageer2)
+
+assign(zwartkopmeeuw_leefgebied0, or(zwartkopmeeuw_voortplanting4, zwartkopmeeuw_foerageer4))
+deleteVariable(zwartkopmeeuw_voortplanting4)
+
+deleteVariable(zwartkopmeeuw_foerageer4)
+
+assign(zwartkopmeeuw_leefgebied0_cluster, FuzzyClusterIdU(zwartkopmeeuw_leefgebied0, 50, meter))
+deleteVariable(zwartkopmeeuw_leefgebied0)
+
+assign(zwartkopmeeuw_leefgebied, cFilterGeArea(zwartkopmeeuw_leefgebied0_cluster, 200, hectare))
+deleteVariable(zwartkopmeeuw_leefgebied0_cluster)
+write('ANB2019_Zwartkopmeeuw2018.asc', IsNonZero(zwartkopmeeuw_leefgebied))
+deleteVariable(zwartkopmeeuw_leefgebied)

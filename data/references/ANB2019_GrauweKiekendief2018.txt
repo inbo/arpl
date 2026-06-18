@@ -1,0 +1,19 @@
+vlaanderen_20m.asc
+
+assign(grauwekiekendief_bwk, bwk(bk%, bl%, bs%, bu%, ce%, 4010%, 7150%, 7140_oli%, cg%, 2310%, 4030%, 5130%, cm%))
+assign(grauwekiekendief_epr, OrEq('epr2013.asc', 6, 8, 38, 45, 60, 138, 174))
+
+assign(grauwekiekendief_leefgebied1, and(grauwekiekendief_bwk, grauwekiekendief_epr))
+deleteVariable(grauwekiekendief_bwk)
+deleteVariable(grauwekiekendief_epr)
+
+// clustering: indien geschikte cel binnen 200 meter, dan hoort die cel bij het boscluster
+
+assign(grauwekiekendief_leefgebied1_cluster, fuzzyClusterIdU(grauwekiekendief_leefgebied1, 200, meter))
+deleteVariable(grauwekiekendief_leefgebied1)
+
+assign(grauwekiekendief_leefgebied_voortplanting, cFilterGeArea(grauwekiekendief_leefgebied1_cluster, 3000, hectare))
+deleteVariable(grauwekiekendief_leefgebied1_cluster)
+
+write('ANB2019_GrauweKiekendief2018.asc', IsNonZero(grauwekiekendief_leefgebied_voortplanting))
+deleteVariable(grauwekiekendief_leefgebied_voortplanting)

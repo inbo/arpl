@@ -1,0 +1,42 @@
+vlaanderen_20m.asc
+
+// lees de shape file in uit de vogelgebiedendatabank met minstens ?? kemphanen
+
+assign(kemphaan_watervogelgebieden, 'leefgebied_kemphaan_20m.asc')
+
+assign(kemphaan_watervogelgebied, and(ge(kemphaan_watervogelgebieden, 1), le(kemphaan_watervogelgebieden, 26)))
+
+deleteVariable(kemphaan_watervogelgebieden)
+
+// baken de foerageergebieden binnen de telgebieden af
+
+assign(kemphaan_foerageer_bwk, bwk(ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, bl%, bs%, bu%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, hc%, 6410%, rbbhc%, hp+%, rbbkam%, rbbzil%, hpr%, hpr+%, hx%, kn%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het leefgebied - er moet voldoende open gebied zijn!
+
+assign(kemphaan_foerageer1_cluster, fuzzyClusterIdU(kemphaan_foerageer_bwk, 50, meter))
+deleteVariable(kemphaan_foerageer_bwk)
+
+// leefgebiedcluster moeten minimaal 5ha groot zijn
+
+assign(kemphaan_leefgebied1, cFilterGeArea(kemphaan_foerageer1_cluster, 5, hectare))
+deleteVariable(kemphaan_foerageer1_cluster)
+
+assign(kemphaan_leefgebied, and(kemphaan_watervogelgebied, kemphaan_leefgebied1))
+deleteVariable(kemphaan_leefgebied1)
+
+deleteVariable(kemphaan_watervogelgebied)
+
+assign(kemphaan_ecodistrict, ge('ecoregio.asc', 1))
+
+assign(kemphaan_leefgebied_ecodistrict1, and(kemphaan_leefgebied, kemphaan_ecodistrict))
+
+deleteVariable(kemphaan_ecodistrict)
+
+assign(kemphaan_leefgebied_ecodistrict1_cluster, FuzzyClusterIdU(kemphaan_leefgebied_ecodistrict1, 50, meter))
+deleteVariable(kemphaan_leefgebied_ecodistrict1)
+
+assign(kemphaan_leefgebied_ecodistrict, cFilterGeArea(kemphaan_leefgebied_ecodistrict1_cluster, 30, hectare))
+deleteVariable(kemphaan_leefgebied_ecodistrict1_cluster)
+write('ANB2019_Kemphaan2018.asc', IsNonzero(kemphaan_leefgebied_ecodistrict))
+deleteVariable(kemphaan_leefgebied_ecodistrict)

@@ -1,0 +1,19 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af (zonder opgespoten terreinen)
+
+assign(grotemuggenorchis_voortplanting_bwk, bwk(6410%, 7230%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(grotemuggenorchis_voortplanting_cluster, fuzzyClusterIdU(grotemuggenorchis_voortplanting_bwk, 20, meter))
+
+deleteVariable(grotemuggenorchis_voortplanting_bwk)
+
+// optimale voortplantingsclusters moeten minimaal 0.16ha groot zijn
+
+assign(grotemuggenorchis_leefgebied, cFilterGeArea(grotemuggenorchis_voortplanting_cluster, 0.16, hectare))
+deleteVariable(grotemuggenorchis_voortplanting_cluster)
+
+write('ANB2019_GroteMuggenorchis2018.asc', IsNonZero(grotemuggenorchis_leefgebied))
+deleteVariable(grotemuggenorchis_leefgebied)

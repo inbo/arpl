@@ -1,0 +1,19 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af (zonder opgespoten terreinen)
+
+assign(pilvaren_voortplanting_bwk, bwk(3110%, 3130%, ao%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(pilvaren_voortplanting_cluster, fuzzyClusterIdU(pilvaren_voortplanting_bwk, 20, meter))
+
+deleteVariable(pilvaren_voortplanting_bwk)
+
+// optimale voortplantingsclusters moeten minimaal 0.16ha groot zijn
+
+assign(pilvaren_leefgebied, cFilterGeArea(pilvaren_voortplanting_cluster, 0.16, hectare))
+deleteVariable(pilvaren_voortplanting_cluster)
+
+write('ANB2019_Pilvaren2018.asc', IsNonZero(pilvaren_leefgebied))
+deleteVariable(pilvaren_leefgebied)

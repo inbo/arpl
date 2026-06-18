@@ -1,0 +1,25 @@
+vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+assign(19stippeliglieveheersbeestje_bwk, bwk(mr%, mc%, md%, mk%, mm%, ms%, hj%, hc%))
+
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 50 meter liggen
+assign(19stippeliglieveheersbeestje_bwk_cluster, fuzzyClusterIdU(19stippeliglieveheersbeestje_bwk, 50, meter))
+deleteVariable(19stippeliglieveheersbeestje_bwk)
+
+// leefgebied moet minstens 2 hectare groot zijn
+assign(19stippeliglieveheersbeestje_leefgebied, cFilterGeArea(19stippeliglieveheersbeestje_bwk_cluster, 2, hectare))
+
+// beperk de leefgebiedenkaart tot bepaalde ecoregio's
+assign(19stippeliglieveheersbeestje_ecodistrict, Ge('ecoregio.asc', 1))
+assign(19stippeliglieveheersbeestje_leefgebied_ecodistrict, and(19stippeliglieveheersbeestje_leefgebied, 19stippeliglieveheersbeestje_ecodistrict))
+deleteVariable(19stippeliglieveheersbeestje_ecodistrict)
+deleteVariable(19stippeliglieveheersbeestje_leefgebied)
+
+// individuele nummers geven aan clusters
+//write('19stippeliglieveheersbeestje_leefgebied_ecodistrict_id.asc', if(19stippeliglieveheersbeestje_leefgebied_ecodistrict, 19stippeliglieveheersbeestje_bwk_cluster, 0))
+deleteVariable(19stippeliglieveheersbeestje_bwk_cluster)
+
+// 0/1 kaarten maken
+write('19stippeliglieveheersbeestje_leefgebied_ecodistrict.asc', IsNonZero(19stippeliglieveheersbeestje_leefgebied_ecodistrict))
+deleteVariable(19stippeliglieveheersbeestje_leefgebied_ecodistrict)

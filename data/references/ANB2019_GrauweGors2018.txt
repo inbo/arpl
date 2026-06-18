@@ -1,0 +1,41 @@
+vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+assign(grauwegors_bwk, bwk(bk%, bl%, hk%, 6210%, hp+%, rbbkam%, rbbzil%, hpr+%, sk%))
+assign(grauwegors_epr, OrEq('epr2013.asc', 6, 49, 38, 36, 63, 100, 219, 21, 51, 1, 225, 241, 74))
+assign(grauwegors_akker, and(grauwegors_bwk, grauwegors_epr))
+deleteVariable(grauwegors_epr)
+
+//write('grauwegors_akker.asc', IsNonZero(grauwegors_akker))
+deleteVariable(grauwegors_bwk)
+
+//afstand tot bossen nog in rekening brengen??
+assign(grauwegors_bos, bwk(f%, 9110%, 9120%, 9130%, 9150%, 9160%, 2180%, 9190%, q%, p%, l%, n))
+
+assign(grauwegors_bos_cluster, fuzzyClusterIdU(grauwegors_bos, 50, meter))
+deleteVariable(grauwegors_bos)
+assign(grauwegors_bos1, cFilterGeArea(grauwegors_bos_cluster, 1, hectare))
+deleteVariable(grauwegors_bos_cluster)
+
+assign(grauwegors_leefgebied1, and(grauwegors_akker, cellDistanceGe(grauwegors_bos1, 500, meter)))
+deleteVariable(grauwegors_akker)
+deleteVariable(grauwegors_bos1)
+
+assign(grauwegors_leefgebied1_cluster, fuzzyClusterIdU(grauwegors_leefgebied1, 50, meter))
+deleteVariable(grauwegors_leefgebied1)
+
+// leefgebied moet minstens 10 hectare groot zijn
+assign(grauwegors_leefgebied, cFilterGeArea(grauwegors_leefgebied1_cluster, 10, hectare))
+
+// beperk de leefgebiedenkaart tot bepaalde ecoregio's
+assign(grauwegors_ecodistrict, Ge('ecoregio.asc', 1))
+assign(grauwegors_leefgebied_ecodistrict, and(grauwegors_leefgebied, grauwegors_ecodistrict))
+deleteVariable(grauwegors_ecodistrict)
+deleteVariable(grauwegors_leefgebied)
+
+// individuele nummers geven aan clusters
+deleteVariable(grauwegors_leefgebied1_cluster)
+
+// 0/1 kaarten maken
+write('ANB2019_GrauweGors2018.asc', IsNonZero(grauwegors_leefgebied_ecodistrict))
+deleteVariable(grauwegors_leefgebied_ecodistrict)

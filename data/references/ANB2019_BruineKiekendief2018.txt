@@ -1,0 +1,119 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af
+
+assign(bruinekiekendief_epr, OrEq('epr2013.asc', 6, 38, 100))
+
+assign(bruinekiekendief_voortplanting_bwk, bwk(ku%, 3270%, 6430%, k(mc%, k(mr%, k(mz%, mc%, rbbmc%, mr%, 1130%, 1330%, 6430_hw%, 6430_mr%, 7140%, 7140_mrd%, rbbmr%, mz%, 1330%))
+
+assign(bruinekiekendief_voortplanting, or(bruinekiekendief_epr, bruinekiekendief_voortplanting_bwk))
+
+deleteVariable(bruinekiekendief_epr)
+deleteVariable(bruinekiekendief_voortplanting_bwk)
+
+// geen bos in de wijde omgeving van de voortplantingsgebieden
+
+assign(bruinekiekendief_bos, bwk(ek%, es%, fa%, 9120%, 9160%, fe%, 9130%, fk%, 9150%, fl%, 9110, fm%, fs%, gml%, gmn%, lh%, lhb%, lhi%, ls%, lsb%, lsh%, lsi%, n%, pa%, pi%, pm%, pmb%, pmh%, pms%, pp%, ppa%, ppi%, ppm%, ppmb%, ppmh%, ppms%, qa%, qb%, 9190%, qd%, qe%, qk%, ql%, qs%, qx%, ru%, 91E0%, 2180%, 91F0, rud%, va%, vc%, vf%, vm%, vn%, vo%, vt%, 91D0))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het boscluster
+
+assign(bruinekiekendief_bos_cluster, fuzzyClusterIdU(bruinekiekendief_bos, 50, meter))
+
+deleteVariable(bruinekiekendief_bos)
+
+// geen bossen groter dan 5ha in de buurt van voortplantinsgebieden
+
+assign(bruinekiekendief_bos_5ha, cFilterGeArea(bruinekiekendief_bos_cluster, 5, hectare))
+
+deleteVariable(bruinekiekendief_bos_cluster)
+
+// sluit voortplantingsgebieden uit die binnen de 1km meer dan 5 ha bos hebben
+
+assign(bruinekiekendief_leefgebied_zonderbos, and(bruinekiekendief_voortplanting, cellDistanceGe(bruinekiekendief_bos_5ha, 1000, meter)))
+
+deleteVariable(bruinekiekendief_bos_5ha)
+
+// cluster voortplantingsgebied
+
+assign(bruinekiekendief_leefgebied0_cluster, fuzzyClusterIdU(bruinekiekendief_leefgebied_zonderbos, 100, meter))
+
+deleteVariable(bruinekiekendief_leefgebied_zonderbos)
+
+// optimale voortplantingsclusters moeten minimaal 10ha groot zijn
+
+assign(bruinekiekendief_voortplanting, cFilterGeArea(bruinekiekendief_leefgebied0_cluster, 10, hectare))
+
+deleteVariable(bruinekiekendief_leefgebied0_cluster)
+
+// baken foerageergebied af
+
+assign(bruinekiekendief_foerageer, bwk(2310%, ce%, 4010%, 7150%, 7140_oli%, da%, 1310%, 1320%, 1330%, ha%, 2330%, 6230_ha%, 2130%, 2130_hd%, 2150%, hc%, 2190%, 6410%, rbbhc%, hf%, 6430%, rbbhf%, hj%, hp%, hp+%, rbbkam%, rbbzil%, hpr%, hpr+%, hr%, hu%, 6120%, 6510%, hx%, ku%, 3270%, mc%, rbbmc%, mr%, 1130%, 7140%, 6430_hw%, 6430_mr%, 7140_mrd%, rbbmr%, mrb%, mz%, 1330_da%, 1330_hpr%, mru%, cdb%, ceb%, cgb%, cmb%, cpb%, cvb%, hab%, hcb%, hfb%, hjb%, hft%, hfc%, hrb%, hub%, kub%, mcb%, ka%, bl%, bs%, bu%, rbbvos%))
+
+// clustering: indien geschikte cel binnen 100 meter, dan hoort die cel bij het foerageercluster
+
+assign(bruinekiekendief_foerageer_cluster, fuzzyClusterIdU(bruinekiekendief_foerageer, 100, meter))
+
+// optimale foerageerclusters moeten minimaal 100ha groot zijn
+
+assign(bruinekiekendief_foerageer, cFiltergeArea(bruinekiekendief_foerageer_cluster, 100, hectare))
+
+deleteVariable(bruinekiekendief_foerageer_cluster)
+
+// baken leefgebied af: voldoende groot voortplantingsgebied moet binnen de 5 km van voldoende groot foerageergebied liggen
+
+assign(bruinekiekendief_leefgebied_voortplanting, and(bruinekiekendief_voortplanting, cellDistanceLe(bruinekiekendief_foerageer, 5000, meter)))
+//write('bruinekiekendief_leefgebied_voortplanting.asc', IsNonZero(bruinekiekendief_leefgebied_voortplanting))
+
+// baken leefgebied af: voldoende groot foerageergebied moet binnen de 5 km van voldoende groot voortplantingsgebied liggen
+
+assign(bruinekiekendief_leefgebied_foerageer, and(bruinekiekendief_foerageer, cellDistanceLe(bruinekiekendief_voortplanting, 5000, meter)))
+//write('bruinekiekendief_leefgebied_foerageer.asc', IsNonZero(bruinekiekendief_leefgebied_foerageer))
+
+deleteVariable(bruinekiekendief_foerageer)
+deleteVariable(bruinekiekendief_voortplanting)
+
+assign(bruinekiekendief_leefgebied1, or(bruinekiekendief_leefgebied_voortplanting, bruinekiekendief_leefgebied_foerageer))
+
+// baken ecoregio van ecoregiogebieden af
+
+assign(bruinekiekendief_ecodistrict, Ge('ecoregio.asc', 1))
+
+assign(bruinekiekendief_leefgebied_voortplanting_ecodistrict1, and(bruinekiekendief_leefgebied_voortplanting, bruinekiekendief_ecodistrict))
+
+deleteVariable(bruinekiekendief_leefgebied_voortplanting)
+
+assign(bruinekiekendief_leefgebied_foerageer_ecodistrict1, and(bruinekiekendief_leefgebied_foerageer, bruinekiekendief_ecodistrict))
+
+deleteVariable(bruinekiekendief_leefgebied_foerageer)
+
+assign(bruinekiekendief_leefgebied_ecodistrict1, and(bruinekiekendief_leefgebied1, bruinekiekendief_ecodistrict))
+
+deleteVariable(bruinekiekendief_leefgebied1)
+deleteVariable(bruinekiekendief_ecodistrict)
+
+assign(bruinekiekendief_leefgebied_ecodistrict1_cluster, FuzzyClusterIdU(bruinekiekendief_leefgebied_ecodistrict1, 500, meter))
+
+deleteVariable(bruinekiekendief_leefgebied_ecodistrict1)
+
+assign(bruinekiekendief_leefgebied_ecodistrict, cFilterGeArea(bruinekiekendief_leefgebied_ecodistrict1_cluster, 100, hectare))
+
+//write('bruinekiekendief_leefgebied_ecodistrict.asc', if(bruinekiekendief_leefgebied_ecodistrict, bruinekiekendief_leefgebied_ecodistrict1_cluster, 0))
+//write('bruinekiekendief_leefgebied_ecodistrict.asc', IsNonZero(bruinekiekendief_leefgebied_ecodistrict))
+
+deleteVariable(bruinekiekendief_leefgebied_ecodistrict1_cluster)
+
+assign(bruinekiekendief_leefgebied_voortplanting_ecodistrict, and(bruinekiekendief_leefgebied_voortplanting_ecodistrict1, bruinekiekendief_leefgebied_ecodistrict))
+
+deleteVariable(bruinekiekendief_leefgebied_voortplanting_ecodistrict1)
+
+//write('bruinekiekendief_leefgebied_voortplanting_ecodistrict.asc', IsNonZero(bruinekiekendief_leefgebied_voortplanting_ecodistrict))
+
+deleteVariable(bruinekiekendief_leefgebied_voortplanting_ecodistrict)
+
+assign(bruinekiekendief_leefgebied_foerageer_ecodistrict, and(bruinekiekendief_leefgebied_foerageer_ecodistrict1, bruinekiekendief_leefgebied_ecodistrict))
+
+deleteVariable(bruinekiekendief_leefgebied_foerageer_ecodistrict1)
+deleteVariable(bruinekiekendief_leefgebied_ecodistrict)
+
+write('ANB2019_BruineKiekendief2018.asc', IsNonZero(bruinekiekendief_leefgebied_foerageer_ecodistrict))
+deleteVariable(bruinekiekendief_leefgebied_foerageer_ecodistrict)

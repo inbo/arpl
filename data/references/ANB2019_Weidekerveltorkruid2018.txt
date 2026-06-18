@@ -1,0 +1,19 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af (zonder opgespoten terreinen)
+
+assign(weidekerveltorkruid_voortplanting_bwk, bwk(6510%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(weidekerveltorkruid_voortplanting_cluster, fuzzyClusterIdU(weidekerveltorkruid_voortplanting_bwk, 20, meter))
+
+deleteVariable(weidekerveltorkruid_voortplanting_bwk)
+
+// optimale voortplantingsclusters moeten minimaal 0.16ha groot zijn
+
+assign(weidekerveltorkruid_leefgebied, cFilterGeArea(weidekerveltorkruid_voortplanting_cluster, 0.16, hectare))
+deleteVariable(weidekerveltorkruid_voortplanting_cluster)
+
+write('ANB2019_Weidekerveltorkruid2018.asc', IsNonZero(weidekerveltorkruid_leefgebied))
+deleteVariable(weidekerveltorkruid_leefgebied)

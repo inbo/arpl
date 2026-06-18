@@ -1,0 +1,19 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af (zonder opgespoten terreinen)
+
+assign(kleineschorseneer_voortplanting_bwk, bwk(6410%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(kleineschorseneer_voortplanting_cluster, fuzzyClusterIdU(kleineschorseneer_voortplanting_bwk, 20, meter))
+
+deleteVariable(kleineschorseneer_voortplanting_bwk)
+
+// optimale voortplantingsclusters moeten minimaal 0.16ha groot zijn
+
+assign(kleineschorseneer_leefgebied, cFilterGeArea(kleineschorseneer_voortplanting_cluster, 0.16, hectare))
+deleteVariable(kleineschorseneer_voortplanting_cluster)
+
+write('ANB2019_KleineSchorseneer2018.asc', IsNonZero(kleineschorseneer_leefgebied))
+deleteVariable(kleineschorseneer_leefgebied)

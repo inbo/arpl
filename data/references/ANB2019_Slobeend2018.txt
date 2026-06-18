@@ -1,0 +1,45 @@
+vlaanderen_20m.asc
+
+// lees de shape file in uit de vogelgebiedendatabank met minstens ?? slobeenden
+assign(slobeend_watervogelgebieden, 'leefgebied_slobeend_20m.asc')
+
+assign(slobeend_watervogelgebied1, and(ge(slobeend_watervogelgebieden, 1), le(slobeend_watervogelgebieden, 145)))
+
+deleteVariable(slobeend_watervogelgebieden)
+
+// baken de foerageergebieden binnen de telgebieden af
+
+assign(slobeend_foerageer_bwk, bwk(ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, aom%, 3110%, 3130%, ap%, hp+%, rbbkam%, rbbzil%, hpr%, hpr+%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het leefgebied - er moet voldoende open gebied zijn!
+
+assign(slobeend_foerageer_bwk_cluster, fuzzyClusterIdU(slobeend_foerageer_bwk, 50, meter))
+
+deleteVariable(slobeend_foerageer_bwk)
+
+// leefgebiedcluster moeten minimaal 5ha groot zijn
+
+assign(slobeend_leefgebied1, cFilterGeArea(slobeend_foerageer_bwk_cluster, 5, hectare))
+
+deleteVariable(slobeend_foerageer_bwk_cluster)
+
+assign(slobeend_leefgebied, and(slobeend_watervogelgebied1, slobeend_leefgebied1))
+
+deleteVariable(slobeend_watervogelgebied1)
+deleteVariable(slobeend_leefgebied1)
+
+// baken ecoregio van ecodistrictgebieden af
+
+assign(slobeend_ecodistrict, ge('ecoregio.asc', 1))
+
+assign(slobeend_leefgebied_ecodistrict1, and(slobeend_leefgebied, slobeend_ecodistrict))
+deleteVariable(slobeend_ecodistrict)
+deleteVariable(slobeend_leefgebied)
+
+assign(slobeend_leefgebied_ecodistrict1_cluster, FuzzyClusterIdU(slobeend_leefgebied_ecodistrict1, 50, meter))
+deleteVariable(slobeend_leefgebied_ecodistrict1)
+
+assign(slobeend_leefgebied_ecodistrict, cFilterGeArea(slobeend_leefgebied_ecodistrict1_cluster, 5, hectare))
+deleteVariable(slobeend_leefgebied_ecodistrict1_cluster)
+write('ANB2019_Slobeend2018.asc', IsNonZero(slobeend_leefgebied_ecodistrict))
+deleteVariable(slobeend_leefgebied_ecodistrict)

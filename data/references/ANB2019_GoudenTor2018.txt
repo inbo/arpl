@@ -1,0 +1,24 @@
+// Adultbiotoop = boomgaarden, parken, tuinen, spporwegbermen ...
+
+assign(goudentor_adultbiotoop1, bwk(hr%, 6430%, kc%, khs%, kj%, kp%, ks%, ku%, 3270%, sz%, kh(sz%, k(hr%, kt(hr%, kt(ku%, kt(sz%, ua%))
+//write('goudentor_adultbiotoop1.asc', IsNonZero(goudentor_adultbiotoop1))
+
+assign(goudentor_adultbiotoop2, OrEq('groenkaart2013_20m.asc', 1, 2))
+//write('goudentor_adultbiotoop2.asc', IsNonZero(goudentor_adultbiotoop2))
+
+assign(goudentor_adultbiotoop3, and(goudentor_adultbiotoop1, goudentor_adultbiotoop2))
+
+// clustering: indien geschikte cel binnen 100 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(goudentor_adultbiotoop3_cluster, fuzzyClusterIdU(goudentor_adultbiotoop3, 100, meter))
+
+// leefgebiedcluster moeten minimaal 0.5 ha groot zijn
+assign(goudentor_adultbiotoop, cFilterGeArea(goudentor_adultbiotoop3_cluster, 0.5, hectare))
+
+write('ANB2019_GoudenTor2018.asc', IsNonZero(goudentor_adultbiotoop))
+
+deleteVariable(goudentor_adultbiotoop)
+deleteVariable(goudentor_adultbiotoop1)
+deleteVariable(goudentor_adultbiotoop2)
+deleteVariable(goudentor_adultbiotoop3)
+deleteVariable(goudentor_adultbiotoop3_cluster)

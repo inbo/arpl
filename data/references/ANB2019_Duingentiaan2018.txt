@@ -1,0 +1,19 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af (zonder opgespoten terreinen)
+
+assign(duingentiaan_voortplanting_bwk, bwk(2130%, 2190%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(duingentiaan_voortplanting_cluster, fuzzyClusterIdU(duingentiaan_voortplanting_bwk, 20, meter))
+
+deleteVariable(duingentiaan_voortplanting_bwk)
+
+// optimale voortplantingsclusters moeten minimaal 0.16ha groot zijn
+
+assign(duingentiaan_leefgebied, cFilterGeArea(duingentiaan_voortplanting_cluster, 0.16, hectare))
+deleteVariable(duingentiaan_voortplanting_cluster)
+
+write('ANB2019_Duingentiaan2018.asc', IsNonZero(duingentiaan_leefgebied))
+deleteVariable(duingentiaan_leefgebied)

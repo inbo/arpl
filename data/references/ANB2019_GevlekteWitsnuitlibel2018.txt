@@ -1,0 +1,113 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af
+
+assign(gevlektewitsnuitlibel_voortplanting_bwk, bwk(ae, ae+, ae-, 2190%, 3140%, 3150%, aer, aer+, aer-, aev, aev+, aev-, ao, ao+, ao-, 3160%, 7140%, 7150%, aom, aom+, aom-, 3110%, 3130%, aoo, aoo-))
+
+// uit GRB-watergang, kleine waters proberen te filteren
+
+assign(BlauweLaag, eq('BlauweLaag_Plassen_06042017_20m_.asc', 1))
+
+assign(BlauweLaag_cluster, fuzzyClusterIdU(BlauweLaag, 10, meter))
+
+deleteVariable(BlauweLaag)
+
+assign(gevlektewitsnuitlibel_kleinwater, cFilterLeArea(BlauweLaag_cluster, 0.4, hectare))
+
+deleteVariable(BlauweLaag_cluster)
+
+assign(gevlektewitsnuitlibel_waterbiotoop1, or(gevlektewitsnuitlibel_voortplanting_bwk, gevlektewitsnuitlibel_kleinwater))
+
+deleteVariable(gevlektewitsnuitlibel_voortplanting_bwk)
+deleteVariable(gevlektewitsnuitlibel_kleinwater)
+
+// binnen een straal van 500m moeten minstens 3 (4-1 dwz 4 - de eigen poel) andere geschikte voortplantingsgebieden liggen
+
+assign(gevlektewitsnuitlibel_waterbiotoop1_cluster, clusterId(gevlektewitsnuitlibel_waterbiotoop1))
+
+deleteVariable(gevlektewitsnuitlibel_waterbiotoop1)
+
+assign(gevlektewitsnuitlibel_waterbiotoop0, GeUniqueCountInBuffer(gevlektewitsnuitlibel_waterbiotoop1_cluster, 500, meter, gevlektewitsnuitlibel_waterbiotoop1_cluster, 4))
+
+deleteVariable(gevlektewitsnuitlibel_waterbiotoop1_cluster)
+
+assign(gevlektewitsnuitlibel_foerageer0, bwk(cd%, 2310%, 4030%, ce%, 4010%, 7150%, cg%, 2310%, cm%, cp%, 9120%, cv%, fa%, 9130%, fe%, fm%, fs%, hc%, 2190%, 6410%, rbbhc%, hf%, 6430%, rbbhf%, hmo%, hr%, hu%, 6510%, kn%, 3140%, ku%, lhb%, lhi%, mc%, rbbmc%, md%, 7140%, 91E0%, mk%, 7230%, mm%, 7210%, mp%, mr%, rbbmr%, ms%, 7140%, n, n+, n-, pmb%, pmh%, ppmb%, rbbppm%, ppmh%, ppms%, qa%, qb%, 9120%, 9190%, qe%, 9130%, qs%, ru%, 2180%, 9160%, 91E0%, sd%, 2160%, 2170%, se%, sf%, 2180%, rbbsf%, sm%, 4010%, 7230%, rbbsm%, so%, rbbso%, sp%, rbbsp%, sz%, t%, 7110%, va%, 91E0%, vc%, vf%, vm%, vn%, vo%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het foerageercluster
+
+assign(gevlektewitsnuitlibel_foerageer1_cluster, fuzzyClusterIdU(gevlektewitsnuitlibel_foerageer0, 50, meter))
+
+deleteVariable(gevlektewitsnuitlibel_foerageer0)
+
+// foerageergebied moet minstens 35ha groot zijn
+
+assign(gevlektewitsnuitlibel_foerageer2, cFilterGeArea(gevlektewitsnuitlibel_foerageer1_cluster, 35, hectare))
+
+deleteVariable(gevlektewitsnuitlibel_foerageer1_cluster)
+
+// baken struweel en bos af
+
+assign(gevlektewitsnuitlibel_struweel1, bwk(fa%, 9120%, 9130%, fe%, fm%, fs%, lhb+, lhi+, mc%, rbbmc%, md%, 7140%, 91E0%, mm%, 7210%, mr%, 2190%, 6430_hw%, 6430_mr%, rbbmr%, n, n+, n-, ppmb%, rbbppm%, ppms%, ppmh%, pmb%, pmh%, qa%, 9130%, qb%, 9120%, 9190%, qe%, qs%, ru%, 2180%, 9160%, 91E0%, sd%, 2160%, 2170%, se%, sf%, rbbsf%, sm%, 4010%, 7140%, 7230%, sp%, rbbsp%, so%, rbbso%, sz%, t%, 7110%, va%, vc%, vf%, vm%, vn%, vo%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het struweelcluster
+
+assign(gevlektewitsnuitlibel_struweel1_cluster, fuzzyClusterIdU(gevlektewitsnuitlibel_struweel1, 50, meter))
+
+deleteVariable(gevlektewitsnuitlibel_struweel1)
+
+// minstens 30% van foerageergebied moet struweel of bos zijn (10ha)
+
+assign(gevlektewitsnuitlibel_struweel2, cFilterGeArea(gevlektewitsnuitlibel_struweel1_cluster, 10, hectare))
+
+deleteVariable(gevlektewitsnuitlibel_struweel1_cluster)
+
+assign(gevlektewitsnuitlibel_foerageer3, and(gevlektewitsnuitlibel_foerageer2, cellDistanceLe(gevlektewitsnuitlibel_struweel2, 100, meter)))
+
+deleteVariable(gevlektewitsnuitlibel_foerageer2)
+deleteVariable(gevlektewitsnuitlibel_struweel2)
+
+// zoek voortplantingsgebieden die binnen de 800m van foerageergebieden liggen
+
+assign(gevlektewitsnuitlibel_voortplanting1, and(gevlektewitsnuitlibel_waterbiotoop0, cellDistanceLe(gevlektewitsnuitlibel_foerageer3, 800, meter)))
+assign(gevlektewitsnuitlibel_foerageer1, and(gevlektewitsnuitlibel_foerageer3, cellDistanceLe(gevlektewitsnuitlibel_waterbiotoop0, 800, meter)))
+
+deleteVariable(gevlektewitsnuitlibel_foerageer3)
+deleteVariable(gevlektewitsnuitlibel_waterbiotoop0)
+
+assign(gevlektewitsnuitlibel_leefgebied1, or(gevlektewitsnuitlibel_voortplanting1, gevlektewitsnuitlibel_foerageer1))
+
+assign(gevlektewitsnuitlibel_leefgebied1_cluster, FuzzyClusterIdU(gevlektewitsnuitlibel_leefgebied1, 50, meter))
+
+deleteVariable(gevlektewitsnuitlibel_leefgebied1)
+
+assign(gevlektewitsnuitlibel_leefgebied, cFilterGeArea(gevlektewitsnuitlibel_leefgebied1_cluster, 35, hectare))
+deleteVariable(gevlektewitsnuitlibel_leefgebied1_cluster)
+
+assign(gevlektewitsnuitlibel_voortplanting, and(gevlektewitsnuitlibel_leefgebied, gevlektewitsnuitlibel_voortplanting1))
+
+deleteVariable(gevlektewitsnuitlibel_voortplanting1)
+deleteVariable(gevlektewitsnuitlibel_voortplanting)
+
+assign(gevlektewitsnuitlibel_foerageer, and(gevlektewitsnuitlibel_leefgebied, gevlektewitsnuitlibel_foerageer1))
+
+deleteVariable(gevlektewitsnuitlibel_foerageer1)
+deleteVariable(gevlektewitsnuitlibel_foerageer)
+
+// baken ecoregio van ecodistrictgebieden af
+
+assign(gevlektewitsnuitlibel_ecodistrict, ge('ecoregio.asc', 1))
+
+assign(gevlektewitsnuitlibel_leefgebied_ecodistrict1, and(gevlektewitsnuitlibel_leefgebied, gevlektewitsnuitlibel_ecodistrict))
+
+deleteVariable(gevlektewitsnuitlibel_leefgebied)
+deleteVariable(gevlektewitsnuitlibel_ecodistrict)
+
+assign(gevlektewitsnuitlibel_leefgebied_ecodistrict1_cluster, FuzzyClusterIdU(gevlektewitsnuitlibel_leefgebied_ecodistrict1, 50, meter))
+
+deleteVariable(gevlektewitsnuitlibel_leefgebied_ecodistrict1)
+
+assign(gevlektewitsnuitlibel_leefgebied_ecodistrict, cFilterGeArea(gevlektewitsnuitlibel_leefgebied_ecodistrict1_cluster, 35, hectare))
+write('ANB2019_GevlekteWitsnuitlibel2018.asc', IsNonZero(gevlektewitsnuitlibel_leefgebied_ecodistrict))
+
+deleteVariable(gevlektewitsnuitlibel_leefgebied_ecodistrict)
+deleteVariable(gevlektewitsnuitlibel_leefgebied_ecodistrict1_cluster)

@@ -1,0 +1,32 @@
+vlaanderen_20m.asc
+
+//Een koppel Paapjes heeft nood aan een leefgebied van 5 ha bestaande uit vochtige structuurrijke graslanden, bloemrijke hooilanden, heides en venen en jonge bosaanplanten (BWK: hpr+, hf, hu, hc, hm, hmm, hme, hmo, hj+, hr+, t, ms, mm, mk, md, mp).
+//Dit leefgebied moet minstens 100m van de bosrand afliggen.
+
+// Bepaal biotoop
+//tm (gedegradeerd hoogveen met pijpenstrootje) ook meenemen? Bij de rest heb ik + en - toegevoegd. Of mogen enkel de +? Jonge bosaanplanten nu niet opgenomen?
+assign(paapje_bwk, bwk(hc%, 2190%, 6410%, rbbhc%, hf%, 6430%, rbbhf%, hj+, hm%, 6230%, hmm%, hme%, hmo%, hpr%, rbbkam%, rbbzil%, hr+, hu%, 6120%, 6510%, md%, 7140%, mk%, mm%, mp%, 2190_mp%, ms%, rbbms%, t%, 7110%, tm%, 7120%))
+
+// Bepaal bosbiotoop
+assign(paapje_bwkbos, bwk(91%, gml, gmn, f%, n, n+, n-, l, ls%, lh%, p%, q%, ru%, 2180%, v%))
+assign(paapje_groenkaartbos, eq('groenkaart2013_20m.asc', 1))
+assign(paapje_bos, or(paapje_bwkbos, paapje_groenkaartbos))
+deleteVariable(paapje_bwkbos)
+deleteVariable(paapje_groenkaartbos)
+
+//100 m van de bosrand
+
+assign(paapje_leefgebied1, and(paapje_bwk, celldistanceGe(paapje_bos, 100, meter)))
+deleteVariable(paapje_bos)
+deleteVariable(paapje_bwk)
+
+//Clustering
+
+assign(paapje_leefgebied1_cluster, fuzzyClusterIdU(paapje_leefgebied1, 50, meter))
+deleteVariable(paapje_leefgebied1)
+
+assign(paapje_leefgebied, cFilterGeArea(paapje_leefgebied1_cluster, 5, hectare))
+deleteVariable(paapje_leefgebied1_cluster)
+write('ANB2019_Paapje2018.asc', IsNonZero(paapje_leefgebied))
+deleteVariable(paapje_leefgebied)
+

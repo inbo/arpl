@@ -1,0 +1,21 @@
+vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+assign(eikelmuis_bwk, bwk(9150%, 9160%, cvb%, dd%, ek%, es%, f%, 9110%, 9120%, 9130%, 9150%, gml%, gmn%, hab%, hcb%, hdb%, hf%, 2190%, 6430%, hjb%, hkb%, hmb%, hnb%, hrb%, hub%, k(cg%, k(cp%, k(hf%, k(hr%, k(cdb%, k(cmb%, k(hab%, k(hjb%, k(kub%, k(mcb%, k(mrb%, kb%, kg%, kh%, khw%, kj%, kp%, kpa%, kpk%, ks%, kr%, ku%, kw%, l%, n%, p%, q%, ru%, s%, ua%, un%, v%, mc%, ur%, uv%, ui%, kd+%, kf%, kf-%, kc%, kk%, kl%, km%, ko%, kq%, kt(cg%, kt(cgb%, kt(cmb%, kt(cp%, kt(cpb%, kt(fa%, kt(fe%, kt(fk%, kt(fl%, kt(fm%, kt(fs%, kt(hab%, kt(hf%, kt(hfb%, kt(hjb%, kt(hr%, kt(hrb%, kt(ku%, kt(kub%, kt(mc%, kt(mcb%, kt(mr%, kt(mrb%, kt(qa%, kt(qb%, kt(qe%, kt(qk%, kt(ql%, kt(qs%, kt(ru%, kt(sf%, kt(sg%, kt(sgb%, kt(sgu%, kt(sk%, kt(sp%, kt(sz%, kt(va%, kt(vm%, kt(vn%, spoor%, 2180%, 91E0%))
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 20 meter liggen
+assign(eikelmuis_bwk_cluster, fuzzyClusterIdU(eikelmuis_bwk, 20, meter))
+deleteVariable(eikelmuis_bwk)
+
+// leefgebied moet minstens 5 hectare groot zijn
+assign(eikelmuis_leefgebied, cFilterGeArea(eikelmuis_bwk_cluster, 5, hectare))
+
+// beperk de leefgebiedenkaart tot bepaalde ecoregio's
+assign(eikelmuis_ecodistrict, Ge('ecoregio.asc', 1))
+assign(eikelmuis_leefgebied_ecodistrict, and(eikelmuis_leefgebied, eikelmuis_ecodistrict))
+deleteVariable(eikelmuis_ecodistrict)
+deleteVariable(eikelmuis_leefgebied)
+deleteVariable(eikelmuis_bwk_cluster)
+
+// 0/1 kaarten maken
+write('ANB2019_Eikelmuis2018.asc', IsNonZero(eikelmuis_leefgebied_ecodistrict))
+deleteVariable(eikelmuis_leefgebied_ecodistrict)

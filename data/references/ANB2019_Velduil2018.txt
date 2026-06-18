@@ -1,0 +1,181 @@
+Vlaanderen_20m.asc
+
+//Origineel ecologisch verhaal (Glenn Vermeersch, Filiep T'Jollyn)
+
+//Een koppel Velduilen heeft nood aan minstens 100 ha aaneengesloten leefgebied
+//dat bij voorkeur bestaat uit soortenrijk, permanent grasland (BWK: hj, hp+, hpr, hpr+, hc, hu, hm)
+//met verspreide kleine poelen (BWK: ae, aer) en vochtige laagtes
+//ingebed in een groter landbouwgebied van minstens 1000 ha.
+//Het is belangrijk dat het leefgebied erg open is met bij voorkeur geen bomenrijen, houtkanten of bosranden langs de perceelsranden.
+//Variatie in hoogte van de grassen is belangrijk
+//en er dient doorheen het leefgebied een mozaiek beschikbaar te zijn van cultuurgraslanden en hooilanden.
+
+// baken soortenrijk en permanent grasland af
+
+assign(Velduil_cultuur0a, bwk(hc, hc+, 6410%, rbbhc%, hj+, hj, hm, hm+, hme, hme+, hmo, hmo+, 6410%, 6230%, hp+, rbbkam%, rbbzil%, hpr+, hpr, hu, 6510%, hu+))
+
+// mag geen akker zijn ...?
+
+assign(Velduil_akker, bwk(bc%, bg%, bk%, bl%, bs%, bu%))
+
+assign(Velduil_cultuur, and(Velduil_cultuur0a, not(Velduil_akker)))
+
+deleteVariable(Velduil_cultuur0a)
+
+assign(Velduil_hooiland, bwk(hc, hc+, 2190%, 6410%, rbbhc%, hm, hm+, hme, hme+, hmm, hmm+, hmo, hmo+, 6230%, hu, hu+, 6120%, 6510%))
+
+//kleine eutrofe poelen; overlay maken van externe laag GRB_watergang én BWK-polygonen met vermelding van ae% of kn%; mag code ah, en evt. da, ook meegenomen worden? 
+
+assign(GRB_water, Eq('GRB_watergang_at.asc', 1))
+assign(GRB_water_cluster, fuzzyClusterIdU(GRB_water, 10, meter))
+
+deleteVariable(GRB_water)
+
+assign(Velduil_kleinwater_grb, cFilterLeArea(GRB_water_cluster, 0.4, hectare))
+
+deleteVariable(GRB_water_cluster)
+
+assign(Velduil_kleinwater_bwk, bwk(ae, 2190%, 3140%, 3150%, ae+, ae-, aer%, aev%, kn%))
+
+assign(Velduil_kleinwater, and(Velduil_kleinwater_grb, Velduil_kleinwater_bwk))
+
+deleteVariable(Velduil_kleinwater_bwk)
+deleteVariable(Velduil_kleinwater_grb)
+
+// dit mag allemaal geen hooggroen zijn
+
+assign(Velduil_hooggroen, eq('groenkaart2013_20m.asc', 1))
+
+assign(Velduil_cultuur1, and(Velduil_cultuur, not(Velduil_hooggroen)))
+assign(Velduil_hooiland1, and(Velduil_hooiland, not(Velduil_hooggroen)))
+assign(Velduil_kleinwater1, and(Velduil_kleinwater, not(Velduil_hooggroen)))
+
+deleteVariable(Velduil_cultuur)
+deleteVariable(Velduil_hooiland)
+deleteVariable(Velduil_kleinwater)
+
+//kernbiotoop bestaat uit hpr, hpr+, hp+ en hj+, of uit hp en hj op een maximale afstand van 100m van effectief overstromingsgevoelig gebied; kernbiotopen moeten daarnaast:
+//even nat of natter zijn dan drainageklasse d
+//op minstens 100 m van bebouwing gelegen zijn
+//op meer dan 50 m van aaneengesloten oppervlakte van hooggroen (>3m hoog, >20 are groot) gelegen zijn
+//geen hooggroen bevatten (>3m hoog)
+
+assign(Velduil_kern1, bwk(hj+, hp+, rbbkam%, rbbzil%, hpr, hpr+, 2190%, 1330_hpr%, rbbvos%, rbbah%))
+
+assign(Velduil_kern2, bwk(hp, hj, 2190%))
+assign(Velduil_overstromingsgevoelig, OrEq('OVSTRGEV2014_20m.asc', 1))
+
+assign(Velduil_kern1a, and(Velduil_kern1, cellDistanceLe(Velduil_overstromingsgevoelig, 100, meter)))
+assign(Velduil_kern2a, and(Velduil_kern2, cellDistanceLe(Velduil_overstromingsgevoelig, 100, meter)))
+
+deleteVariable(Velduil_kern2)
+deleteVariable(Velduil_overstromingsgevoelig)
+
+assign(Velduil_kern12, or(Velduil_kern1, Velduil_kern2a))
+
+deleteVariable(Velduil_kern1)
+deleteVariable(Velduil_kern1a)
+deleteVariable(Velduil_kern2a)
+
+assign(Velduil_bodemdrainage, OrEq('bodem_drainage.asc', 1, 2, 3, 7, 10, 11, 12, 14, 15))
+
+assign(Velduil_kern3, and(Velduil_kern12, Velduil_bodemdrainage))
+
+deleteVariable(Velduil_kern12)
+deleteVariable(Velduil_bodemdrainage)
+
+// blijf met kern 100 meter van bebouwing en 50 meter van hooggroen
+
+assign(Velduil_bebouwing_bwk, and(bwk(u%), not(bwk(ulm))))
+assign(Velduil_bebouwing_bwk_cluster, fuzzyClusterIdU(Velduil_bebouwing_bwk , 100, meter))
+assign(Velduil_bebouwing, cFilterGeArea(Velduil_bebouwing_bwk_cluster, 10, hectare))
+
+deleteVariable(Velduil_bebouwing_bwk)
+deleteVariable(Velduil_bebouwing_bwk_cluster)
+
+assign(Velduil_kern4, and(Velduil_kern3, cellDistanceGe(Velduil_bebouwing, 100, meter)))
+
+deleteVariable(Velduil_kern3)
+
+assign(Velduil_kern5, and(Velduil_kern4, cellDistanceGe(Velduil_hooggroen, 50, meter)))
+
+deleteVariable(Velduil_kern4)
+
+assign(Velduil_kern5_cluster, fuzzyClusterIdU(Velduil_kern5, 50, meter))
+
+deleteVariable(Velduil_kern5)
+
+// kernbiotoop moet minstens 30 ha zijn!!
+
+assign(Velduil_kern, cFilterGeArea(Velduil_kern5_cluster, 30, hectare))
+
+deleteVariable(Velduil_kern5_cluster)
+
+//write('Velduil_kern.asc', Velduil_kern)
+
+// bijkomende biotoop = kernbiotoop, met binnen een afstand van 200 meter ook nog het aanwezige cultuurgrasland, hooiland, of extra hp/hx/hr op minstens 100m van bebouwing, en op minstens 50m van aaneengesloten hooggroen van minstens 20 are groot
+
+assign(Velduil_cultuurhooi1a, or(Velduil_cultuur1, Velduil_hooiland1, Velduil_kleinwater1))
+
+deleteVariable(Velduil_cultuur1)
+deleteVariable(Velduil_hooiland1)
+deleteVariable(Velduil_kleinwater1)
+
+assign(Velduil_cultuurhooi1b, bwk(hx%, hp, hr+, 6430%, hr-, hr))
+
+assign(Velduil_cultuurhooi1, or(Velduil_cultuurhooi1a, Velduil_cultuurhooi1b))
+
+deleteVariable(Velduil_cultuurhooi1a)
+deleteVariable(Velduil_cultuurhooi1b)
+
+assign(Velduil_cultuurhooi2, and(Velduil_cultuurhooi1, not(or(Velduil_hooggroen, Velduil_akker))))
+
+deleteVariable(Velduil_akker)
+
+//?? and not vliegveld!
+
+deleteVariable(Velduil_cultuurhooi1)
+
+// blijf met cultuurgraslanden 100 meter van bebouwing en 50 meter van hooggroen
+
+assign(Velduil_cultuurhooi3, and(Velduil_cultuurhooi2, cellDistanceGe(Velduil_bebouwing, 100, meter)))
+
+deleteVariable(Velduil_bebouwing)
+
+assign(Velduil_cultuurhooi4, and(Velduil_cultuurhooi3, cellDistanceGe(Velduil_hooggroen, 50, meter)))
+
+assign(Velduil_cultuurhooi4_cluster, fuzzyClusterIdU(Velduil_cultuurhooi4, 50, meter))
+
+deleteVariable(Velduil_cultuurhooi4)
+
+assign(Velduil_cultuurhooi, cFilterGeArea(Velduil_cultuurhooi4_cluster, 25, hectare))
+
+deleteVariable(Velduil_cultuurhooi2)
+deleteVariable(Velduil_cultuurhooi3)
+deleteVariable(Velduil_cultuurhooi4_cluster)
+
+deleteVariable(Velduil_hooggroen)
+
+//write('Velduil_cultuurhooi.asc', Velduil_cultuurhooi)
+
+//clustering
+
+assign(Velduil_kern0, and(Velduil_kern, cFilter(Velduil_kern, cellDistanceLe(Velduil_cultuurhooi, 200, meter))))
+assign(Velduil_cultuurhooi0, and(Velduil_cultuurhooi, cFilter(Velduil_cultuurhooi, cellDistanceLe(Velduil_kern0, 200, meter))))
+
+deleteVariable(Velduil_cultuurhooi)
+deleteVariable(Velduil_kern)
+
+assign(Velduil_leefgebied1, or(Velduil_kern0, Velduil_cultuurhooi0))
+//write('Velduil_leefgebied1.asc', IsNonZero(Velduil_leefgebied1))
+
+deleteVariable(Velduil_kern0)
+deleteVariable(Velduil_cultuurhooi0)
+
+assign(Velduil_leefgebied1_cluster, fuzzyClusterIdU(Velduil_leefgebied1, 50, meter))
+deleteVariable(Velduil_leefgebied1)
+
+assign(Velduil_leefgebied, cFilterGeArea(Velduil_leefgebied1_cluster, 30, hectare))
+write('ANB2019_Velduil2018.asc', IsNonZero(Velduil_leefgebied))
+deleteVariable(Velduil_leefgebied)
+deleteVariable(Velduil_leefgebied1_cluster)

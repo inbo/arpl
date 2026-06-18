@@ -1,0 +1,27 @@
+vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+assign(groteweerschijnvlinder_bwk, bwk(fa%, 9120%, 9130%, fs%, kbp%, kbq%, lhb%, qa%, 9160%, qe%, qs%, ru%, 2180%, 91E0%, 91F0%, sf%, rbbsf%, so%, rbbso%, va%, vc%, vf%, vn%, vm%, vo%, vt%, 91D0%))
+
+//vochtige bodems
+//assign(vocht, 'bodem_drainage.asc')
+//assign(groteweerschijnvlinder_vocht, OrEq('bodem_drainage.asc', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15))
+
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 50 meter liggen
+assign(groteweerschijnvlinder_bwk_cluster, fuzzyClusterIdU(groteweerschijnvlinder_bwk, 50, meter))
+deleteVariable(groteweerschijnvlinder_bwk)
+
+// leefgebied moet minstens 10 hectare groot zijn
+assign(groteweerschijnvlinder_leefgebied, cFilterGeArea(groteweerschijnvlinder_bwk_cluster, 10, hectare))
+
+// beperk de leefgebiedenkaart tot bepaalde ecoregio's
+assign(groteweerschijnvlinder_ecodistrict, Ge('ecoregio.asc', 1))
+assign(groteweerschijnvlinder_leefgebied_ecodistrict, and(groteweerschijnvlinder_leefgebied, groteweerschijnvlinder_ecodistrict))
+deleteVariable(groteweerschijnvlinder_leefgebied)
+deleteVariable(groteweerschijnvlinder_ecodistrict)
+
+deleteVariable(groteweerschijnvlinder_bwk_cluster)
+
+// 0/1 kaarten maken
+write('ANB2019_GroteWeerschijnvlinder2018.asc', IsNonZero(groteweerschijnvlinder_leefgebied_ecodistrict))
+deleteVariable(groteweerschijnvlinder_leefgebied_ecodistrict)

@@ -1,0 +1,119 @@
+vlaanderen_20m.asc
+
+//Aanpassingen in vergelijking met vorige versie (zie onder voor vorige versie):
+///bufferafstand 200 m i.p.v. 500 m
+///app% niet als geschikt biotoop behouden
+///absolute oppervlakte van waterbiotoop gebruikt (10 ha) i.p.v. relatief aandeel binnen cluster (30%)
+///verbossing volgens groenkaart uitgesloten uit open biotopen vanaf een bepaalde drempelwaarden in oppervlakte (0.25 ha)
+
+
+// 1) een koppel roerdompen heeft nood aan
+// 2) minstens 30 ha min of meer aaneengesloten (minimale onderlinge afstand 500 m) leefgebied
+// 3) dat minstens 10 ha open water (BWK: a%; HT: >31%) bevat
+// 4) met overgang naar minimaal 0,5 ha aaneengesloten rietland met een minimale breedte van 25 m (BWK: mr%, m.u.v. mr-, mrb% en mru%; RBB: >rbbmr)  bij voorkeur meerjarig of in complex met hoge zeggenvegetaties (BWK: mc%)
+// 5) en minimaal 0.5 ha hoge zeggenvegetaties (BWK: mc% m.u.v. mc-; RBB: rbbmc), ruigten (BWK: hf%; RBB: rbbhf; HT: 6430_rbbhf), dottergrasland (BWK: hc%; RBB: rbbhc) of moeras (BWK: ms%, mk%, mz%; HT: <7140, 7230; RBB: rbbms),
+// 6) verder ingebed in een complex van natte, heischrale (BWK: hmo; HT: <6230) of licht bemeste, door russen gedomineerde (BWK: hj%) graslanden of wilgenstruweel (BWK: so%, sf%; RBB: rbbsf, rbbso),
+// 7) en dit alles met een minimale lengte aan randzone met rietvelden van 500 m.
+// 8)Dit alles mag niet in complex of overdruk voorkomen met estuarium (HT: 1130) omdat in die gebieden de zoutgehaltes (onvoldoende voedselbeschikbaarheid, bv. amfibieën) en de peilschommelingen (overstroming nesten) te hoog zijn
+
+// Opmerking: niet gemodelleerd hieronder: de minimale breedte van 25m (punt 4)
+
+// Eerst selectie cellen voor Roerdomp
+
+assign(roerdomp_openwater, bwk(3260%, 3270%, ae%, 2190%, 3140%, 3150%, ao%, 3160%, 7140%, 7150%, 3110%, 3130%, ap%, apo%))
+assign(roerdomp_rietland, bwk(mr%, 2190%, 6430_hw%, 6430_mr%, 7140%, 7140_mrd%, rbbmr%))
+assign(roerdomp_zegge, bwk(mc%, rbbmc%))
+assign(roerdomp_moeras, bwk(hc%, 2190%, 6410%, rbbhc%, hf%, 6430%, rbbhf%, md%, 7140%, 91E0%, mk%, 7230%, ms%, rbbms%, mz%, 1330_da%, 1330_hpr%))
+assign(roerdomp_grasland, bwk(hj%))
+assign(roerdomp_struweel, bwk(sf%, 2180%, 91E0%, rbbsf%, so%, rbbso%))
+
+// biotopen die het niet mogen zijn (bos en esturaium)
+
+assign(roerdomp_bos, eq('groenkaart2013_20m.asc', 1))
+assign(roerdomp_estuarium, bwk(1130))
+
+assign(roerdomp_openwater1, and(roerdomp_openwater, not(or(roerdomp_bos, roerdomp_estuarium))))
+assign(roerdomp_rietland1, and(roerdomp_rietland, not(or(roerdomp_bos, roerdomp_estuarium))))
+assign(roerdomp_zegge1, and(roerdomp_zegge, not(or(roerdomp_bos, roerdomp_estuarium))))
+assign(roerdomp_moeras1, and(roerdomp_moeras, not(or(roerdomp_bos, roerdomp_estuarium))))
+assign(roerdomp_grasland1, and(roerdomp_grasland, not(or(roerdomp_bos, roerdomp_estuarium))))
+assign(roerdomp_struweel1, and(roerdomp_struweel, not(or(roerdomp_bos, roerdomp_estuarium))))
+
+deleteVariable(roerdomp_bos)
+deleteVariable(roerdomp_estuarium)
+deleteVariable(roerdomp_openwater)
+deleteVariable(roerdomp_rietland)
+deleteVariable(roerdomp_zegge)
+deleteVariable(roerdomp_moeras)
+deleteVariable(roerdomp_grasland)
+deleteVariable(roerdomp_struweel)
+
+assign(roerdomp_leefgebied1, or(roerdomp_openwater1, roerdomp_rietland1, roerdomp_zegge1, roerdomp_moeras1, roerdomp_grasland1, roerdomp_struweel1))
+
+deleteVariable(roerdomp_zegge1)
+deleteVariable(roerdomp_moeras1)
+deleteVariable(roerdomp_grasland1)
+deleteVariable(roerdomp_struweel1)
+
+// clusters minimaal 7.5 ha open water
+
+assign(roerdomp_water1, eq('GRB_watergang_at.asc', 1))
+assign(roerdomp_water1_cluster, fuzzyClusterIdU(roerdomp_water1, 50, meter))
+
+deleteVariable(roerdomp_water1)
+
+assign(roerdomp_openwater1, cFilterGeArea(roerdomp_water1_cluster, 7.5, hectare))
+deleteVariable(roerdomp_water1_cluster)
+
+assign(roerdomp_leefgebied2, and(roerdomp_leefgebied1, cellDistanceLe(roerdomp_openwater1, 100, meter)))
+deleteVariable(roerdomp_leefgebied1)
+
+// clusters minimaal 500 meter waterkant
+
+assign(roerdomp_waterkant1, edge(roerdomp_rietland1, roerdomp_openwater1))
+assign(roerdomp_waterkant2, edge(roerdomp_openwater1, roerdomp_rietland1))
+
+deleteVariable(roerdomp_openwater1)
+
+assign(roerdomp_waterkant0, or(roerdomp_waterkant1, roerdomp_waterkant2))
+
+deleteVariable(roerdomp_waterkant1)
+deleteVariable(roerdomp_waterkant2)
+
+assign(roerdomp_waterkant0_cluster, fuzzyClusterIdU(roerdomp_waterkant0, 50, meter))
+deleteVariable(roerdomp_waterkant0)
+assign(roerdomp_waterkant, cFilterGeArea(roerdomp_waterkant0_cluster, 1, hectare))
+
+deleteVariable(roerdomp_waterkant0_cluster)
+
+assign(roerdomp_leefgebied3, and(roerdomp_leefgebied2, cellDistanceLe(roerdomp_waterkant, 100, meter)))
+deleteVariable(roerdomp_waterkant)
+deleteVariable(roerdomp_leefgebied2)
+
+// clusters minimaal 0.5 ha aaneengesloten rietland
+
+assign(roerdomp_rietland_cluster, fuzzyClusterIdU(roerdomp_rietland1, 50, meter))
+
+deleteVariable(roerdomp_rietland1)
+
+assign(roerdomp_rietland_min, cFilterGeArea(roerdomp_rietland_cluster, 0.5, hectare))
+
+deleteVariable(roerdomp_rietland_cluster)
+
+assign(roerdomp_leefgebied4, and(roerdomp_leefgebied3, cellDistanceLe(roerdomp_rietland_min, 100, meter)))
+deleteVariable(roerdomp_rietland_min)
+
+deleteVariable(roerdomp_leefgebied3)
+
+// clustering: indien geschikte cel binnen 200 meter, dan hoort die cel bij het cluster
+
+assign(roerdomp_leefgebied4_cluster, fuzzyClusterIdU(roerdomp_leefgebied4, 500, meter))
+deleteVariable(roerdomp_leefgebied4)
+
+// clusters minimaal 25 ha
+
+assign(roerdomp_leefgebied, cFilterGeArea(roerdomp_leefgebied4_cluster, 25, hectare))
+deleteVariable(roerdomp_leefgebied4_cluster)
+write('ANB2019_Roerdomp2018.asc', IsNonZero(roerdomp_leefgebied))
+
+deleteVariable(roerdomp_leefgebied)

@@ -1,0 +1,19 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af (zonder opgespoten terreinen)
+
+assign(houtsnip_voortplanting_bwk, bwk(9160%, 9190%, 91E0%, 91F0, 2180%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(houtsnip_voortplanting_cluster, fuzzyClusterIdU(houtsnip_voortplanting_bwk, 20, meter))
+
+deleteVariable(houtsnip_voortplanting_bwk)
+
+// optimale voortplantingsclusters moeten minimaal 20ha groot zijn
+
+assign(houtsnip_leefgebied, cFilterGeArea(houtsnip_voortplanting_cluster, 20, hectare))
+deleteVariable(houtsnip_voortplanting_cluster)
+
+write('ANB2019_Houtsnip2018.asc', IsNonZero(houtsnip_leefgebied))
+deleteVariable(houtsnip_leefgebied)

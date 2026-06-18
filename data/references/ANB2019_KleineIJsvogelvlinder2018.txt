@@ -1,0 +1,22 @@
+vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+assign(kleineijsvogelvlinder_bwk, bwk(fa%, 9120%, 9130%, fe%, fm%, fs%, qa%, 9160%, qb%, 9190%, qe%, qk%, 9150%, qs%, so%, rbbso%, va%, 91E0%, vc%, vf%, vm%, vn%, vo%))
+
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 50 meter liggen
+assign(kleineijsvogelvlinder_bwk_cluster, fuzzyClusterIdU(kleineijsvogelvlinder_bwk, 50, meter))
+deleteVariable(kleineijsvogelvlinder_bwk)
+
+// leefgebied moet minstens 5 hectare groot zijn
+assign(kleineijsvogelvlinder_leefgebied, cFilterGeArea(kleineijsvogelvlinder_bwk_cluster, 5, hectare))
+deleteVariable(kleineijsvogelvlinder_bwk_cluster)
+
+// beperk de leefgebiedenkaart tot bepaalde ecoregio's
+assign(kleineijsvogelvlinder_ecodistrict, Ge('ecoregio.asc', 1))
+assign(kleineijsvogelvlinder_leefgebied_ecodistrict, and(kleineijsvogelvlinder_leefgebied, kleineijsvogelvlinder_ecodistrict))
+deleteVariable(kleineijsvogelvlinder_leefgebied)
+deleteVariable(kleineijsvogelvlinder_ecodistrict)
+
+// 0/1 kaarten maken
+write('ANB2019_KleineIjsvogelvlinder2018.asc', IsNonZero(kleineijsvogelvlinder_leefgebied_ecodistrict))
+deleteVariable(kleineijsvogelvlinder_leefgebied_ecodistrict)

@@ -1,0 +1,134 @@
+Vlaanderen_20m.asc
+
+// Een broedpaar heeft minstens 10 ha (?) nodig aan niet verboste, aaneengesloten kernbiotopen (ce, ce-, ce+, cg, cg+, cg-, ha%, hd%, hk%, hm%, hn%, hp+, hpr+, hu%, sd%, sg%, sk%, sp%, sz%)
+// met daarrond (tot een afstand van 200m) nog minstens 5 ha, niet verbost foerageerhabitat (cd%, ce, ce-, ce+, ceb, ceb-, ceb+, cg%, cm%, cp%, cv%, dd%, dm%, ha%, hc%, hd%, hf%, hj%, hk%, hm%, hn%, hp+, hpr+, hr%, hu%, ku%, kw%, mr%, sd%, sg%, sk%, sp%, sz%) met voldoende kle (hoog en laag; minstens met lengte van 500m),
+// en met minstens 500 m aan lijnvormige kle's
+
+// Heb nu al zelf een opdeling gemaakt van de biotopen in 
+// kernbiotoop: ce, ce-, ce+, cg, cg+, cg-, ha%, hd%, hk%, hm%, hn%, hp+, hpr+, hu%, sd%, sg%, sk%, sp, sp+, sp-, sz%), not(bwk(91%, gml, gmn, f%, n, n+, n-, l, ls%, lh%, p%, q%, ru%
+// alle opgegeven biotopen: cd%, ce, ce-, ce+, ceb, ceb-, ceb+, cg%, cm%, cp%, cv%, dd%, dm%, ha%, hc%, hd%, hf%, hj%, hk%, hm%, hn%, hp+, hpr+, hr%, hu%, ku%, kw%, mr%, sd%, sg%, sk%, sp, sp+, sp-, sz%
+
+// niet verboste kernbiotopen, met verbossing afgeleid uit bwk; k() varianten nog meenemen? En enkel de kernbiotopen de afstand van minimaal 100m tot bebouwing en wegen in rekening brengen, of moet dit ook voor foerageerbiotoop?
+
+// baken voortplantingsbiotoop af
+
+assign(grauweklauwier_voortplanting_bwk, bwk(ce%, 4010%, 7150%, 7140_oli%, cg%, 2310%, 4030%, 5130%, ha%, 2330%, 6230_ha%, 2130_had%, 2150%, hd%, hk%, 6210%, hm%, 6410%, hn%, 6230%, hp+, hpr+, rbbkam%, rbbzil%, hu%, 2190%, 6120%, 6510%, sd%, 2160%, 2170%, sg%, 2310%, 6230%, rbbsg%, sk%, sp%, rbbsp%, sz%))
+//write('grauweklauwier_voortplanting_bwk.asc', grauweklauwier_voortplanting_bwk)
+
+// afstand tot bebouwing in rekening brengen, i.e. indien die clusters vormen van meer dan 10 ha (met tussenafstand van 50m)
+
+assign(grauweklauwier_bebouwing, bwk(u, ua, ua-, uc, ud, ui, ui-, un, un-, ur, ur-, ur+, uv, uv-, uv+))
+
+assign(grauweklauwier_bebouwing_cluster, fuzzyClusterIdU(grauweklauwier_bebouwing, 50, meter))
+
+deleteVariable(grauweklauwier_bebouwing)
+
+assign(grauweklauwier_bebouwing1, cFilterGeArea(grauweklauwier_bebouwing_cluster, 10, hectare))
+
+deleteVariable(grauweklauwier_bebouwing_cluster)
+
+assign(grauweklauwier_voortplanting_bebouwing, and(grauweklauwier_voortplanting_bwk, cellDistanceGe(grauweklauwier_bebouwing1, 100, meter)))
+
+deleteVariable(grauweklauwier_bebouwing1)
+
+deleteVariable(grauweklauwier_voortplanting_bwk)
+
+// afstand tot grote wegen (voorstel ANB); enkel autosnelwegen en tweevaksbanen dan?
+
+assign(grauweklauwier_wegen, OrEq('GRB_Wegverbinding_at.asc', 101, 102))
+
+assign(grauweklauwier_voortplanting1, and(grauweklauwier_voortplanting_bebouwing, cellDistanceGe(grauweklauwier_wegen, 100, meter)))
+
+deleteVariable(grauweklauwier_voortplanting_bebouwing)
+deleteVariable(grauweklauwier_wegen)
+
+//clusters van 10 ha aaneengesloten kernbiotoop
+
+assign(grauweklauwier_voortplanting1_cluster, fuzzyClusterIdU(grauweklauwier_voortplanting1, 50, meter))
+assign(grauweklauwier_voortplanting, cFilterGeArea(grauweklauwier_voortplanting1_cluster, 10, hectare))
+
+deleteVariable(grauweklauwier_voortplanting1_cluster)
+
+// baken foerageerbiotoop af
+
+assign(grauweklauwier_foerageerbiotoop, bwk(cd%, 2310%, ce, 4010%, 7150%, ce-, ce+, ceb, ceb-, ceb+, cg%, 4030%, 5130%, cm%, cp%, cv%, dd%, 2120%, dm%, 2330%, ha%, 6230_ha%, 2130%, 2130_had%, 2150%, hc%, 2190%, 6410%, rbbhc%, hd%, 2130_hd%, hf%, 6430%, rbbhf%, hj%, hk%, 6210%, hm%, hn%, 6230%, hp+, hpr+, rbbkam%, rbbzil%, hr%, hu%, 6120%, 6510%, ku%, kw%, mr%, 6430_hw%, 7140%, rbbmr%, sd%, 2160%, 2170%, sg%, 6230%, rbbsg%, sk%, 6210%, sp%, rbbsp%, sz%))
+//write('grauweklauwier_foerageerbiotoop.asc', grauweklauwier_foerageerbiotoop)
+deleteVariable(grauweklauwier_foerageerbiotoop)
+
+assign(Groenkaart2013, 'groenkaart2013_20m.asc')
+
+//geschikte opgaande kleine landschapselementen (kle) uit Groenkaart2013
+
+// lijnvormig hooggroen afbakenen
+
+assign(grauweklauwier_lijn_hooggroen, edge(eq(Groenkaart2013, 1), gt(Groenkaart2013, 1)))
+assign(grauweklauwier_lijn_hooggroen1, and(grauweklauwier_lijn_hooggroen, ne(MajorityFilter(Groenkaart2013, 1, 2), 1)))
+deleteVariable(grauweklauwier_lijn_hooggroen)
+
+//write('grauweklauwier_lijn_hooggroen1.asc', grauweklauwier_lijn_hooggroen1)
+
+//lijnvormig laaggroen dat geen landbouw is afbakenen
+
+assign(grauweklauwier_lijn_laaggroen, edge(eq(Groenkaart2013, 2), and(ge(Groenkaart2013, 1), ne(Groenkaart2013, 2))))
+assign(grauweklauwier_lijn_laaggroen1, and(grauweklauwier_lijn_laaggroen, ne(MajorityFilter(Groenkaart2013, 1, 2), 2)))
+deleteVariable(grauweklauwier_lijn_laaggroen)
+
+//write('grauweklauwier_lijn_laaggroen1.asc', grauweklauwier_lijn_laaggroen1)
+deleteVariable(grauweklauwier_lijn_laaggroen1)
+
+deleteVariable(Groenkaart2013)
+
+//enkel lijnvormig hoog- en laaggroen meenemen indien overlap met bwk-codes bwk(kb%, kh%, kj%, kw%)? Voorstel van ANB
+
+//foerageerbiotopen omvatten de kernbiotopen naast nog een resem andere bwk-codes (niet verbost, met verbossing vanaf 0.25 ha aaneengesloten hooggroen volgens groenkaart 2013), én het lijnvormige hoog- en laaggroen uit de groenkaart 2013
+//eis van minstens 500m aan lijnvormige kle in kernbiotoop
+
+assign(grauweklauwier_foerageer1, cfilter(grauweklauwier_voortplanting, ge(csum(grauweklauwier_voortplanting, or(grauweklauwier_lijn_hooggroen1, grauweklauwier_lijn_hooggroen1)), 500/cellsize)))
+deleteVariable(grauweklauwier_lijn_hooggroen1)
+
+deleteVariable(grauweklauwier_voortplanting)
+
+//write('grauweklauwier_foerageer1.asc', grauweklauwier_foerageer1)
+
+//enkel foerageerbiotoop overhouden op een afstand van maximum 100m rond de 10 ha clusters van kernbiotopen, en het geheel van kern- en foerageerbiotoop moet minstens 15 ha groot zijn.
+
+assign(grauweklauwier_voortplanting2, and(grauweklauwier_voortplanting1, cellDistanceLe(grauweklauwier_foerageer1, 100, meter)))
+assign(grauweklauwier_foerageer2, and(grauweklauwier_foerageer1, cellDistanceLe(grauweklauwier_voortplanting1, 100, meter)))
+
+deleteVariable(grauweklauwier_voortplanting1)
+deleteVariable(grauweklauwier_foerageer1)
+
+assign(grauweklauwier_leefgebied1, or(grauweklauwier_voortplanting2, grauweklauwier_foerageer2))
+deleteVariable(grauweklauwier_voortplanting2)
+
+assign(grauweklauwier_leefgebied_cluster, fuzzyClusterIdU(grauweklauwier_leefgebied1, 50, meter))
+deleteVariable(grauweklauwier_leefgebied1)
+
+assign(grauweklauwier_leefgebied2, cFilterGeArea(grauweklauwier_leefgebied_cluster, 15, hectare))
+deleteVariable(grauweklauwier_leefgebied_cluster)
+
+//write('grauweklauwier_leefgebied2.asc', grauweklauwier_leefgebied2)
+
+//Checken of de biotopen niet monotoon uit permanent cultuurgrasland bestaan (bwk-codes hp%). Eisen dat niet meer dan 90% van de oppervlakte mag bestaan uit permanent cultuurgrasland?
+
+assign(grauweklauwier_fractiehp, csum(grauweklauwier_leefgebied2, and(grauweklauwier_foerageer2, bwk(hp%)))/csum(grauweklauwier_leefgebied2, 1))
+deleteVariable(grauweklauwier_foerageer2)
+assign(grauweklauwier_leefgebied, cFilter(grauweklauwier_leefgebied2, lt(grauweklauwier_fractiehp, 0.9)))
+
+deleteVariable(grauweklauwier_leefgebied2)
+
+deleteVariable(grauweklauwier_fractiehp)
+//write('grauweklauwier_leefgebied.asc', grauweklauwier_leefgebied)
+
+
+//leefgebieden nog beperken op basis van ecodistricten: Oost-Kempisch puinwaaierdistrict, Zuid-Kempisch heuveldistrict, Velpe-Getedistrict, Centraal-Kempisch rivier- en duinendistrict, Vochtig-Haspengouws leemdistrict, Roerdalslenkdistrict, Zandig Maasterrassendistrict, Voeren
+
+assign(grauweklauwier_ecodistrict, Ge('Ecoregio.asc', 1))
+assign(grauweklauwier_leefgebied_ecodistrict, and(grauweklauwier_leefgebied, grauweklauwier_ecodistrict))
+
+deleteVariable(grauweklauwier_ecodistrict)
+deleteVariable(grauweklauwier_leefgebied)
+
+write('ANB2019_GrauweKlauwier2018.asc', IsNonZero(grauweklauwier_leefgebied_ecodistrict))
+deleteVariable(grauweklauwier_leefgebied_ecodistrict)
+

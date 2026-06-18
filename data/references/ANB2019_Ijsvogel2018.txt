@@ -1,0 +1,40 @@
+vlaanderen_20m_met_maas.asc
+// baken de leefgebieden af
+assign(ijsvogel_bwk, bwk(3260%, ad, ad+, ae, 3140%, 3150%, ae+, aer, aer+, aev, aev+, ah, ah+, rbbah%, ap, ap+, apo, apo+, app, app+, ka%, kn%, mr%, 1130%, rbbmr%, mrb%, mru%, ru%, 2180%, 91E0%, 91F0%, sf%, rbbsf%, va%, vc%, vf%, vm%, vn%, vo%, vt%, 91D0%))
+assign(ijsvogel_bwk_cluster, fuzzyClusterIdU(ijsvogel_bwk, 50, meter))
+assign(ijsvogel_bwk1, cFilterGeArea(ijsvogel_bwk_cluster, 5, hectare))
+
+deleteVariable(ijsvogel_bwk_cluster)
+
+// waterlopen
+assign(ijsvogel_waterlopen, Ge('rastert_huetzon1.asc', 1))
+assign(ijsvogel_maas, eq('maas.asc', 1))
+assign(ijsvogel_leefgebied1, or(ijsvogel_bwk, ijsvogel_waterlopen, ijsvogel_maas))
+deleteVariable(ijsvogel_bwk)
+deleteVariable(ijsvogel_waterlopen)
+deleteVariable(ijsvogel_maas)
+deleteVariable(ijsvogel_leefgebied1)
+
+// baken oevers af
+assign(BlauweLaag_water, Eq('BlauweLaag_Plassen_06042017_20m_.asc', 1))
+assign(BlauweLaag_geenwater, Eq('BlauweLaag_Plassen_06042017_20m_.asc', 0))
+assign(ijsvogel_waterkant, edge(BlauweLaag_water, BlauweLaag_geenwater))
+assign(ijsvogel_landkant, edge(BlauweLaag_geenwater, BlauweLaag_water))
+deleteVariable(BlauweLaag_water)
+deleteVariable(BlauweLaag_geenwater)
+assign(ijsvogel_oever, or(ijsvogel_waterkant, ijsvogel_landkant))
+deleteVariable(ijsvogel_waterkant)
+deleteVariable(ijsvogel_landkant)
+// oever moet 2 km lang zijn = 8 ha oever; bij 1 km is dat 4 ha
+assign(ijsvogel_oever_cluster, fuzzyClusterIdU(ijsvogel_oever, 50, meter))
+deleteVariable(ijsvogel_oever)
+
+assign(ijsvogel_oever1, cFilterGeArea(ijsvogel_oever_cluster, 4, hectare))
+deleteVariable(ijsvogel_oever_cluster)
+
+assign(ijsvogel_leefgebied, cFilter(ijsvogel_bwk1, and(ijsvogel_bwk1, cellDistanceLe(ijsvogel_oever1, 100, meter))))
+deleteVariable(ijsvogel_bwk1)
+deleteVariable(ijsvogel_oever1)
+
+write('ANB2019_Ijsvogel2018.asc', IsNonZero(ijsvogel_leefgebied))
+deleteVariable(ijsvogel_leefgebied)

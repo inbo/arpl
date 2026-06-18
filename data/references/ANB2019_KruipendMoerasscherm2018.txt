@@ -1,0 +1,70 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af buiten de duinen
+
+assign(kruipendmoerasscherm_voortplanting_rest1, bwk(hpr, hpr+, 2190%))
+
+// overstromingskaart
+
+assign(kruipendmoerasscherm_osg, ge('OVSTRGEV2014_20m.asc', 1))
+
+assign(kruipendmoerasscherm_voortplanting_rest, and(kruipendmoerasscherm_voortplanting_rest1, kruipendmoerasscherm_osg))
+
+deleteVariable(kruipendmoerasscherm_voortplanting_rest1)
+deleteVariable(kruipendmoerasscherm_osg)
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(kruipendmoerasscherm_voortplanting_rest_cluster, fuzzyClusterIdU(kruipendmoerasscherm_voortplanting_rest, 20, meter))
+
+deleteVariable(kruipendmoerasscherm_voortplanting_rest)
+
+// optimale voortplantingsclusters moeten minimaal 0.16ha groot zijn
+
+assign(kruipendmoerasscherm_leefgebied_rest, cFilterGeArea(kruipendmoerasscherm_voortplanting_rest_cluster, 0.16, hectare))
+
+assign(kruipendmoerasscherm_ecodistrict_rest, or(Ge('ecoregio.asc', 1)))
+
+assign(kruipendmoerasscherm_leefgebied_ecodistrict_rest, and(kruipendmoerasscherm_leefgebied_rest, kruipendmoerasscherm_ecodistrict_rest))
+
+deleteVariable(kruipendmoerasscherm_leefgebied_rest)
+
+//write('kruipendmoerasscherm_leefgebied_ecodistrict_rest.asc', if(kruipendmoerasscherm_leefgebied_ecodistrict_rest, kruipendmoerasscherm_voortplanting_rest_cluster, 0))
+
+deleteVariable(kruipendmoerasscherm_voortplanting_rest_cluster)
+deleteVariable(kruipendmoerasscherm_ecodistrict_rest)
+
+// baken de voortplantingsgebieden af binnen de duinen
+
+assign(kruipendmoerasscherm_voortplanting_duin, bwk(hd%, 2130%, hpr, hpr+, 2190%, kn, 3140%, 3150%, mp, mp+, mp-, 2190_mp%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(kruipendmoerasscherm_voortplanting_duin_cluster, fuzzyClusterIdU(kruipendmoerasscherm_voortplanting_duin, 20, meter))
+
+deleteVariable(kruipendmoerasscherm_voortplanting_duin)
+
+// optimale voortplantingsclusters moeten minimaal 0.16ha groot zijn
+
+assign(kruipendmoerasscherm_leefgebied_duin, cFilterGeArea(kruipendmoerasscherm_voortplanting_duin_cluster, 0.16, hectare))
+
+assign(kruipendmoerasscherm_ecodistrict_duin, Ge('ecoregio.asc', 1))
+
+assign(kruipendmoerasscherm_leefgebied_ecodistrict_duin, and(kruipendmoerasscherm_leefgebied_duin, kruipendmoerasscherm_ecodistrict_duin))
+deleteVariable(kruipendmoerasscherm_leefgebied_duin)
+
+
+deleteVariable(kruipendmoerasscherm_ecodistrict_duin)
+
+//write('kruipendmoerasscherm_leefgebied_ecodistrict_duin.asc', if(kruipendmoerasscherm_leefgebied_ecodistrict_duin, kruipendmoerasscherm_voortplanting_duin_cluster, 0))
+
+deleteVariable(kruipendmoerasscherm_voortplanting_duin_cluster)
+
+assign(kruipendmoerasscherm_leefgebied_ecodistrict, or(kruipendmoerasscherm_leefgebied_ecodistrict_duin, kruipendmoerasscherm_leefgebied_ecodistrict_rest))
+deleteVariable(kruipendmoerasscherm_leefgebied_ecodistrict_rest)
+
+deleteVariable(kruipendmoerasscherm_leefgebied_ecodistrict_duin)
+
+write('ANB2019_KruipendMoerasscherm2018.asc', IsNonZero(kruipendmoerasscherm_leefgebied_ecodistrict))
+
+deleteVariable(kruipendmoerasscherm_leefgebied_ecodistrict)

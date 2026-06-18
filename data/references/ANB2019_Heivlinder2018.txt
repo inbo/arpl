@@ -1,0 +1,88 @@
+vlaanderen_20m.asc
+
+// baken geschikte open biotopen af
+assign(heivlinder_bwk_heide, bwk(cd%, ce%, cg%, cm%, 2310%, 4030%, 4010%, 5130%))
+assign(heivlinder_bwk_duin, bwk(da%, dd%, dm%, 1310%, 1320%, 1330%, 2120%, 2330%))
+assign(heivlinder_bwk_grasland, bwk(ha%, hd%, 6230_ha%, 2130%))
+assign(heivlinder_bwk_groeve_terril, bwk(kc%, kg%))
+
+assign(heivlinder_bwk_biotoop, or(heivlinder_bwk_heide, heivlinder_bwk_duin, heivlinder_bwk_grasland, heivlinder_bwk_groeve_terril))
+
+//write('heivlinder_bwk_biotoop.asc', IsNonZero(heivlinder_bwk_biotoop))
+
+deleteVariable(heivlinder_bwk_heide)
+deleteVariable(heivlinder_bwk_duin)
+deleteVariable(heivlinder_bwk_grasland)
+deleteVariable(heivlinder_bwk_groeve_terril)
+
+// geschikte open biotopen mogen maximaal op een onderlinge afstand van 50 meter liggen
+assign(heivlinder_bwk_biotoop_cluster, fuzzyClusterIdU(heivlinder_bwk_biotoop, 50, meter))
+
+deleteVariable(heivlinder_bwk_biotoop)
+
+// open leefgebied moet minstens 5 hectare groot zijn
+assign(heivlinder_leefgebied1, cFilterGeArea(heivlinder_bwk_biotoop_cluster, 10, hectare))
+
+//write('heivlinder_bwk_leefgebied1.asc', IsNonZero(heivlinder_leefgebied1))
+
+//deleteVariable(heivlinder_bwk_biotoop_cluster)
+
+// baken open zand af
+assign(heivlinder_zand, bwk(dd%, dm%, 2330%))
+
+// zandgeschikte mogen maximaal op een onderlinge afstand van 100 meter liggen
+assign(heivlinder_zand_cluster, fuzzyClusterIdU(heivlinder_zand, 100, meter))
+
+deleteVariable(heivlinder_zand)
+
+// zand moet minstens 0.5 hectare groot zijn
+assign(heivlinder_leefgebied_zand, cFilterGeArea(heivlinder_zand_cluster, 0.5, hectare))
+
+//write('heivlinder_leefgebied_zand.asc', IsNonZero(heivlinder_leefgebied_zand))
+
+deleteVariable(heivlinder_zand_cluster)
+
+// baken geschikte beschuttingsbiotopen af zoals naald- en loofbossen en struwelen
+assign(heivlinder_bwk_beschutting, bwk(pa%, pi%, pmb%, pmh%, pms%, ppa%, ppi%, ppmh%, ppms%, ppmb%, rbbppm%, qb%, sd%, 2160%, 2170%, 9120%, 9190%))
+assign(heivlinder_groenkaart_beschutting, Eq('groenkaart2013_20m.asc', 1))
+assign(heivlinder_beschutting, or(heivlinder_bwk_beschutting, heivlinder_groenkaart_beschutting))
+
+deleteVariable(heivlinder_bwk_beschutting)
+deleteVariable(heivlinder_groenkaart_beschutting)
+
+// geschikte beschuttingsbiotopen mogen maximaal op een onderlinge afstand van 100 meter liggen
+assign(heivlinder_beschutting_cluster, fuzzyClusterIdU(heivlinder_beschutting, 100, meter))
+deleteVariable(heivlinder_beschutting)
+
+// beschuttingsgebied moet minstens 0.04 hectare groot zijn
+assign(heivlinder_leefgebied_beschutting1, cFilterGeArea(heivlinder_beschutting_cluster, 0.04, hectare))
+deleteVariable(heivlinder_beschutting_cluster)
+
+// beschuttingsbiotoop moet binnen een straal van 500 m van open biotoop liggen
+
+assign(heivlinder_leefgebied_open, and(heivlinder_leefgebied1, cellDistanceLe(heivlinder_leefgebied_beschutting1, 500, meter)))
+
+// beschutting moet een bosrand van zo'n 50 m diep zijn
+
+assign(heivlinder_leefgebied_beschutting, and(heivlinder_leefgebied_beschutting1, cellDistanceLe(heivlinder_leefgebied_open, 50, meter)))
+
+//write('heivlinder_leefgebied_beschutting.asc', IsNonZero(heivlinder_leefgebied_beschutting))
+
+assign(heivlinder_leefgebied, or(heivlinder_leefgebied_open, heivlinder_leefgebied_beschutting))
+
+deleteVariable(heivlinder_leefgebied_beschutting1)
+deleteVariable(heivlinder_leefgebied_beschutting)
+//deleteVariable(heivlinder_leefgebied_open)
+
+// baken ecodistricten af waarin de soort kan voorkomen (Kustduinen en Kempen)
+assign(heivlinder_ecodistrict, OrEq('ecoregio.asc', 1, 12, 13, 14, 15, 16, 17))
+
+assign(heivlinder_leefgebied, and(heivlinder_leefgebied, heivlinder_ecodistrict))
+//write('ANB2019_Heivlinder2018_5ha.asc', IsNonZero(heivlinder_leefgebied))
+//write('ANB2019_Heivlinder2018.asc', if(heivlinder_leefgebied, heivlinder_bwk_biotoop_cluster, 0))
+deleteVariable(heivlinder_ecodistrict)
+
+assign(heivlinder_leefgebied_metzand, and(heivlinder_leefgebied, cellDistanceLe(heivlinder_leefgebied_zand, 500, meter)))
+write('ANB2019_Heivlinder2018.asc', IsNonZero(heivlinder_leefgebied_metzand))
+
+deleteVariable(heivlinder_leefgebied_zand)

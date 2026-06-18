@@ -1,0 +1,45 @@
+vlaanderen_20m.asc 
+
+// baken de kerngebieden af als essentiële voortplantingsgebieden, met waardevolle loof- en gemengde bossen 
+
+assign(boommarter_kerngebied1, bwk(fa%, 9120%, 9130%, fe%, fk%, 9150%, fl%, 9110%, fm%, fs%, gml%, gmn%, kpk%, ng%, qa%, 9160%, qb%, 9190%, qe%, qk%, ql%, qs%, va%, 91E0%, vc%, vf%, vm%, vn%, vo%, vt%, 91D0%))
+
+// clustering: indien geschikte cel binnen 500 meter, dan hoort die cel bij het kerngebied cluster 
+
+assign(boommarter_kerngebied1_cluster, fuzzyClusterIdU(boommarter_kerngebied1, 500, meter)) 
+
+// kerngebied clusters moeten minimaal 100ha groot zijn 
+
+assign(boommarter_kerngebied2, cFilterGeArea(boommarter_kerngebied1_cluster, 100, hectare)) 
+
+//write('boommarter_kerngebied_8maart2016.asc', IsNonZero(boommarter_kerngebied2)) 
+
+deleteVariable(boommarter_kerngebied1) 
+
+deleteVariable(boommarter_kerngebied1_cluster) 
+
+// zoek randgebieden waaronder ook foerageergebied 
+
+// (o.a. bepaalde graslanden, ruigtes, struwelen, heide en KLE's die aan kerngebied clusters grenzen 
+
+assign(boommarter_randgebied1, bwk(cp%, 4030%, fa%, 9120%, 9130%, fe%, fk%, 9150%, fl%, 9110%, fm%, fs%, gml%, gmn%, hj%, hr%, 6430%, k%, 2190%, 6430%, lhb%, lhi%, lsb%, lsh%, lsi%, n%, ng%, pa%, pi%, ppa%, ppi%, ppmb%, rbbppm%, qa%, 9160%, qb%, 9190%, qe%, qk%, ql%, qs%, ru%, 2180%, 9160%, 91E0%, 91F0%, rud%, se%, sf%, rbbsf%, sk%, 6210%, so%, rbbso%, sp%, rbbsp%, sz%, va%, 91E0%, vc%, vf%, vm%, vn%, vo%, vt%, 91D0%)) 
+
+// geschikt randgebied moet binnen de 1000m van geschikt kerngebied liggen 
+
+assign(boommarter_randgebied2, and(boommarter_randgebied1, cellDistanceLe(boommarter_kerngebied2, 1000, meter))) 
+
+//write('boommarter_randgebied_8maart2016.asc', IsNonZero(boommarter_randgebied2)) 
+
+deleteVariable(boommarter_randgebied1) 
+
+// leefgebied = kerngebied + randgebied 
+
+assign(boommarter_leefgebied1, or(boommarter_kerngebied2, boommarter_randgebied2)) 
+
+write('ANB2019_Boommarter2018.asc', IsNonZero(boommarter_leefgebied1)) 
+
+deleteVariable(boommarter_kerngebied2)
+
+deleteVariable(boommarter_randgebied2)
+
+deleteVariable(boommarter_leefgebied1)

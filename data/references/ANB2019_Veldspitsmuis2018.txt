@@ -1,0 +1,22 @@
+vlaanderen_20m.asc 
+
+assign(veldspitsmuis_bwk, bwk(bk%, bl%, bs%, bu%, rbbkam%, hpr+, hr+, 6430%))
+assign(veldspitsmuis_hagen, bwk(kb%, kh%, kt%))
+
+assign(veldspitsmuis_bwk_hagen, and(veldspitsmuis_bwk, cellDistanceLe(veldspitsmuis_hagen, 50, meter)))
+hagen moeten ook meegenomen worden in de kaart
+
+deleteVariable(veldspitsmuis_bwk)
+deleteVariable(veldspitsmuis_hagen)
+
+assign(veldspitsmuis_leefgebied1_cluster, fuzzyClusterIdU(veldspitsmuis_bwk_hagen, 20, meter)) 
+
+// leefgebiedclusters moeten minimaal 5ha groot zijn 
+
+assign(veldspitsmuis_leefgebied2, cFilterGeArea(veldspitsmuis_leefgebied1_cluster, 5, hectare)) 
+
+deleteVariable(veldspitsmuis_leefgebied1_cluster) 
+
+write('ANB2019_Veldspitsmuis2018.asc', IsNonZero(veldspitsmuis_leefgebied2)) 
+
+deleteVariable(veldspitsmuis_leefgebied2)

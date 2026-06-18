@@ -1,0 +1,50 @@
+vlaanderen_20m.asc
+
+// baken geschikte akkers af
+assign(steenuil_akker, bwk(bl%, bk%))
+assign(steenuil_epr, OrEq('epr2013.asc', 6, 49, 38, 36, 63, 100, 219, 21, 51, 1, 225, 241, 74))
+assign(steenuil_akker_epr, and(steenuil_akker, steenuil_epr))
+
+deleteVariable(steenuil_akker)
+deleteVariable(steenuil_epr)
+
+// baken geschikt grasland af
+assign(steenuil_grasland, bwk(hp, hp+, rbbkam%, rbbzil%, hpr%, hr%, kj%, rbbvos%))
+
+assign(steenuil_leefgebied1, or(steenuil_akker_epr, steenuil_grasland))
+deleteVariable(steenuil_grasland)
+deleteVariable(steenuil_akker_epr)
+
+assign(steenuil_leefgebied1_cluster, FuzzyClusterIdU(steenuil_leefgebied1, 50, meter))
+deleteVariable(steenuil_leefgebied1)
+
+assign(steenuil_leefgebied2, cfilterGeArea(steenuil_leefgebied1_cluster, 50, hectare))
+deleteVariable(steenuil_leefgebied1_cluster)
+
+// geschikte opgaande kleine landschapselementen (kle) uit Groenkaart2013
+assign(steenuil_kle_groenkaart, edge(Eq('groenkaart2013_20m.asc', 1), Gt('groenkaart2013_20m.asc', 1)))
+//write('steenuil_kle_groenkaart.asc', IsNonzero(steenuil_kle_groenkaart))
+assign(steenuil_kle_bwk, bwk(kb%, kh%, kj%, kw%))
+assign(steenuil_kle1, Or(steenuil_kle_groenkaart, steenuil_kle_bwk))
+
+assign(steenuil_kle1_cluster, FuzzyClusterIdU(steenuil_kle1, 50, meter))
+deleteVariable(steenuil_kle1)
+
+assign(steenuil_kle, cfilterGeArea(steenuil_kle1_cluster, 1, hectare))
+deleteVariable(steenuil_kle1_cluster)
+
+// leefgebied is voldoende groot voortplantingsgebied waarvan minstens 1 ha kle is
+assign(steenuil_leefgebied, cFilter(steenuil_leefgebied2, and(steenuil_leefgebied2, cellDistanceLe(steenuil_kle, 10, meter))))
+
+deleteVariable(steenuil_kle)
+deleteVariable(steenuil_kle_bwk)
+deleteVariable(steenuil_kle_groenkaart)
+deleteVariable(steenuil_leefgebied2)
+
+// leefgebieden nog beperken op basis van ecodistricten
+assign(steenuil_ecodistrict, Ge('Ecoregio.asc', 1))
+assign(steenuil_leefgebied_ecodistrict, and(steenuil_leefgebied, steenuil_ecodistrict))
+deleteVariable(steenuil_leefgebied)
+deleteVariable(steenuil_ecodistrict)
+write('ANB2019_Steenuil2018.asc', IsNonzero(steenuil_leefgebied_ecodistrict))
+deleteVariable(steenuil_leefgebied_ecodistrict)

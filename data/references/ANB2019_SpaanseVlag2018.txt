@@ -1,0 +1,69 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af voor de rupsen
+assign(spaansevlag_voortplanting_bwk, bwk(ha%, 2330%, 6230_ha%, hc%, 6410%, rbbhc%, hf%, 6430%, rbbhf%, hj%, hp%, hp+%, rbbkam%, rbbzil%, hpr%, hr%, hu%, 6120%, 6510%, kc%, kl%, kp%, kpk%, ks%, kt%, ku%, 3270%, kub%, kw%, kz%, mr%, 6430_hw%, 6430_mr%, rbbmr%, se%, sz%))
+
+// voortplantingsplekken mogen klein zijn: <1ha groot zijn (Wallis de Vries & Groenendijk 2011)
+assign(spaansevlag_voortplanting1_cluster, fuzzyClusterIdU(spaansevlag_voortplanting_bwk, 50, meter))
+
+deleteVariable(spaansevlag_voortplanting_bwk)
+
+assign(spaansevlag_voortplanting2, cFilterGeArea(spaansevlag_voortplanting1_cluster, 1, hectare))
+
+deleteVariable(spaansevlag_voortplanting1_cluster)
+
+// baken de bossen met bosranden af voor de adulte vlinders
+
+assign(spaansevlag_bos_bwk, bwk(fs%, 9120%, lhb%, n, n+, n-, pa%, pmb%, ppmb%, rbbppm%, qa%, 9130%, 9160%, qb%, 9120%, 9190%, qs%, va%, vm%, 91E0%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het boscluster
+
+assign(spaansevlag_bos_bwk_cluster, fuzzyClusterIdU(spaansevlag_bos_bwk, 50, meter))
+
+deleteVariable(spaansevlag_bos_bwk)
+
+// bosclusters moeten minimaal 1ha groot zijn
+
+assign(spaansevlag_bos, cFilterGeArea(spaansevlag_bos_bwk_cluster, 1, hectare))
+
+deleteVariable(spaansevlag_bos_bwk_cluster)
+
+// zoek voortplantingsclusters die aan bosclusters grenzen en die een zuidgeëxposeerde bosrand hebben (NO, O, ZO, Z, ZW, W, NW, N)
+
+assign(spaansevlag_edge1, edgeDirected(spaansevlag_bos, spaansevlag_voortplanting2, 0,0,0,1,0,0,0,0))
+
+assign(spaansevlag_edge2, edgeDirected(spaansevlag_voortplanting2, spaansevlag_bos, 0,0,0,0,0,0,0,1))
+
+deleteVariable(spaansevlag_bos)
+
+assign(spaansevlag_bosrand1, or(spaansevlag_edge1, spaansevlag_edge2))
+
+deleteVariable(spaansevlag_edge1)
+
+deleteVariable(spaansevlag_edge2)
+
+// lengte van bosrand tussen voortplantingsclusters en boscluster moet minstens 100 meter zijn en pixels moeten tegen elkaar liggen dus afstand <10m
+
+assign(spaansevlag_bosrand1_cluster, fuzzyClusterIdU(spaansevlag_bosrand1, 50, meter))
+
+deleteVariable(spaansevlag_bosrand1)
+
+assign(spaansevlag_bosrand2, cFilterGeArea(spaansevlag_bosrand1_cluster, 0.25, hectare))
+
+deleteVariable(spaansevlag_bosrand1_cluster)
+
+// geschikt leefgebied moet aanwezig zijn binnen de 100m van bosrand
+
+assign(spaansevlag_leefgebied1, and(spaansevlag_voortplanting2, cellDistanceLe(spaansevlag_bosrand2, 100, meter)))
+
+//write('spaansevlag_rups.asc', IsNonZero(spaansevlag_leefgebied1))
+
+assign(spaansevlag_leefgebied2, and(spaansevlag_bosrand2, cellDistanceLe(spaansevlag_voortplanting2, 100, meter)))
+deleteVariable(spaansevlag_voortplanting2)
+deleteVariable(spaansevlag_bosrand2)
+
+assign(spaansevlag_leefgebied_ecodistrict, or(spaansevlag_leefgebied1, spaansevlag_leefgebied2))
+deleteVariable(spaansevlag_leefgebied1)
+deleteVariable(spaansevlag_leefgebied2)
+write('ANB2019_SpaanseVlag2018.asc', IsNonZero(spaansevlag_leefgebied_ecodistrict))
+deleteVariable(spaansevlag_leefgebied_ecodistrict)

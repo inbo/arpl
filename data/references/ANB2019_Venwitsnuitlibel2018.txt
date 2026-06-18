@@ -1,0 +1,114 @@
+vlaanderen_20m_met_maas.asc
+
+// Voortplanting (min 5 m²): Voedselarme en visvrije wateren: Aom, Ao
+// Niet:  Ae, Aev, Kn, Ap, ad, ah
+
+// Directe omgeving (5 ha): bos en struweel (qb, qs, vn, va, vm, vo, vt, so, ppm*, pm*, n) en struweel (so, sz, sf, sm)) en boomopslag (ceb), heide (cg, ce, cm), zuur laagveen (ms)
+
+// Ruime omgeving (patch 20 ha)
+// Hoofdzakelijk struktuurrijk bos (qb, qs, vn, va, vm, vo, vt, so, ppm*, pm*, n) en struweel (so, sz, sf, sm)  > 40 % bos, en boomopslag (ceb); samen  > 40 % bos, 
+// Verder: moeras (mr, mc, mk, mm, ms), ruigte (hf, hr), heide (cg, ce, cm)
+
+// Habitattypisch voor: 3130, 3160, 7110 (3110, 4010)
+
+// waterbiotoop
+
+assign(venwitsnuitlibel_waterbiotoop_bwk1, bwk(3130%, 3160%, 7110%, ao, ao+, ao-, aom, aom+, aom-, k(ao%))
+assign(venwitsnuitlibel_waterbiotoop_notbwk, bwk(kn%, ap%, ad%, ah%))
+assign(venwitsnuitlibel_waterbiotoop_bwk, and(venwitsnuitlibel_waterbiotoop_bwk1, not(venwitsnuitlibel_waterbiotoop_notbwk)))
+
+deleteVariable(venwitsnuitlibel_waterbiotoop_bwk1)
+deleteVariable(venwitsnuitlibel_waterbiotoop_notbwk)
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het waterbiotoop
+assign(venwitsnuitlibel_waterbiotoop_bwk_cluster, fuzzyClusterIdU(venwitsnuitlibel_waterbiotoop_bwk, 50, meter))
+
+// waterbiotoop moet minimaal 10 m² groot zijn
+assign(venwitsnuitlibel_waterbiotoop1, cFilterGeArea(venwitsnuitlibel_waterbiotoop_bwk_cluster, 0.04, hectare))
+//write('venwitsnuitlibel_waterbiotoop1.asc', IsNonZero(venwitsnuitlibel_waterbiotoop1))
+
+deleteVariable(venwitsnuitlibel_waterbiotoop_bwk)
+deleteVariable(venwitsnuitlibel_waterbiotoop_bwk_cluster)
+
+// omgevend landbiotoop nabij
+
+assign(venwitsnuitlibel_landbiotoop_bwk, bwk(ce%, 4010%, 7150%, ceb%, cg%, 2310%, 4030%, cm%, ms%, 7140%, rbbms%, n, n-, n+, ppm%, rbbppm%, pm%, qb%, 9120%, 9190%, qs%, sf%, 91E0%, rbbsf%, sm%, rbbsm%, so%, rbbso%, sz%, va%, vm%, vn%, vo%, vt%, 91D0%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het landbiotoop
+
+assign(venwitsnuitlibel_landbiotoop_bwk_cluster, fuzzyClusterIdU(venwitsnuitlibel_landbiotoop_bwk, 50, meter))
+
+deleteVariable(venwitsnuitlibel_landbiotoop_bwk)
+
+// landbiotoop moet minimaal 5 ha groot zijn
+
+assign(venwitsnuitlibel_landbiotoop_nabij, cFilterGeArea(venwitsnuitlibel_landbiotoop_bwk_cluster, 5, hectare))
+//write('venwitsnuitlibel_landbiotoop_nabij.asc', IsNonZero(venwitsnuitlibel_landbiotoop_nabij))
+
+deleteVariable(venwitsnuitlibel_landbiotoop_bwk_cluster)
+
+// omgevend landbiotoop ruimere omgeving
+
+assign(venwitsnuitlibel_landbiotoop_bwk_ruim, bwk(ce%, 4010%, 7150%, cg%, 2310%, 4030%, cm%, hf%, hr%, mc%, mk%, 7140%, 7230%, mm%, 7210%, mr%, ms%, rbbms%, n, n-, n+, ppm%, rbbppm%, pm%, qb%, 9120%, 9190%, qs%, sf%, 91E0%, rbbsf%, sm%, rbbsm%, so%, rbbso%, sz%, va%, vm%, vn%, vo%, vt%, 91D0%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het landbiotoop
+
+assign(venwitsnuitlibel_landbiotoop_bwk_ruim_cluster, fuzzyClusterIdU(venwitsnuitlibel_landbiotoop_bwk_ruim, 50, meter))
+
+deleteVariable(venwitsnuitlibel_landbiotoop_bwk_ruim)
+
+// landbiotoop moet minimaal 20 ha groot zijn
+
+assign(venwitsnuitlibel_landbiotoop_ruim, cFilterGeArea(venwitsnuitlibel_landbiotoop_bwk_ruim_cluster, 20, hectare))
+//write('venwitsnuitlibel_landbiotoop_ruim.asc', IsNonZero(venwitsnuitlibel_landbiotoop_ruim))
+
+deleteVariable(venwitsnuitlibel_landbiotoop_bwk_ruim_cluster)
+
+// omgevend bosbiotoop
+
+assign(venwitsnuitlibel_landbiotoop_bwk_ruim_bos, bwk(n, n-, n+, ppm%, rbbppm%, pm%, qb%, 9120%, 9190%, qs%, sf%, 91E0%, rbbsf%, sm%, rbbsm%, so%, rbbso%, sz%, va%, vm%, vn%, vo%, vt%, 91D0%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het landbiotoop
+
+assign(venwitsnuitlibel_landbiotoop_bwk_ruim_bos_cluster, fuzzyClusterIdU(venwitsnuitlibel_landbiotoop_bwk_ruim_bos, 50, meter))
+
+deleteVariable(venwitsnuitlibel_landbiotoop_bwk_ruim_bos)
+
+// bosbiotoop moet minimaal 8 ha groot zijn
+
+assign(venwitsnuitlibel_landbiotoop_ruim_bos, cFilterGeArea(venwitsnuitlibel_landbiotoop_bwk_ruim_bos_cluster, 8, hectare))
+//write('venwitsnuitlibel_landbiotoop_ruim_bos.asc', IsNonZero(venwitsnuitlibel_landbiotoop_ruim_bos))
+
+deleteVariable(venwitsnuitlibel_landbiotoop_bwk_ruim_bos_cluster)
+
+assign(venwitsnuitlibel_landbiotoop1, and(venwitsnuitlibel_landbiotoop_ruim, cellDistanceLe(venwitsnuitlibel_landbiotoop_ruim_bos, 10, meter)))
+
+deleteVariable(venwitsnuitlibel_landbiotoop_ruim_bos)
+
+// landbiotoop2 moet in de buurt van waterbiotoop liggen
+
+assign(venwitsnuitlibel_waterbiotoop2, and(venwitsnuitlibel_waterbiotoop1, cellDistanceLe(venwitsnuitlibel_landbiotoop_nabij, 100, meter)))
+//write('venwitsnuitlibel_waterbiotoop2.asc', IsNonZero(venwitsnuitlibel_waterbiotoop2))
+
+assign(venwitsnuitlibel_landbiotoop2, and(venwitsnuitlibel_landbiotoop_nabij, cellDistanceLe(venwitsnuitlibel_waterbiotoop1, 100, meter)))
+//write('venwitsnuitlibel_landbiotoop2.asc', IsNonZero(venwitsnuitlibel_landbiotoop2))
+
+deleteVariable(venwitsnuitlibel_landbiotoop1)
+deleteVariable(venwitsnuitlibel_landbiotoop2)
+deleteVariable(venwitsnuitlibel_landbiotoop_nabij)
+deleteVariable(venwitsnuitlibel_waterbiotoop1)
+
+assign(venwitsnuitlibel_waterbiotoop, and(venwitsnuitlibel_waterbiotoop2, cellDistanceLe(venwitsnuitlibel_landbiotoop_ruim, 500, meter)))
+//write('venwitsnuitlibel_waterbiotoop.asc', IsNonZero(venwitsnuitlibel_waterbiotoop))
+
+assign(venwitsnuitlibel_landbiotoop, and(venwitsnuitlibel_landbiotoop_ruim, cellDistanceLe(venwitsnuitlibel_waterbiotoop2, 500, meter)))
+//write('venwitsnuitlibel_landbiotoop.asc', IsNonZero(venwitsnuitlibel_landbiotoop))
+
+assign(venwitsnuitlibel_leefgebied, or(venwitsnuitlibel_landbiotoop, venwitsnuitlibel_waterbiotoop))
+write('ANB2019_Venwitsnuitlibel2018.asc', IsNonZero(venwitsnuitlibel_leefgebied))
+
+deleteVariable(venwitsnuitlibel_landbiotoop)
+deleteVariable(venwitsnuitlibel_waterbiotoop)
+deleteVariable(venwitsnuitlibel_landbiotoop_ruim)
+deleteVariable(venwitsnuitlibel_waterbiotoop2)
+deleteVariable(venwitsnuitlibel_leefgebied)

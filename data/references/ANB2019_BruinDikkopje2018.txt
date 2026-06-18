@@ -1,0 +1,24 @@
+vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+assign(bruindikkopje_bwk, bwk(ha%, 2330%, 6230_ha%, hk%, 6210%, hr%, hu%, 6120%, 6510%, kz%, k(hu%, k(ha%, k(hr%))
+
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 50 meter liggen
+assign(bruindikkopje_bwk_cluster, fuzzyClusterIdU(bruindikkopje_bwk, 50, meter))
+deleteVariable(bruindikkopje_bwk)
+
+// leefgebied moet minstens 5 hectare groot zijn
+assign(bruindikkopje_leefgebied, cFilterGeArea(bruindikkopje_bwk_cluster, 5, hectare))
+
+// beperk de leefgebiedenkaart tot bepaalde ecoregio's
+assign(bruindikkopje_ecodistrict, Ge('ecoregio.asc', 1))
+assign(bruindikkopje_leefgebied_ecodistrict, and(bruindikkopje_leefgebied, bruindikkopje_ecodistrict))
+deleteVariable(bruindikkopje_leefgebied)
+deleteVariable(bruindikkopje_ecodistrict)
+
+// individuele nummers geven aan clusters
+deleteVariable(bruindikkopje_bwk_cluster)
+
+// 0/1 kaarten maken
+write('ANB2019_BruinDikkopje2018.asc', IsNonZero(bruindikkopje_leefgebied_ecodistrict))
+deleteVariable(bruindikkopje_leefgebied_ecodistrict)

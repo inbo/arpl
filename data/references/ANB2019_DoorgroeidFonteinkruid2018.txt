@@ -1,0 +1,19 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af (zonder opgespoten terreinen)
+
+assign(doorgroeidfonteinkruid_voortplanting_bwk, bwk(3150%, 3260%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(doorgroeidfonteinkruid_voortplanting_cluster, fuzzyClusterIdU(doorgroeidfonteinkruid_voortplanting_bwk, 20, meter))
+
+deleteVariable(doorgroeidfonteinkruid_voortplanting_bwk)
+
+// optimale voortplantingsclusters moeten minimaal 0.16ha groot zijn
+
+assign(doorgroeidfonteinkruid_leefgebied, cFilterGeArea(doorgroeidfonteinkruid_voortplanting_cluster, 0.16, hectare))
+deleteVariable(doorgroeidfonteinkruid_voortplanting_cluster)
+
+write('ANB2019_DoorgroeidFonteinkruid2018.asc', IsNonZero(doorgroeidfonteinkruid_leefgebied))
+deleteVariable(doorgroeidfonteinkruid_leefgebied)

@@ -1,0 +1,47 @@
+vlaanderen_20m.asc 
+
+// baken de kerngebieden af als essentiële voortplantingsgebieden, met bossen, kleinschalig landschap, ruigte, struwelen, 
+
+// gebonden aan water met riet en zeggevelden, enz. 
+
+assign(bunzing_kerngebied1, bwk(f%, 9110%, 9120%, 9130%, 9150%, gml%, gmn%, hc%, 2190%, 6410%, rbbhc%, hf%, 6430%, rbbhf%, hj%, hpr%, rbbkam%, rbbzil%, hrb%, hub%, ka%, kh%, kj%, kpk%, ku%, 3270%, kw%, l%, m%, 1130%, 1330%, 1330_da%, 1330_hpr%, 2190%, 2190_mp%, 6430_hw%, 6430_mr%, 7140%, 7140_mrd%, 7210%, 7230%, 91E0%, rbbmc%, rbbmr%, rbbms%, n%, p%, rbbppm%, q%, 2180%, 9110%, 9120%, 9130%, 9150%, 9160%, 9190%, s%, 2160%, 2170%, 2180%, 2310%, 4010%, 6210%, 6230%, 7140%, 7230%, 91E0%, rbbsf%, rbbsg%, rbbsm%, rbbso%, rbbsp%, v%, 91D0%, 91E0%)) 
+
+// clustering: indien geschikte cel binnen 500 meter, dan hoort die cel bij het kerngebied cluster 
+
+assign(bunzing_kerngebied1_cluster, fuzzyClusterIdU(bunzing_kerngebied1, 500, meter)) 
+
+// kerngebied clusters moeten minimaal 8ha groot zijn 
+
+assign(bunzing_kerngebied2, cFilterGeArea(bunzing_kerngebied1_cluster, 8, hectare)) 
+
+//write('bunzing_kerngebied_8maart2016.asc', IsNonZero(bunzing_kerngebied2)) 
+
+deleteVariable(bunzing_kerngebied1) 
+
+deleteVariable(bunzing_kerngebied1_cluster) 
+
+// zoek randgebieden waaronder ook foerageergebied (o.a. bepaalde graslanden) en overige struwelen en bos, heide 
+
+// en KLE's die aan kerngebied clusters grenzen 
+
+assign(bunzing_randgebied1, bwk(f%, 9110%, 9120%, 9130%, 9150%, gml%, gmn%, hc%, 2190%, 6410%, rbbhc%, hf%, 6430%, rbbhf%, hj%, hpr%, rbbkam%, rbbzil%, hrb%, hub%, k%, 3270%, l%, m%, 1130%, 1330%, 1330_da%, 1330_hpr%, 2190%, 2190_mp%, 6430_hw%, 6430_mr%, 7140%, 7140_mrd%, 7210%, 7230%, 91E0%, rbbmc%, rbbmr%, rbbms%, n%, p%, rbbppm%, q%, 2180%, 9110%, 9120%, 9130%, 9150%, 9160%, 9190%, s%, 2160%, 2170%, 2180%, 2310%, 4010%, 6210%, 6230%, 7140%, 7230%, 91E0%, rbbsf%, rbbsg%, rbbsm%, rbbso%, rbbsp%, v%, 91D0%, 91E0%, ur%))
+
+// geschikt randgebied moet binnen de 500m geschikt kerngebied clusters liggen 
+
+assign(bunzing_randgebied2, and(bunzing_randgebied1, cellDistanceLe(bunzing_kerngebied2, 500, meter))) 
+
+//write('bunzing_randgebied_8maart2016.asc', IsNonZero(bunzing_randgebied2)) 
+
+deleteVariable(bunzing_randgebied1) 
+
+// leefgebied = kerngebied + randgebied 
+
+assign(bunzing_leefgebied1, or(bunzing_kerngebied2, bunzing_randgebied2)) 
+
+write('ANB2019_Bunzing2018.asc', IsNonZero(bunzing_leefgebied1)) 
+
+deleteVariable(bunzing_kerngebied2) 
+
+deleteVariable(bunzing_randgebied2) 
+
+deleteVariable(bunzing_leefgebied1) 

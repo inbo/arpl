@@ -1,0 +1,110 @@
+vlaanderen_20m_met_maas.asc
+
+// de eerste regel is een kaart t.b.v. de extend, resolutie en modelleringsgebied
+
+// broedplaatsen: vochtige bossen
+
+assign(kleinezilverreiger_voortplanting1, bwk(ru%, 2180%, 91E0%, 91F0%, rud%, sf%, rbbsf%, so%, rbbso%, va%, vc%, vf%, vm%, vn%, vo%, vt%, 91D0%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het cluster
+
+assign(kleinezilverreiger_voortplanting1_cluster, fuzzyClusterIdU(kleinezilverreiger_voortplanting1, 50, meter))
+
+deleteVariable(kleinezilverreiger_voortplanting1)
+
+// voortplantingscluster moet minimaal 5 ha zijn
+
+assign(kleinezilverreiger_voortplanting2, cFilterGeArea(kleinezilverreiger_voortplanting1_cluster, 5, hectare))
+
+deleteVariable(kleinezilverreiger_voortplanting1_cluster)
+
+assign(eikenbos, bwk(f%, 9110%, 9120%, 9130%, 9150%, q%, 2180%, 9160%, 9190%))
+assign(kleinezilverreiger_voortplanting3, and(kleinezilverreiger_voortplanting2, not(eikenbos)))
+
+deleteVariable(kleinezilverreiger_voortplanting2)
+deleteVariable(eikenbos)
+
+// foerageergebieden: 
+
+// moerassen
+
+assign(kleinezilverreiger_moerassen, bwk(3260%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, dz%, hc%, 2190%, rbbhc%, hcb%, hj%, hjb%, hp+%, hpr%, hpr+%, rbbkam%, rbbzil%, hu%, hub%, kc%, kn%, 3140%, 3150%, ku%, 3270%, kub%, kz%, mc%, rbbmc%, mcb%, md%, 91E0%, mdb%, mr%, 1130%, 1330%, 2190%, 6430_mr%, 7140_mrd%, rbbmr%, mrb%, mru%, mz%, 1330_da%, 1330_hpr%))
+
+// waterlopen
+
+assign(kleinezilverreiger_waterlopen, OrEq('rastert_huetzon1.asc', 1, 2, 3, 4, 5, 6, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19))
+
+assign(kleinezilverreiger_maas, OrEq('maas.asc', 1))
+
+// open water
+
+assign(kleinezilverreiger_openwater0, bwk(ae%, 2190%, 3140%, 3150%, ah%, rbbah%, apo%, app, app+))
+
+assign(kleinezilverreiger_openwater, or(kleinezilverreiger_openwater0, kleinezilverreiger_waterlopen, kleinezilverreiger_maas))
+
+deleteVariable(kleinezilverreiger_openwater0)
+
+assign(kleinezilverreiger_openwater_cluster, FuzzyClusterIdU(kleinezilverreiger_openwater, 50, meter))
+
+deleteVariable(kleinezilverreiger_openwater)
+
+assign(kleinezilverreiger_foerageer1, or(kleinezilverreiger_moerassen, kleinezilverreiger_waterlopen, kleinezilverreiger_maas))
+
+deleteVariable(kleinezilverreiger_moerassen)
+deleteVariable(kleinezilverreiger_maas)
+deleteVariable(kleinezilverreiger_waterlopen)
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het cluster
+
+assign(kleinezilverreiger_foerageer1_cluster, fuzzyClusterIdU(kleinezilverreiger_foerageer1, 50, meter))
+
+// clusters minimaal 200 ha
+
+assign(kleinezilverreiger_foerageer2, cFilterGeArea(kleinezilverreiger_foerageer1_cluster, 200, hectare))
+
+deleteVariable(kleinezilverreiger_foerageer1)
+deleteVariable(kleinezilverreiger_foerageer1_cluster)
+
+// foerageerclusters moet minimaal 40 ha open water bevatten, d.i. 20% van 200 ha
+
+assign(kleinezilverreiger_foerageer3, cFilterGeArea(kleinezilverreiger_foerageer2, 40, hectare))
+
+deleteVariable(kleinezilverreiger_openwater_cluster)
+deleteVariable(kleinezilverreiger_foerageer2)
+
+// geschikte foerageergebieden liggen minder dan 5 km van voortplantingsgebieden en omgekeerd
+
+assign(kleinezilverreiger_foerageer4, and(kleinezilverreiger_foerageer3, cellDistanceLe(kleinezilverreiger_voortplanting3, 5000, meter)))
+
+assign(kleinezilverreiger_voortplanting4, and(kleinezilverreiger_voortplanting3, cellDistanceLe(kleinezilverreiger_foerageer3, 5000, meter)))
+
+deleteVariable(kleinezilverreiger_voortplanting3)
+deleteVariable(kleinezilverreiger_foerageer3)
+
+assign(kleinezilverreiger_leefgebied1, or(kleinezilverreiger_voortplanting4, kleinezilverreiger_foerageer4))
+
+assign(kleinezilverreiger_leefgebied1_cluster, FuzzyClusterIdU(kleinezilverreiger_leefgebied1, 50, meter))
+
+deleteVariable(kleinezilverreiger_leefgebied1)
+
+assign(kleinezilverreiger_leefgebied, cFilterGeArea(kleinezilverreiger_leefgebied1_cluster, 200, hectare))
+//write('kleinezilverreiger_leefgebied.asc', IsNonZero(kleinezilverreiger_leefgebied))
+
+deleteVariable(kleinezilverreiger_leefgebied1_cluster)
+
+assign(kleinezilverreiger_foerageer, and(kleinezilverreiger_foerageer4, kleinezilverreiger_leefgebied))
+
+deleteVariable(kleinezilverreiger_foerageer4)
+
+//write('kleinezilverreiger_foerageer.asc', kleinezilverreiger_foerageer)
+
+deleteVariable(kleinezilverreiger_foerageer)
+
+assign(kleinezilverreiger_voortplanting, and(kleinezilverreiger_voortplanting4, kleinezilverreiger_leefgebied))
+
+deleteVariable(kleinezilverreiger_voortplanting4)
+deleteVariable(kleinezilverreiger_leefgebied)
+
+write('ANB2019_KleineZilverreiger2018.asc', kleinezilverreiger_voortplanting)
+
+deleteVariable(kleinezilverreiger_voortplanting)

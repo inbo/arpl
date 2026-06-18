@@ -1,0 +1,31 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af
+// habitattypische soort: 2310, 4030, 5130, 9190
+
+assign(boomleeuwerik_voortplanting, bwk(2310%, 4030%, 5130%, 9190%, cd%, ce%, 4010%, 7150%, 7140_oli%, cg%, 2310%, 5130%, cm%, cv%, dm%, 2330%, ha%, 6230%, 6230_ha%, 2130%, 2130_had%, 2150%, hd%, hk%, 6210%, hn%, pa%, pi%, pms%, ppa%, ppi%, sd%, 2160%, 2170%, se%, sg%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(boomleeuwerik_voortplanting_cluster, fuzzyClusterIdU(boomleeuwerik_voortplanting, 50, meter))
+
+deleteVariable(boomleeuwerik_voortplanting)
+
+// optimale voortplantingsclusters moeten minimaal 5ha groot zijn
+
+assign(boomleeuwerik_leefgebied, cFilterGeArea(boomleeuwerik_voortplanting_cluster, 5, hectare))
+
+// baken ecoregio van ecodistrictgebieden af
+
+assign(boomleeuwerik_ecodistrict, Ge('ecoregio.asc', 1))
+
+assign(boomleeuwerik_leefgebied_ecodistrict, and(boomleeuwerik_leefgebied, boomleeuwerik_ecodistrict))
+
+deleteVariable(boomleeuwerik_leefgebied)
+deleteVariable(boomleeuwerik_ecodistrict)
+
+//write('boomleeuwerik_leefgebied_ecodistrict.asc', if(boomleeuwerik_leefgebied_ecodistrict, boomleeuwerik_voortplanting_cluster, 0))
+write('ANB2019_Boomleeuwerik2018.asc', IsNonZero(boomleeuwerik_leefgebied_ecodistrict))
+
+deleteVariable(boomleeuwerik_voortplanting_cluster)
+deleteVariable(boomleeuwerik_leefgebied_ecodistrict)

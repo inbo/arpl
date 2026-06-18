@@ -1,0 +1,19 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af (zonder opgespoten terreinen)
+
+assign(welriekendenachtorchis_voortplanting_bwk, bwk(6230%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(welriekendenachtorchis_voortplanting_cluster, fuzzyClusterIdU(welriekendenachtorchis_voortplanting_bwk, 20, meter))
+
+deleteVariable(welriekendenachtorchis_voortplanting_bwk)
+
+// optimale voortplantingsclusters moeten minimaal 0.16ha groot zijn
+
+assign(welriekendenachtorchis_leefgebied, cFilterGeArea(welriekendenachtorchis_voortplanting_cluster, 0.16, hectare))
+deleteVariable(welriekendenachtorchis_voortplanting_cluster)
+
+write('ANB2019_WelriekendeNachtorchis2018.asc', IsNonZero(welriekendenachtorchis_leefgebied))
+deleteVariable(welriekendenachtorchis_leefgebied)

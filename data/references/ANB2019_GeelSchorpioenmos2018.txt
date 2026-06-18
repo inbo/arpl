@@ -1,0 +1,20 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af
+
+assign(geelschorpioenmos_voortplanting, bwk(hm, hm+, 6410%, hme+, hmm, hmm+, mk, mk+, 7140%, 7230%))
+
+// clustering: indien geschikte cel binnen 10 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(geelschorpioenmos_voortplanting_cluster, fuzzyClusterIdU(geelschorpioenmos_voortplanting, 10, meter))
+
+deleteVariable(geelschorpioenmos_voortplanting)
+
+// optimale voortplantingsclusters moeten minimaal 0.2ha groot zijn
+
+assign(geelschorpioenmos_leefgebied, cFilterGeArea(geelschorpioenmos_voortplanting_cluster, 0.2, hectare))
+write('ANB2019_GeelSchorpioenmos2018.asc', IsNonZero(geelschorpioenmos_leefgebied))
+
+deleteVariable(geelschorpioenmos_leefgebied)
+deleteVariable(geelschorpioenmos_voortplanting_cluster)
+

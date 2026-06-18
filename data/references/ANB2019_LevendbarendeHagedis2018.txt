@@ -1,0 +1,23 @@
+vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+assign(levendbarendehagedis_bwk, bwk(cd%, 2310%, ce%, 4010%, 7150%, 7140_oli%, cg%, 4030%, 5130%, cm%, ct%, 7110%, 7120%, cv%, ha%, 2330%, 6230_ha%, 2130%, 2150%, hc%, 2190%, 6410%, rbbhc%, hd%, hj%, hk%, 6210%, hn%, 6230%, hp+, rbbkam%, hu%, 6120%, 6510%, ks%, ku%, 3270%, 6430%, k(ku%, k(cg%, k(cv%, k(cm%, k(cd%, k(ce%, k(hu%, k(ha%, k(hk%, k(hc%, k(hj%, k(hd%, se%, spoor%))
+
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 50 meter liggen
+assign(levendbarendehagedis_bwk_cluster, fuzzyClusterIdU(levendbarendehagedis_bwk, 50, meter))
+deleteVariable(levendbarendehagedis_bwk)
+
+// leefgebied moet minstens 1 hectare groot zijn
+assign(levendbarendehagedis_leefgebied, cFilterGeArea(levendbarendehagedis_bwk_cluster, 1, hectare))
+deleteVariable(levendbarendehagedis_bwk_cluster)
+
+// beperk de leefgebiedenkaart tot bepaalde ecoregio's
+assign(levendbarendehagedis_ecodistrict, Ge('ecoregio.asc', 1))
+assign(levendbarendehagedis_leefgebied_ecodistrict, and(levendbarendehagedis_leefgebied, levendbarendehagedis_ecodistrict))
+
+deleteVariable(levendbarendehagedis_ecodistrict)
+deleteVariable(levendbarendehagedis_leefgebied)
+
+// 0/1 kaarten maken
+write('ANB2019_LevendbarendeHagedis2018.asc', IsNonZero(levendbarendehagedis_leefgebied_ecodistrict))
+deleteVariable(levendbarendehagedis_leefgebied_ecodistrict)

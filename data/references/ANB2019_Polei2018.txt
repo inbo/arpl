@@ -1,0 +1,19 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af (zonder opgespoten terreinen)
+
+assign(polei_voortplanting_bwk, bwk(rbbzil%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(polei_voortplanting_cluster, fuzzyClusterIdU(polei_voortplanting_bwk, 20, meter))
+
+deleteVariable(polei_voortplanting_bwk)
+
+// optimale voortplantingsclusters moeten minimaal 0.16ha groot zijn
+
+assign(polei_leefgebied, cFilterGeArea(polei_voortplanting_cluster, 0.16, hectare))
+deleteVariable(polei_voortplanting_cluster)
+
+write('ANB2019_Polei2018.asc', IsNonZero(polei_leefgebied))
+deleteVariable(polei_leefgebied)

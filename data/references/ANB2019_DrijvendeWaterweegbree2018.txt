@@ -1,0 +1,33 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af
+
+assign(drijvendewaterweegbree_voortplanting_bwk, bwk(ao, ao+, 3160%, 7140%, 7150%, aom, aom+, 3110%, 3130%, ap, ap+, k(ao), k(aom), 3260%))
+
+// waterlopen
+
+assign(drijvendewaterweegbree_waterlopen, OrEq('rastert_huetzon1.asc', 5, 6, 7, 8, 9, 10))
+
+assign(drijvendewaterweegbree_voortplanting, or(drijvendewaterweegbree_voortplanting_bwk, drijvendewaterweegbree_waterlopen))
+
+deleteVariable(drijvendewaterweegbree_voortplanting_bwk)
+deleteVariable(drijvendewaterweegbree_waterlopen)
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(drijvendewaterweegbree_voortplanting_cluster, fuzzyClusterIdU(drijvendewaterweegbree_voortplanting, 20, meter))
+
+// optimale voortplantingsclusters moeten minimaal 0.16ha groot zijn
+
+assign(drijvendewaterweegbree_leefgebied, cFilterGeArea(drijvendewaterweegbree_voortplanting_cluster, 0.16, hectare))
+
+// beperken tot de Kempen en zandig Vlaanderen
+
+assign(drijvendewaterweegbree_ecodistrict, Ge('ecoregio.asc', 1))
+
+assign(drijvendewaterweegbree_leefgebied_ecodistrict, and(drijvendewaterweegbree_leefgebied, drijvendewaterweegbree_ecodistrict))
+
+deleteVariable(drijvendewaterweegbree_ecodistrict)
+//write('drijvendewaterweegbree_leefgebied_ecodistrict.asc', if(drijvendewaterweegbree_leefgebied_ecodistrict, drijvendewaterweegbree_voortplanting_cluster, 0))
+write('ANB2019_DrijvendeWaterweegbree2018.asc', IsNonZero(drijvendewaterweegbree_leefgebied_ecodistrict))
+

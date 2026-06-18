@@ -1,0 +1,19 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af (zonder opgespoten terreinen)
+
+assign(klokjesgentiaan_voortplanting_bwk, bwk(4010%, 6230_hmo%, 6410%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(klokjesgentiaan_voortplanting_cluster, fuzzyClusterIdU(klokjesgentiaan_voortplanting_bwk, 20, meter))
+
+deleteVariable(klokjesgentiaan_voortplanting_bwk)
+
+// optimale voortplantingsclusters moeten minimaal 0.16ha groot zijn
+
+assign(klokjesgentiaan_leefgebied, cFilterGeArea(klokjesgentiaan_voortplanting_cluster, 0.16, hectare))
+deleteVariable(klokjesgentiaan_voortplanting_cluster)
+
+write('ANB2019_Klokjesgentiaan2018.asc', IsNonZero(klokjesgentiaan_leefgebied))
+deleteVariable(klokjesgentiaan_leefgebied)

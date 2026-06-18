@@ -1,0 +1,19 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af (zonder opgespoten terreinen)
+
+assign(raaf_voortplanting_bwk, bwk(9110%, 9120%, 9130%, 9150%, 9160%, 9190%, 91E0%, 91F0%, f%, q%, pi%, pp%, pa%, pm%, c%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(raaf_voortplanting_cluster, fuzzyClusterIdU(raaf_voortplanting_bwk, 100, meter))
+
+deleteVariable(raaf_voortplanting_bwk)
+
+// optimale voortplantingsclusters moeten minimaal 500ha groot zijn
+
+assign(raaf_leefgebied, cFilterGeArea(raaf_voortplanting_cluster, 500, hectare))
+deleteVariable(raaf_voortplanting_cluster)
+
+write('ANB2019_Raaf2018.asc', IsNonZero(raaf_leefgebied))
+deleteVariable(raaf_leefgebied)

@@ -1,0 +1,48 @@
+vlaanderen_20m.asc
+
+// lees de shape file in uit de vogelgebiedendatabank met minstens ?? goudplevieren
+
+assign(goudplevier_watervogelgebieden, 'leefgebied_goudplevier_20m.asc')
+
+assign(goudplevier_watervogelgebied1, and(ge(goudplevier_watervogelgebieden, 1), le(goudplevier_watervogelgebieden, 30)))
+
+deleteVariable(goudplevier_watervogelgebieden)
+
+// baken de foerageergebieden af
+
+assign(goudplevier_foerageer, bwk(bu%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, hp%, hp+%, rbbkam%, rbbzil%, hpr%, hpr+%, 2190%, hx%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het leefgebied - er moet voldoende open gebied zijn!
+
+assign(goudplevier_foerageer_cluster, fuzzyClusterIdU(goudplevier_foerageer, 50, meter))
+
+deleteVariable(goudplevier_foerageer)
+
+// leefgebiedcluster moeten minimaal 80ha groot zijn
+
+assign(goudplevier_leefgebied1, cFilterGeArea(goudplevier_foerageer_cluster, 80, hectare))
+
+deleteVariable(goudplevier_foerageer_cluster)
+
+assign(goudplevier_leefgebied, and(goudplevier_watervogelgebied1, goudplevier_leefgebied1))
+
+deleteVariable(goudplevier_watervogelgebied1)
+deleteVariable(goudplevier_leefgebied1)
+
+// baken ecoregio van ecodistrictgebieden af
+
+assign(goudplevier_ecodistrict, ge('ecoregio.asc', 1))
+
+assign(goudplevier_leefgebied_ecodistrict1, and(goudplevier_leefgebied, goudplevier_ecodistrict))
+
+deleteVariable(goudplevier_ecodistrict)
+deleteVariable(goudplevier_leefgebied)
+
+assign(goudplevier_leefgebied_ecodistrict1_cluster, FuzzyClusterIdU(goudplevier_leefgebied_ecodistrict1, 50, meter))
+deleteVariable(goudplevier_leefgebied_ecodistrict1)
+
+assign(goudplevier_leefgebied_ecodistrict, cFilterGeArea(goudplevier_leefgebied_ecodistrict1_cluster, 80, hectare))
+deleteVariable(goudplevier_leefgebied_ecodistrict1_cluster)
+
+write('ANB2019_Goudplevier2018.asc', IsNonZero(goudplevier_leefgebied_ecodistrict))
+deleteVariable(goudplevier_leefgebied_ecodistrict)

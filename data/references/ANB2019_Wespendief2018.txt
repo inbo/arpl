@@ -1,0 +1,79 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af
+
+assign(wespendief_voortplanting_bwk, bwk(fa%, 9120%, 9130%, fe%, fk%, 9150%, fl%, 9110%, fm%, fs%, lh%, ls%, n, n-, n+, pa%, pi%, pm%, pp%, ppa%, ppi%, ppmb%, rbbppm%, ppmh%, ppms%, qa%, 9160%, qb%, 9190%, qe%, qk%, 9150%, ql%, qs%, va%, 91E0%, vc%, vf%, vm%, vn%, vo%, vt%, 91D0%, 91F0%))
+
+// baken oude bossen af
+
+assign(wespendief_bosinventaris, OrEq('bosinventaris_2001.asc', 12, 13, 14, 22, 23, 24))
+
+assign(wespendief_voortplanting1, and(wespendief_voortplanting_bwk, wespendief_bosinventaris))
+
+deleteVariable(wespendief_bosinventaris)
+deleteVariable(wespendief_voortplanting_bwk)
+
+// clustering: indien geschikte cel binnen 100 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(wespendief_voortplanting_cluster, fuzzyClusterIdU(wespendief_voortplanting1, 100, meter))
+
+deleteVariable(wespendief_voortplanting1)
+
+// voortplantingscluster moeten minimaal 50ha groot zijn
+
+assign(wespendief_bos, cFilterGeArea(wespendief_voortplanting_cluster, 50, hectare))
+
+deleteVariable(wespendief_voortplanting_cluster)
+
+// baken open foerageergebied af
+
+assign(wespendief_foerageer_open, bwk(3260%, cd%, 2310%, 4030%, cdb%, cg%, 5130%, cgb%, cm%, 4010%, cmb%, cp%, 9120%, cpb%, cv%, cvb%, ha%, 2330%, 6230_ha%, hab%, hc%, 6410%, rbbhc%, hcb%, hk%, 6210%, hm%, 6230%, hmb%, hme%, hmm%, hmo%, hn%, hp%, hp+%, rbbkam%, rbbzil%, hpr%, hpr+%, hr%, 6430%, hu%, 6120%, 6510%, hub%, kb%, kh%, kn%, 3140%, kp%, kpa%, kpk%, kw%, mdb%, n, n+, n-, sf%, 2180%, 91E0%, rbbsf%, sg%, 2310%, rbbsg%, sgb%, sk%, sm%, 7140%, 7230%, 91E0%, rbbsm%))
+
+// clustering: indien geschikte cel binnen 500 meter, dan hoort die cel bij het foerageercluster
+
+assign(wespendief_foerageer_open_cluster, fuzzyClusterIdU(wespendief_foerageer_open, 500, meter))
+
+// open foerageercluster moet minstens 50 ha zijn
+
+assign(wespendief_openfoerageergebied, cFilterGeArea(wespendief_foerageer_open_cluster, 50, hectare))
+
+deleteVariable(wespendief_foerageer_open)
+deleteVariable(wespendief_foerageer_open_cluster)
+
+assign(wespendief_foerageer1, or(wespendief_bos, wespendief_openfoerageergebied))
+
+deleteVariable(wespendief_openfoerageergebied)
+
+// clustering: indien geschikte cel binnen 500 meter, dan hoort die cel bij het foerageercluster open
+
+assign(wespendief_foerageer1_cluster, fuzzyClusterIdU(wespendief_foerageer1, 500, meter))
+
+deleteVariable(wespendief_foerageer1)
+
+// optimale foerageerclusters moeten minimaal 250ha groot zijn
+
+assign(wespendief_foerageer2, cFilterGeArea(wespendief_foerageer1_cluster, 250, hectare))
+
+deleteVariable(wespendief_foerageer1_cluster)
+
+// geschikte foerageergebieden liggen minder dan 5 km van voortplantingsgebieden en omgekeerd
+
+assign(wespendief_voortplanting0, cFilter(wespendief_bos, cellDistanceLe(wespendief_foerageer2, 5000, meter)))
+
+assign(wespendief_foerageer0, and(wespendief_foerageer2, cellDistanceLe(wespendief_bos, 5000, meter)))
+
+deleteVariable(wespendief_foerageer2)
+deleteVariable(wespendief_bos)
+
+assign(wespendief_leefgebied1, or(wespendief_voortplanting0, wespendief_foerageer0))
+deleteVariable(wespendief_voortplanting0)
+
+deleteVariable(wespendief_foerageer0)
+assign(wespendief_leefgebied1_cluster, FuzzyClusterIdU(wespendief_leefgebied1, 500, meter))
+deleteVariable(wespendief_leefgebied1)
+
+assign(wespendief_leefgebied, cFilterGeArea(wespendief_leefgebied1_cluster, 250, hectare))
+deleteVariable(wespendief_leefgebied1_cluster)
+write('ANB2019_Wespendief2018.asc', IsNonZero(wespendief_leefgebied))
+deleteVariable(wespendief_leefgebied)
+

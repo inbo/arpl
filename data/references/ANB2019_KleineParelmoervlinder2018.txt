@@ -1,0 +1,22 @@
+vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+assign(kleineparelmoervlinder_bwk, bwk(bs%, dd%, 2120%, ha%, 2330%, 6230_ha%, hd%, 2130%, 2130_hd%, hm%, 6410%, 2190%, sd%, 2160%, 2170%))
+
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 100 meter liggen
+assign(kleineparelmoervlinder_bwk_cluster, fuzzyClusterIdU(kleineparelmoervlinder_bwk, 100, meter))
+deleteVariable(kleineparelmoervlinder_bwk)
+
+// leefgebied moet minstens 25 hectare groot zijn
+assign(kleineparelmoervlinder_leefgebied, cFilterGeArea(kleineparelmoervlinder_bwk_cluster, 25, hectare))
+deleteVariable(kleineparelmoervlinder_bwk_cluster)
+
+// beperk de leefgebiedenkaart tot bepaalde ecoregio's
+assign(kleineparelmoervlinder_ecodistrict, Ge('ecoregio.asc', 1))
+assign(kleineparelmoervlinder_leefgebied_ecodistrict, and(kleineparelmoervlinder_leefgebied, kleineparelmoervlinder_ecodistrict))
+deleteVariable(kleineparelmoervlinder_leefgebied)
+deleteVariable(kleineparelmoervlinder_ecodistrict)
+
+// 0/1 kaarten maken
+write('ANB2019_KleineParelmoervlinder2018.asc', IsNonZero(kleineparelmoervlinder_leefgebied_ecodistrict))
+deleteVariable(kleineparelmoervlinder_leefgebied_ecodistrict)
