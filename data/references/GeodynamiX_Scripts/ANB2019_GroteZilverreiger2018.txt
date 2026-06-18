@@ -1,0 +1,45 @@
+vlaanderen_20m.asc
+
+// lees de shape file in uit de vogelgebiedendatabank met minstens ?? grotezilverreigeren
+
+assign(grotezilverreiger_watervogelgebieden, 'leefgebied_grotezilverreiger_20m.asc')
+
+assign(grotezilverreiger_watervogelgebied1, and(ge(grotezilverreiger_watervogelgebieden, 1), le(grotezilverreiger_watervogelgebieden, 169)))
+
+deleteVariable(grotezilverreiger_watervogelgebieden)
+
+// baken de foerageergebieden binnen de telgebieden af
+
+assign(grotezilverreiger_foerageer_bwk, bwk(ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, ao%, 3160%, 7140%, 7150%, aom%, 3110%, 3130%, aoo%, da%, 1310%, 1320%, 1330%, hc%, 6410%, rbbhc%, hcb%, hp%, hp+%, rbbkam%, rbbzil%, hpr%, hpr+%, mc%, rbbmc%, mcb%, mr%, 1130%, 1330%, 2190%, 6430_hw%, 6430_mr%, 7140%, 7140_mrd%, rbbmr%, mrb%, sf%, 2180%, 91E0%, rbbsf%, sz%, va%, vc%, vf%, vm%, vn%, vo%, vt%, 91D0%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het leefgebied - er moet voldoende open gebied zijn!
+
+assign(grotezilverreiger_foerageer1_cluster, fuzzyClusterIdU(grotezilverreiger_foerageer_bwk, 50, meter))
+deleteVariable(grotezilverreiger_foerageer_bwk)
+
+// leefgebiedcluster moeten minimaal 30ha groot zijn
+
+assign(grotezilverreiger_leefgebied1, cFilterGeArea(grotezilverreiger_foerageer1_cluster, 30, hectare))
+deleteVariable(grotezilverreiger_foerageer1_cluster)
+
+assign(grotezilverreiger_leefgebied, and(grotezilverreiger_watervogelgebied1, grotezilverreiger_leefgebied1))
+
+deleteVariable(grotezilverreiger_watervogelgebied1)
+deleteVariable(grotezilverreiger_leefgebied1)
+
+// baken ecoregio van ecodistrictgebieden af
+
+assign(grotezilverreiger_ecodistrict, ge('ecoregio.asc', 1))
+
+assign(grotezilverreiger_leefgebied_ecodistrict1, and(grotezilverreiger_leefgebied, grotezilverreiger_ecodistrict))
+deleteVariable(grotezilverreiger_ecodistrict)
+
+deleteVariable(grotezilverreiger_leefgebied)
+
+assign(grotezilverreiger_leefgebied_ecodistrict1_cluster, FuzzyClusterIdU(grotezilverreiger_leefgebied_ecodistrict1, 50, meter))
+deleteVariable(grotezilverreiger_leefgebied_ecodistrict1)
+
+assign(grotezilverreiger_leefgebied_ecodistrict, cFilterGeArea(grotezilverreiger_leefgebied_ecodistrict1_cluster, 30, hectare))
+write('ANB2019_GroteZilverreiger2018.asc', IsNonZero(grotezilverreiger_leefgebied_ecodistrict))
+deleteVariable(grotezilverreiger_leefgebied_ecodistrict)
+deleteVariable(grotezilverreiger_leefgebied_ecodistrict1_cluster)

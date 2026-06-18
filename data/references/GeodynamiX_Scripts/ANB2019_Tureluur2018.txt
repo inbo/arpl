@@ -1,0 +1,41 @@
+Vlaanderen_20m.asc
+
+//Een koppel Tureluurs heeft een leefgebied nodig van 10-15ha
+//dat bestaat uit graslanden, heides met vennen, oude opgespoten terreinen, schorren en vochtige en zilte graslanden (BWK: kz, da, ds, ah, ao, aom, aoo, ce, ces, hpr & hpr+).
+//Hogere dichtheden worden gehaald in slikken en schorrengebieden: 5-10ha/bp.
+
+//Assign(biotopen, bwk(kz, da%, k(da%, ds%, ah%, k(ah%, ao%, k(ao%, ce%, k(ce%, hpr, hpr+))
+//ce% eruit
+assign(tureluur_biotopen, bwk(ah%, rbbah%, ao%, 3160%, 7140%, 7150%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, hpr, hpr+, 2190%, rbbkam%, rbbzil%, k(ah%, k(ao%, k(da%, kz))
+assign(tureluur_biotopen_slik_schor, bwk(ah%, rbbah%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, k(ah%, k(da%))
+//Write('tureluur_geschikte_biotopen.asc', tureluur_biotopen)
+
+//Clustering
+assign(id, fuzzyclusterid(tureluur_biotopen, 100/cellsize))
+deleteVariable(tureluur_biotopen)
+
+assign(min_cluster_opp, 10*10000/cellsize2 - 5*10000/cellsize2*cSum(id, tureluur_biotopen_slik_schor)/cSum(id, 1))
+deleteVariable(tureluur_biotopen_slik_schor)
+
+assign(cluster, cFilter(id, ge(cSum(id, 1), min_cluster_opp)))
+deleteVariable(id)
+deleteVariable(min_cluster_opp)
+
+//Write('tureluur_clusters_100m.asc', cluster)
+
+//In kempen blijken heel wat clusters te liggen die enkel uit ao% bestaan; die moeten er nog uit
+assign(cluster_ao_lt95, cFilter(cluster, lt(cSum(cluster, bwk(ae%, 2190%, 3140%, 3150%, ao%, 3160%, 7140%, 7150%, 3110%, 3130%, k(ao%))/cSum(cluster, 1), 0.95)))
+deleteVariable(cluster)
+
+//Write('tureluur_clusters_100m_ao_lt95.asc', cluster_ao_lt95)
+
+//beperking tot ecodistricten in Polders, Ijzervallei, Meetjesland en Schelde (LO): Kustpoldersdistrict, Getijdenschelde- en -poldersdistrict, Pleistoceen riviervalleiendistrict, Lemig IJzer-Leie interfluviumdistrict
+assign(ecodistrict, Ge('ecoregio.asc', 1))
+assign(cluster_ecodistrict, cfilter(cluster_ao_lt95, ge(csum(cluster_ao_lt95, ecodistrict), 1)))
+deleteVariable(cluster_ao_lt95)
+deleteVariable(ecodistrict)
+
+//Write('tureluur_clusters_100m_ao_lt95_ecodistrict.asc', cluster_ecodistrict)
+
+Write('ANB2019_Tureluur2018.asc', IsNonZero(cluster_ecodistrict))
+deleteVariable(cluster_ecodistrict)

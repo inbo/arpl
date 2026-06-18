@@ -1,0 +1,109 @@
+Vlaanderen_20m.asc
+
+// baken geschikte waterbiotopen af
+
+assign(boomkikker_waterbiotoop_bwk, bwk(3150%, ae%, 2190%, 3140%, ao%, 3110%, 3130%, 3160%, 7140%, 7150%, kn%, mp%))
+
+// uit GRB-watergang, kleine waters proberen te filteren
+
+//assign(GRB_water, Eq('GRB_watergang_at.asc', 1))
+assign(BlauweLaag, eq('BlauweLaag_Plassen_06042017_20m_.asc', 1))
+
+//assign(GRB_water_cluster, fuzzyClusterIdU(GRB_water, 10, meter))
+assign(BlauweLaag_cluster, fuzzyClusterIdU(BlauweLaag, 10, meter))
+
+deleteVariable(BlauweLaag)
+
+assign(boomkikker_kleinwater, cFilterLeArea(BlauweLaag_cluster, 0.4, hectare))
+
+deleteVariable(BlauweLaag_cluster)
+
+assign(boomkikker_waterbiotoop1, or(boomkikker_waterbiotoop_bwk, boomkikker_kleinwater))
+
+deleteVariable(boomkikker_kleinwater)
+deleteVariable(boomkikker_waterbiotoop_bwk)
+
+// binnen een straal van 500m moeten minstens 5 (6-1 dwz 6 - de eigen poel) andere geschikte voortplantingsgebieden liggen
+
+assign(boomkikker_waterbiotoop1_cluster, clusterId(boomkikker_waterbiotoop1))
+
+deleteVariable(boomkikker_waterbiotoop1)
+
+assign(boomkikker_waterbiotoop2, GeUniqueCountInBuffer(boomkikker_waterbiotoop1_cluster, 500, meter, boomkikker_waterbiotoop1_cluster, 6))
+
+deleteVariable(boomkikker_waterbiotoop1_cluster)
+
+// landbiotoop (inclusief overwinteringsbiotoop) moet aanwezig zijn binnen de 500m
+
+// baken landbiotopen af
+
+assign(boomkikker_landbiotoop_hms, bwk(hc%, 2190%, 6410%, rbbhc%, hd%, 2130%, 2130_hd%, hf%, 6430%, hj%, mp%, mr%, 6430%, 7140%, rbbmr%, sd%, sf%, sp%, sz%, 2160%, 2170%, 2180%))
+assign(boomkikker_landbiotoop_k, bwk(k(ae%, k(ao%, k(hc%, k(hd%, k(hf%, k(hj%, k(ku%, k(mr%, kt(hc%, kt(hd%, kt(hf%, kt(hj%, kt(ku%, kt(mr%, kb%, kh%, khw%, kn%, ku%, mp%, mr%, kb%, kh%, khw%, kn%, ku%))
+
+// landbiotoop moet gevarieerd zijn en verschillende biotooptypes bevatten
+
+assign(boomkikker_landbiotoop_bwk1, and(boomkikker_landbiotoop_hms, cellDistanceLe(boomkikker_landbiotoop_k, 500, meter)))
+assign(boomkikker_landbiotoop_bwk2, and(boomkikker_landbiotoop_k, cellDistanceLe(boomkikker_landbiotoop_hms, 500, meter)))
+assign(boomkikker_landbiotoop_bwk3, or(boomkikker_landbiotoop_bwk1, boomkikker_landbiotoop_bwk2))
+
+deleteVariable(boomkikker_landbiotoop_bwk1)
+deleteVariable(boomkikker_landbiotoop_bwk2)
+deleteVariable(boomkikker_landbiotoop_k)
+deleteVariable(boomkikker_landbiotoop_hms)
+
+// landbiotoop mag geen akker zijn
+
+assign(boomkikker_akkers, bwk(b%))
+assign(boomkikker_landbiotoop_na, and(boomkikker_landbiotoop_bwk3, not(boomkikker_akkers)))
+
+deleteVariable(boomkikker_akkers)
+deleteVariable(boomkikker_landbiotoop_bwk3)
+
+// landbiotoop moet aanwezig zijn binnen de 500m van waterbiotoop
+
+assign(boomkikker_landbiotoop1, and(boomkikker_landbiotoop_na, cellDistanceLe(boomkikker_waterbiotoop2, 500, meter)))
+
+//waterbiotoop moet aanwezig zijn binnen de 500m van landbiotoop
+
+assign(boomkikker_waterbiotoop3, and(boomkikker_waterbiotoop2, cellDistanceLe(boomkikker_landbiotoop_na, 500, meter)))
+
+deleteVariable(boomkikker_landbiotoop_na)
+deleteVariable(boomkikker_waterbiotoop2)
+
+assign(boomkikker_waterbiotoop3_cluster, FuzzyClusterIdU(boomkikker_waterbiotoop3, 500, meter))
+
+deleteVariable(boomkikker_waterbiotoop3_cluster)
+
+assign(boomkikker_leefgebied1, or(boomkikker_waterbiotoop3, boomkikker_landbiotoop1))
+
+//clustering? Alle leefgebied op een onderlinge afstand van maximaal 500m en oppervlakte moet minstens 5ha zijn
+
+assign(boomkikker_leefgebied1_cluster, FuzzyClusterIdU(boomkikker_leefgebied1, 500, meter))
+assign(boomkikker_leefgebied, cFilterGeArea(boomkikker_leefgebied1_cluster, 5, hectare))
+
+deleteVariable(boomkikker_leefgebied1_cluster)
+
+// baken ecoregio van ecodistrictgebieden af
+
+assign(boomkikker_ecodistrict, Ge('ecoregio.asc', 1))
+
+//assign(boomkikker_waterbiotoop_ecodistrict1, and(boomkikker_waterbiotoop3, boomkikker_leefgebied, boomkikker_ecodistrict))
+//assign(boomkikker_landbiotoop_ecodistrict1, and(boomkikker_landbiotoop1, boomkikker_leefgebied, boomkikker_ecodistrict))
+
+deleteVariable(boomkikker_landbiotoop1)
+deleteVariable(boomkikker_waterbiotoop3)
+
+assign(boomkikker_leefgebied_ecodistrict1, and(boomkikker_leefgebied, boomkikker_ecodistrict))
+
+deleteVariable(boomkikker_leefgebied)
+deleteVariable(boomkikker_leefgebied1)
+deleteVariable(boomkikker_ecodistrict)
+
+assign(boomkikker_leefgebied_ecodistrict1_cluster, FuzzyClusterIdU(boomkikker_leefgebied_ecodistrict1, 500, meter))
+
+assign(boomkikker_leefgebied_ecodistrict, cFilterGeArea(boomkikker_leefgebied_ecodistrict1_cluster, 5, hectare))
+write('ANB2019_Boomkikker2018.asc', IsNonZero(boomkikker_leefgebied_ecodistrict))
+
+deleteVariable(boomkikker_leefgebied_ecodistrict1_cluster)
+deleteVariable(boomkikker_leefgebied_ecodistrict1)
+deleteVariable(boomkikker_leefgebied_ecodistrict)

@@ -53,4 +53,10 @@ rsconnect/
 
 # Raster kaart Turnhouts Vennegebied + 50 km buffer 10x10 m
 /data/input/Raster_Vlaanderen/BWK_Tabel_Turnhout_Plus_50km.rds
+
+# ASCI Files
+/data/references/ASCI Files
+
+# Shapefiles
+/data/references/Shapefiles
 .positai

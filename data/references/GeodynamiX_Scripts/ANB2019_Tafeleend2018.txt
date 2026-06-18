@@ -1,0 +1,53 @@
+vlaanderen_20m.asc
+
+// lees de shape file in uit de vogelgebiedendatabank met minstens ?? tafeleenden
+
+assign(tafeleend_watervogelgebieden, 'leefgebied_tafeleend_20m.asc')
+
+assign(tafeleend_watervogelgebied1, and(ge(tafeleend_watervogelgebieden, 1), le(tafeleend_watervogelgebieden, 138)))
+
+deleteVariable(tafeleend_watervogelgebieden)
+
+// baken de foerageergebieden binnen de telgebieden af
+
+assign(tafeleend_foerageer_bwk, bwk(ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, aom%, 3110%, 3130%, ap%, ds%, 1130%, 3270%))
+
+// waterlopen
+
+assign(tafeleend_waterlopen, OrEq('rastert_huetzon1.asc', 17, 18))
+
+assign(tafeleend_foerageer1, or(tafeleend_foerageer_bwk, tafeleend_waterlopen))
+
+deleteVariable(tafeleend_foerageer_bwk)
+deleteVariable(tafeleend_waterlopen)
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het leefgebied - er moet voldoende open gebied zijn!
+
+assign(tafeleend_foerageer1_cluster, fuzzyClusterIdU(tafeleend_foerageer1, 50, meter))
+deleteVariable(tafeleend_foerageer1)
+
+// leefgebiedcluster moeten minimaal 5ha groot zijn
+
+assign(tafeleend_leefgebied1, cFilterGeArea(tafeleend_foerageer1_cluster, 5, hectare))
+deleteVariable(tafeleend_foerageer1_cluster)
+
+assign(tafeleend_leefgebied, and(tafeleend_watervogelgebied1, tafeleend_leefgebied1))
+
+deleteVariable(tafeleend_watervogelgebied1)
+deleteVariable(tafeleend_leefgebied1)
+
+// baken ecoregio van ecodistrictgebieden af
+
+assign(tafeleend_ecodistrict, ge('ecoregio.asc', 1))
+
+assign(tafeleend_leefgebied_ecodistrict1, and(tafeleend_leefgebied, tafeleend_ecodistrict))
+deleteVariable(tafeleend_leefgebied)
+deleteVariable(tafeleend_ecodistrict)
+
+assign(tafeleend_leefgebied_ecodistrict1_cluster, FuzzyClusterIdU(tafeleend_leefgebied_ecodistrict1, 50, meter))
+deleteVariable(tafeleend_leefgebied_ecodistrict1)
+
+assign(tafeleend_leefgebied_ecodistrict, cFilterGeArea(tafeleend_leefgebied_ecodistrict1_cluster, 5, hectare))
+deleteVariable(tafeleend_leefgebied_ecodistrict1_cluster)
+write('ANB2019_Tafeleend2018.asc', IsNonZero(tafeleend_leefgebied_ecodistrict))
+deleteVariable(tafeleend_leefgebied_ecodistrict)

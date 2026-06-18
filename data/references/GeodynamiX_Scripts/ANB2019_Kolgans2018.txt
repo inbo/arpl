@@ -1,0 +1,62 @@
+vlaanderen_20m_met_maas.asc
+
+// lees de shape file in uit de vogelgebiedendatabank met minstens ?? kolgansen
+
+assign(kolgans_watervogelgebieden, 'leefgebied_kolgans_20m.asc')
+
+assign(kolgans_watervogelgebied1, and(ge(kolgans_watervogelgebieden, 1), le(kolgans_watervogelgebieden, 35)))
+
+deleteVariable(kolgans_watervogelgebieden)
+
+// baken de foerageergebieden binnen de telgebieden af
+
+assign(kolgans_foerageer_bwk, bwk(ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, ap%, bl%, bs%, bu%, da%, 1310%, 1330%, hp%, hp+%, rbbkam%, rbbzil%, hpr%, hpr+%, hx%))
+
+// waterlopen
+
+assign(kolgans_waterlopen, eq('rastert_huetzon1.asc', 19))
+
+assign(kolgans_foerageer_epr, OrEq('epr2013.asc', 6, 38, 100, 18, 8, 4, 89, 40, 120, 7, 1))
+
+assign(kolgans_maas, eq('maas.asc', 1))
+
+assign(kolgans_foerageer1, or(kolgans_foerageer_bwk, kolgans_waterlopen, kolgans_maas, kolgans_foerageer_epr))
+
+deleteVariable(kolgans_foerageer_bwk)
+deleteVariable(kolgans_waterlopen)
+deleteVariable(kolgans_foerageer_epr)
+deleteVariable(kolgans_maas)
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het leefgebied - er moet voldoende open gebied zijn!
+
+assign(kolgans_foerageer1_cluster, fuzzyClusterIdU(kolgans_foerageer1, 50, meter))
+
+// leefgebiedcluster moeten minimaal 80ha groot zijn
+
+assign(kolgans_leefgebied1, cFilterGeArea(kolgans_foerageer1_cluster, 80, hectare))
+deleteVariable(kolgans_leefgebied1)
+
+assign(kolgans_leefgebied, and(kolgans_watervogelgebied1, kolgans_foerageer1))
+
+deleteVariable(kolgans_foerageer1)
+deleteVariable(kolgans_watervogelgebied1)
+
+deleteVariable(kolgans_foerageer1_cluster)
+
+// baken ecoregio van ecodistrictgebieden af
+
+assign(kolgans_ecodistrict, ge('ecoregio.asc', 1))
+
+assign(kolgans_leefgebied_ecodistrict1, and(kolgans_leefgebied, kolgans_ecodistrict))
+deleteVariable(kolgans_ecodistrict)
+deleteVariable(kolgans_leefgebied)
+
+assign(kolgans_leefgebied_ecodistrict1_cluster, FuzzyClusterIdU(kolgans_leefgebied_ecodistrict1, 50, meter))
+deleteVariable(kolgans_leefgebied_ecodistrict1)
+
+assign(kolgans_leefgebied_ecodistrict, cFilterGeArea(kolgans_leefgebied_ecodistrict1_cluster, 80, hectare))
+deleteVariable(kolgans_leefgebied_ecodistrict1_cluster)
+
+write('ANB2019_Kolgans2018.asc', IsNonZero(kolgans_leefgebied_ecodistrict))
+
+deleteVariable(kolgans_leefgebied_ecodistrict)

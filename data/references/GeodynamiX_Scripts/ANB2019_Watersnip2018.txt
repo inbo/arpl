@@ -1,0 +1,60 @@
+Vlaanderen_20m.asc
+
+//Een koppel Watersnippen heeft 10-15ha leefgebied nodig dat bestaat uit
+//laagvenen, verlandingszones, zegges & biezenvelden, structuurrijke natte graslanden & natte heide
+//(BWK: ao, aom, aoo, mc, hj, hc, hf, md, mk, mm, ms, ce, ces, hm, hmm, hme, hmo, hpr & hpr+)
+
+
+///Veranderingen in vergelijking met vorige versie script
+//bufferafstand nu 100m i.p.v. 200m
+//extra eis naar openheid leefgebied (<75% verbossing)
+//clusters die voor meer dan 90% uit open water bestaan, vallen nu weg
+//er moet minstens één aaneengesloten blok van terrestrisch biotopen aanwezig zijn binnen een cluster, en wel ten behoeve van min. 10 ha
+//optioneel: beperking tot ecoregio van de kempen
+
+// baken geschikte biotopen af (zonder kle-vorm)
+
+assign(watersnip_biotopen, bwk(3110%, 3130%, ao%, 3160%, 7140%, 7150%, ce%, 4010%, hc%, 2190%, 6410%, rbbhc%, hf%, 6430%, rbbhf%, hj%, hm%, 6230%, hpr, rbbkam%, rbbzil%, hpr+, mc%, rbbmc%, md%, 91E0%, mk%, 7230%, mm%, 7210%, ms%, rbbms%))
+//Enkel even nat of natter dan drainageklasse d
+assign(watersnip_biotopen, and(watersnip_biotopen, or(reclass('bodem_drainage_d_en_natter.tab', 'bodem_drainage.asc'), eq('bodem_drainage.asc', 0))))
+//write('watersnip_geschikte_biotopen.asc', biotopen)
+
+
+///Clustering met minimale oppervlakte van 10 ha en bufferafstand van 100m
+
+assign(id, fuzzyclusterid(watersnip_biotopen, 100/cellsize))
+assign(clusters, cFilter(id, ge(cSum(id, 1), 10*10000/cellsize2)))
+//write('watersnip_clusters_10ha_100m.asc', clusters)
+assign(id, clusters)
+deleteVariable(clusters)
+
+///Extra eisen aan clusters?
+
+//overlay overstromingsgevoelige gebieden? problematische eis voor natte heide want daar is vaak geen overstromingsgevoeligheid opgegeven
+
+//openheid biotopen? minder relevant, aangezien de soort ook kan broeden in (open) broekbossen; verbossing is dus niet echt een probleem; aandeel mag echter niet te hoog liggen: max. 75%?
+assign(y, cfilter(id, lt(csum(id, eq('groenkaart2013_20m.asc', 1))/csum(id, 1), 0.75)))
+//Write('watersnip_clusters_10ha_100m_bos_lt75.asc', y)
+assign(id, y)
+
+//een cluster mag maximaal voor 90% uit open water bestaan? Open water evalueren met grb_watergang, eerder dan met bwk, vanwege problematiek complexen in bwk
+
+assign(y, cfilter(id, lt(csum(id, eq('GRB_watergang_at.asc', 1))/csum(id, 1), 0.90)))
+//write('watersnip_clusters_10ha_100m_bos_lt75_openwater_lt90.asc', y)
+assign(id, y)
+
+//er moet minstens één aaneengesloten blok van terrestrisch biotoop van 10 ha aanwezig zijn?
+
+assign(y, cfilter(id, ge(cmax(id, csum(clusterid(and(watersnip_biotopen, not(bwk(ao%, 3160%, 7140%, 7150%, 3110%, 3130%)))), 1)), 10*10000/cellsize2)))
+deleteVariable(watersnip_biotopen)
+//write('watersnip_clusters_10ha_100m_bos_lt75_openwater_lt90_terrest_contig_10ha.asc', y)
+assign(id, y)	
+
+//beperken tot ecodistricten van de ecoregio Kempen?
+
+assign(y, cfilter(id, Ge('Ecoregio.asc', 1)))
+deleteVariable(id)
+
+write('ANB2019_Watersnip2018.asc', IsNonZero(y))
+deleteVariable(y)
+

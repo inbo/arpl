@@ -1,0 +1,19 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af (zonder opgespoten terreinen)
+
+assign(kleinwarkruid_voortplanting_bwk, bwk(2310%, 4030%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(kleinwarkruid_voortplanting_cluster, fuzzyClusterIdU(kleinwarkruid_voortplanting_bwk, 20, meter))
+
+deleteVariable(kleinwarkruid_voortplanting_bwk)
+
+// optimale voortplantingsclusters moeten minimaal 0.16ha groot zijn
+
+assign(kleinwarkruid_leefgebied, cFilterGeArea(kleinwarkruid_voortplanting_cluster, 0.16, hectare))
+deleteVariable(kleinwarkruid_voortplanting_cluster)
+
+write('ANB2019_KleinWarkruid2018.asc', IsNonZero(kleinwarkruid_leefgebied))
+deleteVariable(kleinwarkruid_leefgebied)

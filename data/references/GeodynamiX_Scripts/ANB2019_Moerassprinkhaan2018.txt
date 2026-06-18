@@ -1,0 +1,56 @@
+vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+assign(moerassprinkhaan_bwk, bwk(6410%, 6430%, 6510%, 7140%, hc%, 2190%, rbbhc%, hf%, rbbhf%, hj%, hm%, hpr+, rbbkam%, hp+, mc%, rbbmc%, mk%, 7230%, mm%, 7210%, mp%, ms%, rbbms%))
+
+// vochtkaart gebruiken om nattere delen te selecteren
+//assign(moerassprinkhaan_bodemdrainage, OrEq('bodem_drainage.asc', 1, 2, 3, 7, 8, 10, 11, 12, 14, 15))
+assign(moerassprinkhaan_bodemdrainage, Ge('bodem_drainage.asc', 1))
+
+assign(moerassprinkhaan2, and(moerassprinkhaan_bwk, moerassprinkhaan_bodemdrainage))
+
+deleteVariable(moerassprinkhaan_bwk)
+deleteVariable(moerassprinkhaan_bodemdrainage)
+
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 50 meter liggen
+assign(moerassprinkhaan2_cluster, fuzzyClusterIdU(moerassprinkhaan2, 50, meter))
+
+deleteVariable(moerassprinkhaan2)
+
+// leefgebied moet minstens 5 hectare groot zijn
+assign(moerassprinkhaan_leefgebied5ha, cFilterGeArea(moerassprinkhaan2_cluster, 5, hectare))
+
+assign(moerassprinkhaan_leefgebied1ha, cFilterGeArea(moerassprinkhaan2_cluster, 1, hectare))
+//write('moerassprinkhaan_leefgebied1ha.asc', IsNonZero(moerassprinkhaan_leefgebied1ha))
+
+// indien leefgebied kleiner dan 5 ha dan moet die in een metapopulatiestructuur liggen, dwz met meerdere kleine patches samen (5? = 6 - 1)
+assign(moerassprinkhaan_metapopulatie, GeUniqueCountInBuffer(moerassprinkhaan_leefgebied1ha, 500, meter, moerassprinkhaan_leefgebied1ha, 6))
+//write('moerassprinkhaan_metapopulatie.asc', IsNonZero(moerassprinkhaan_metapopulatie))
+
+assign(moerassprinkhaan_leefgebied1, and(moerassprinkhaan_leefgebied1ha, cellDistanceLe(moerassprinkhaan_metapopulatie, 500, meter)))
+assign(moerassprinkhaan_leefgebied2, and(moerassprinkhaan_leefgebied5ha, cellDistanceLe(moerassprinkhaan_metapopulatie, 500, meter)))
+
+deleteVariable(moerassprinkhaan_leefgebied1ha)
+deleteVariable(moerassprinkhaan_metapopulatie)
+
+assign(moerassprinkhaan_leefgebied_metapopulatie, or(moerassprinkhaan_leefgebied1, moerassprinkhaan_leefgebied2))
+
+deleteVariable(moerassprinkhaan_leefgebied1)
+deleteVariable(moerassprinkhaan_leefgebied2)
+
+assign(moerassprinkhaan_leefgebied, or(moerassprinkhaan_leefgebied5ha, moerassprinkhaan_leefgebied_metapopulatie))
+
+deleteVariable(moerassprinkhaan_leefgebied_metapopulatie)
+deleteVariable(moerassprinkhaan_leefgebied5ha)
+
+// beperk de leefgebiedenkaart tot bepaalde ecoregio's
+//assign(moerassprinkhaan_ecodistrict, Ge('ecoregio.asc', 1))
+assign(moerassprinkhaan_ecodistrict, Ge('ecoregio.asc', 1))
+assign(moerassprinkhaan_leefgebied_ecodistrict, and(moerassprinkhaan_leefgebied, moerassprinkhaan_ecodistrict))
+deleteVariable(moerassprinkhaan_ecodistrict)
+deleteVariable(moerassprinkhaan_leefgebied)
+deleteVariable(moerassprinkhaan2_cluster)
+
+// 0/1 kaarten maken
+write('ANB2019_Moerassprinkhaan2018.asc', IsNonZero(moerassprinkhaan_leefgebied_ecodistrict))
+deleteVariable(moerassprinkhaan_leefgebied_ecodistrict)

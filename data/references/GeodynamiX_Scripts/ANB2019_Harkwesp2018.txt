@@ -1,0 +1,67 @@
+vlaanderen_20m.asc
+
+// baken geschikte open biotopen af
+
+// Kempen met heide
+assign(harkwesp_bwk_Kempen, bwk(cg+, dm%, hmo%, had%, 2310%, 4030%, 6230%))
+
+//Kempen zonder heide
+//assign(harkwesp_bwk_Kempen, bwk(dm%, hmo%, had%, 2310%, 6230%))
+assign(Bodem_Kempen, OrEq('bodem_bodemtype.asc', 66))
+
+assign(harkwesp_Kempen1, and(harkwesp_bwk_Kempen, Bodem_Kempen))
+
+deleteVariable(harkwesp_bwk_Kempen)
+deleteVariable(Bodem_Kempen)
+
+assign(harkwesp_ecodistrict_Kempen, OrEq('ecoregio.asc', 12, 13, 14, 15, 16, 17))
+
+assign(harkwesp_Kempen, and(harkwesp_Kempen1, harkwesp_ecodistrict_Kempen))
+
+deleteVariable(harkwesp_ecodistrict_Kempen)
+deleteVariable(harkwesp_Kempen1)
+
+// Duinen
+assign(harkwesp_bwk_Duinen, bwk(da+, dm%, 2130%, 2330%))
+assign(harkwesp_nietBos, Eq('bosinventaris_2001.asc', 0))
+
+assign(harkwesp_Duinen1, and(harkwesp_bwk_Duinen, harkwesp_nietBos))
+
+deleteVariable(harkwesp_bwk_Duinen)
+deleteVariable(harkwesp_nietBos)
+
+assign(harkwesp_ecodistrict_Duinen, OrEq('ecoregio.asc', 1))
+
+assign(harkwesp_Duinen, and(harkwesp_Duinen1, harkwesp_ecodistrict_Duinen))
+
+deleteVariable(harkwesp_Duinen1)
+deleteVariable(harkwesp_ecodistrict_Duinen)
+
+// Overige ecodistricten
+assign(harkwesp_bwk_Rest, bwk(cg+, dm%, hmo%, had%, 2310%, 4030%, 6230%))
+assign(harkwesp_ecodistrict_Rest, OrEq('ecoregio.asc', 4, 5, 6, 7, 8, 9, 10, 11, 22, 23))
+
+assign(harkwesp_Rest, and(harkwesp_bwk_Rest, harkwesp_ecodistrict_Rest))
+
+deleteVariable(harkwesp_bwk_Rest)
+deleteVariable(harkwesp_ecodistrict_Rest)
+
+// Voeg alles samen
+
+assign(harkwesp_bwk_biotoop, or(harkwesp_Kempen, harkwesp_Duinen, harkwesp_Rest))
+
+deleteVariable(harkwesp_Duinen)
+deleteVariable(harkwesp_Kempen)
+deleteVariable(harkwesp_Rest)
+
+// geschikte open biotopen mogen maximaal op een onderlinge afstand van 10 meter liggen
+assign(harkwesp_bwk_biotoop_cluster, fuzzyClusterIdU(harkwesp_bwk_biotoop, 10, meter))
+
+deleteVariable(harkwesp_bwk_biotoop)
+
+// open leefgebied moet minstens 0.1 hectare groot zijn
+assign(harkwesp_leefgebied, cFilterGeArea(harkwesp_bwk_biotoop_cluster, 0.1, hectare))
+
+write('ANB2019_harkwesp2018.asc', IsNonZero(harkwesp_leefgebied))
+//write('ANB2019_harkwesp2018.asc', if(harkwesp_leefgebied, harkwesp_bwk_biotoop_cluster, 0))
+deleteVariable(harkwesp_ecodistrict)

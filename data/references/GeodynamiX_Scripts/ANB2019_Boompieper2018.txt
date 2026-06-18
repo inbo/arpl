@@ -1,0 +1,39 @@
+vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+assign(boompieper_bwk, bwk(hd%, 2130%, 2130_hd%, had%, 2150%, ha%, 2330%, 6230_ha%, sg%, 2310%, 4030%, 6230%, rbbsg%, hk%, sk%, 9190%, qb%, 9120%, 2310%, cg%, 5130%, cm%, 4010%, cd%, 4030%, cv%, cd%, ce%, cg%, cm%, cv%, dm%, ha%, hd%, hk%, hn%, pa%, pi%, pm%, ppa%, ppi%, sd%, 2160%, 2170%, se%, sg%, 9190%))
+
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 50 meter liggen
+assign(boompieper_bwk_cluster, fuzzyClusterIdU(boompieper_bwk, 50, meter))
+
+deleteVariable(boompieper_bwk)
+
+// leefgebied moet minstens 5 hectare groot zijn
+assign(boompieper_leefgebied_groot, cFilterGeArea(boompieper_bwk_cluster, 5, hectare))
+//write('boompieper_leefgebied_groot.asc', IsNonZero(boompieper_leefgebied_groot))
+
+deleteVariable(boompieper_bwk_cluster)
+
+// kleine heidepercelen moeten grenzen aan dennenbos
+assign(boompieper_heide, bwk(cg%, 2310%, 5130%, cm%, 4010%, cd%, 4030%, cv%, ce%, 7150%, 7140%, cv%))
+assign(boompieper_naaldbos, bwk(p%))
+assign(boompieper_heide_naaldbos, edge(boompieper_heide, boompieper_naaldbos))
+
+deleteVariable(boompieper_heide)
+deleteVariable(boompieper_naaldbos)
+
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 50 meter liggen
+assign(boompieper_heide_naaldbos_cluster, fuzzyClusterIdU(boompieper_heide_naaldbos, 50, meter))
+
+deleteVariable(boompieper_heide_naaldbos)
+
+// leefgebied moet minstens 2 hectare groot zijn
+assign(boompieper_leefgebied_klein, cFilterGeArea(boompieper_heide_naaldbos_cluster, 2, hectare))
+
+deleteVariable(boompieper_heide_naaldbos_cluster)
+
+assign(boompieper_leefgebied, or(boompieper_leefgebied_groot, boompieper_leefgebied_klein))
+write('ANB2019_Boompieper2018.asc', IsNonZero(boompieper_leefgebied))
+
+deleteVariable(boompieper_leefgebied_klein)
+deleteVariable(boompieper_leefgebied_groot)

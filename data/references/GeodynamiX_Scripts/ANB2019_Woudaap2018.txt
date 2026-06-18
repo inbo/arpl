@@ -1,0 +1,55 @@
+vlaanderen_20m.asc
+
+// broedplaatsen: rietland en moerassen
+
+assign(woudaap_voortplanting_bwk, bwk(3260%, 3270%, ad%, ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, aom%, 3110%, 3130%, ap, ap+, apo, apo+, kn%, mc%, rbbmc%, mcb%, mr%, 2190%, 6430_hw%, 6430_mr%, 7140%, 7140_mrd%, rbbmr%, mrb%, sf%, 91E0%, rbbsf%))
+
+// mag geen populier zijn
+
+assign(populier, bwk(l%))
+assign(woudaap_voortplanting_bwk1, and(woudaap_voortplanting_bwk, not(populier)))
+
+deleteVariable(woudaap_voortplanting_bwk)
+deleteVariable(populier)
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het cluster
+
+assign(woudaap_voortplanting_cluster, fuzzyClusterId(woudaap_voortplanting_bwk1, 50/cellSize))
+
+deleteVariable(woudaap_voortplanting_bwk1)
+
+// clusters minimaal 10 ha
+
+assign(woudaap_voortplanting2, cFilterGeArea(woudaap_voortplanting_cluster, 10, hectare))
+
+deleteVariable(woudaap_voortplanting_cluster)
+
+// er moet minimum 1 ha open water in het voortplantingsgebied liggen
+
+assign(woudaap_openwater, bwk(ad%, ae%, 3140%, 3150%, 2190%, aer%, aev%, aom%, 3110%, 3130%, ap, ap+, apo, apo+))
+
+// clustering: indien geschikte cel binnen 10 meter, dan hoort die cel bij het cluster
+
+assign(woudaap_openwater_cluster, fuzzyClusterId(woudaap_openwater, 10/cellSize))
+
+deleteVariable(woudaap_openwater)
+
+assign(woudaap_openwater1, cFilterGeArea(woudaap_openwater_cluster, 1, hectare))
+
+deleteVariable(woudaap_openwater_cluster)
+
+assign(woudaap_leefgebied1, cFilter(woudaap_voortplanting2, cellDistanceLe(woudaap_openwater1, 100, meter)))
+
+deleteVariable(woudaap_voortplanting2)
+deleteVariable(woudaap_openwater1)
+
+assign(woudaap_leefgebied1_cluster, FuzzyClusterId(woudaap_leefgebied1, 100/cellSize))
+
+deleteVariable(woudaap_leefgebied1)
+
+assign(woudaap_leefgebied, cFilterGeArea(woudaap_leefgebied1_cluster, 10, hectare))
+write('ANB2019_Woudaap2018.asc', IsNonZero(woudaap_leefgebied))
+
+deleteVariable(woudaap_leefgebied1_cluster)
+
+deleteVariable(woudaap_leefgebied)

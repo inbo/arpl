@@ -1,0 +1,19 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af (zonder opgespoten terreinen)
+
+assign(vlozegge_voortplanting_bwk, bwk(6410%, 7230%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(vlozegge_voortplanting_cluster, fuzzyClusterIdU(vlozegge_voortplanting_bwk, 20, meter))
+
+deleteVariable(vlozegge_voortplanting_bwk)
+
+// optimale voortplantingsclusters moeten minimaal 0.16ha groot zijn
+
+assign(vlozegge_leefgebied, cFilterGeArea(vlozegge_voortplanting_cluster, 0.16, hectare))
+deleteVariable(vlozegge_voortplanting_cluster)
+
+write('ANB2019_Vlozegge2018.asc', IsNonZero(vlozegge_leefgebied))
+deleteVariable(vlozegge_leefgebied)

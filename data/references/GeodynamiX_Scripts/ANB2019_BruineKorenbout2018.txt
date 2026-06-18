@@ -1,0 +1,103 @@
+vlaanderen_20m_met_maas.asc
+
+// Voortplanting: voedselrijke wateren: Ae en varianten
+// Niet: Ao, Aom
+
+// Voortplanting stromend
+// 3	Bk1		WKb			Kleine beek
+// 4	Bk2		WKb			Kleine beek
+// 5	BkK1		WKb(Kempen) 		Kleine beek Kempen
+// 6	BkK2		WKb(Kempen) 		Kleine beek Kempen
+// 7	KabPKunst	WKmwl
+// 8	Kan		WKmwl			Kanaal
+// 9	KanPKunst	WKmwl
+// 10	Kunst		WKmwl			Kunstmatige waterloop
+
+// Aanpalend aan water: smalle rietzone (Mr, Mm)
+
+// Directe omgeving (20 ha): Bos, struweel en Kbb en Kh samen min 50%, max 90%  (alle eenheden) 
+
+// voortplanting
+
+assign(bruinekorenbout_waterlopen1, OrEq('rastert_huetzon1.asc', 3, 4, 5, 6, 7, 8, 9, 10))
+assign(bruinekorenbout_voortplanting_bwk1, bwk(ae%, 2190%, 3140%, 3150%, k(ae%))
+assign(bruinekorenbout_voortplanting_bwkwaterlopen, or(bruinekorenbout_waterlopen1, bruinekorenbout_voortplanting_bwk1))
+
+deleteVariable(bruinekorenbout_waterlopen1)
+
+assign(bruinekorenbout_voortplanting_notbwk, bwk(ao, ao-, ao+, 3160%, 7140%, aom, aom-, aom+))
+assign(bruinekorenbout_voortplanting_bwk, and(bruinekorenbout_voortplanting_bwkwaterlopen, not(bruinekorenbout_voortplanting_notbwk)))
+
+deleteVariable(bruinekorenbout_voortplanting_bwk1)
+deleteVariable(bruinekorenbout_voortplanting_notbwk)
+deleteVariable(bruinekorenbout_voortplanting_bwkwaterlopen)
+
+// clustering: indien geschikte cel binnen 10 meter, dan hoort die cel bij het waterbiotoop
+assign(bruinekorenbout_voortplanting_bwk_cluster, fuzzyClusterIdU(bruinekorenbout_voortplanting_bwk, 10, meter))
+
+// waterbiotoop moet minimaal 100 m² groot zijn
+assign(bruinekorenbout_voortplanting1, cFilterGeArea(bruinekorenbout_voortplanting_bwk_cluster, 0.04, hectare))
+//write('bruinekorenbout_voortplanting1.asc', IsNonZero(bruinekorenbout_voortplanting1))
+
+deleteVariable(bruinekorenbout_voortplanting_bwk)
+deleteVariable(bruinekorenbout_voortplanting_bwk_cluster)
+
+// nabij landbiotoop
+
+assign(bruinekorenbout_landbiotoop_bwk1, bwk(mr%, 6430_hw%, 6430_mr%, 7140%, rbbmr%, mm%, 7210%, k(mr%, k(mm%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het landbiotoop
+
+assign(bruinekorenbout_landbiotoop_bwk1_cluster, fuzzyClusterIdU(bruinekorenbout_landbiotoop_bwk1, 20, meter))
+
+deleteVariable(bruinekorenbout_landbiotoop_bwk1)
+
+// landbiotoop moet minimaal 0.04 ha groot zijn
+
+assign(bruinekorenbout_landbiotoop1, cFilterGeArea(bruinekorenbout_landbiotoop_bwk1_cluster, 0.04, hectare))
+//write('bruinekorenbout_landbiotoop1.asc', IsNonZero(bruinekorenbout_landbiotoop1))
+
+deleteVariable(bruinekorenbout_landbiotoop_bwk1_cluster)
+
+// riet moet aanpalend zijn aan waterbiotoop
+
+assign(bruinekorenbout_waterbiotoop, and(bruinekorenbout_voortplanting1, cellDistanceLe(bruinekorenbout_landbiotoop1, 25, meter)))
+//write('bruinekorenbout_waterbiotoop.asc', IsNonZero(bruinekorenbout_waterbiotoop))
+
+// landbiotoop moet aanpalend zijn aan waterbiotoop
+
+assign(bruinekorenbout_landbiotoop_nabij, and(bruinekorenbout_landbiotoop1, cellDistanceLe(bruinekorenbout_voortplanting1, 25, meter)))
+//write('bruinekorenbout_landbiotoop_nabij.asc', IsNonZero(bruinekorenbout_landbiotoop_nabij))
+
+deleteVariable(bruinekorenbout_landbiotoop_nabij)
+deleteVariable(bruinekorenbout_voortplanting1)
+
+// omgevend landbiotoop ruimere omgeving
+
+assign(bruinekorenbout_landbiotoop_bwk_ruim, bwk(e%, f%, 9120%, 9130%, 9150%, h%, 6410%,6510%, rbbhc%, l%, p%, rbbppm%, q%, 9120%, 9130%, 9150%, 9160%, 9190%, s%, 7140%, 7230%, 91E0%, rbbsf%, rbbsg%, rbbsp%, ku%, 6430%, kbb%, kh%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het landbiotoop
+
+assign(bruinekorenbout_landbiotoop_bwk_ruim_cluster, fuzzyClusterIdU(bruinekorenbout_landbiotoop_bwk_ruim, 50, meter))
+
+deleteVariable(bruinekorenbout_landbiotoop_bwk_ruim)
+
+// landbiotoop_ruim moet minimaal 10 ha groot zijn
+
+assign(bruinekorenbout_landbiotoop2, cFilterGeArea(bruinekorenbout_landbiotoop_bwk_ruim_cluster, 10, hectare))
+//write('bruinekorenbout_landbiotoop2.asc', IsNonZero(bruinekorenbout_landbiotoop2))
+
+deleteVariable(bruinekorenbout_landbiotoop_bwk_ruim_cluster)
+
+// zoek landbiotoop1 dat ingebed ligt in landbiotoop2, dus binnen de 1km ligt
+
+assign(bruinekorenbout_landbiotoop_ruim, and(bruinekorenbout_landbiotoop2, cellDistanceLe(bruinekorenbout_waterbiotoop, 1000, meter)))
+//write('bruinekorenbout_landbiotoop_ruim.asc', IsNonZero(bruinekorenbout_landbiotoop_ruim))
+
+assign(bruinekorenbout_landbiotoop_ruim, or(bruinekorenbout_waterbiotoop, bruinekorenbout_landbiotoop2))
+write('ANB2019_BruineKorenbout2018.asc', IsNonZero(bruinekorenbout_landbiotoop_ruim))
+
+deleteVariable(bruinekorenbout_landbiotoop1)
+deleteVariable(bruinekorenbout_landbiotoop2)
+deleteVariable(bruinekorenbout_waterbiotoop)
+deleteVariable(bruinekorenbout_landbiotoop_ruim)

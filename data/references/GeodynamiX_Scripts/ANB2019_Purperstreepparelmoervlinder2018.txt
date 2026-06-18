@@ -1,0 +1,16 @@
+vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+assign(purperstreepparelmoervlinder_bwk, bwk(hf%))
+
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 50 meter liggen
+assign(purperstreepparelmoervlinder_bwk_cluster, fuzzyClusterIdU(purperstreepparelmoervlinder_bwk, 50, meter))
+deleteVariable(purperstreepparelmoervlinder_bwk)
+
+// leefgebied moet minstens 1 hectare groot zijn
+assign(purperstreepparelmoervlinder_leefgebied, cFilterGeArea(purperstreepparelmoervlinder_bwk_cluster, 0.5, hectare))
+deleteVariable(purperstreepparelmoervlinder_bwk_cluster)
+
+// 0/1 kaarten maken
+write('ANB2019_purperstreepparelmoervlinder2018.asc', IsNonZero(purperstreepparelmoervlinder_leefgebied))
+deleteVariable(purperstreepparelmoervlinder_leefgebied)

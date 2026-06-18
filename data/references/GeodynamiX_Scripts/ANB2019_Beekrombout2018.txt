@@ -1,0 +1,65 @@
+vlaanderen_20m_met_maas.asc
+
+// waterlopen
+
+assign(beekrombout_waterlopen1, OrEq('rastert_huetzon1.asc', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 17, 18, 19))
+assign(beekrombout_waterlopen1_bwk, bwk(3260%))
+
+//write('beekrombout_waterlopen1.asc', IsNonZero(beekrombout_waterlopen1))
+assign(beekrombout_waterlopen2, eq('maas.asc', 1))
+assign(beekrombout_waterlopen, or(beekrombout_waterlopen1, beekrombout_waterlopen2, beekrombout_waterlopen1_bwk))
+deleteVariable(beekrombout_waterlopen1)
+deleteVariable(beekrombout_waterlopen2)
+deleteVariable(beekrombout_waterlopen1_bwk)
+
+// clustering: indien geschikte cel binnen 10 meter, dan hoort die cel bij het waterbiotoop
+assign(beekrombout_waterlopen_cluster, fuzzyClusterIdU(beekrombout_waterlopen, 10, meter))
+deleteVariable(beekrombout_waterlopen)
+
+// waterbiotoop moet minimaal 0.4 ha groot zijn
+assign(beekrombout_waterbiotoop1, cFilterGeArea(beekrombout_waterlopen_cluster, 0.4, hectare))
+deleteVariable(beekrombout_waterlopen_cluster)
+
+// omgevend landbiotoop_bos
+assign(beekrombout_landbiotoop_bos_bwk, bwk(ru%, 9160%, 91E0%, 91F0%, sf%, rbbsf%, sg%, rbbsg%, sk%, 6210%, sm%, 7140%, 7230%, 91E0%, so%, sp%, rbbsp%, sz%, v%, q%, 2180%, 9110%, 9120%, 9130%, 9150%, 9160%, 9190%, f%, l%, p%, rbbppm%, n, n+, n-, kp%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het landbiotoop
+assign(beekrombout_landbiotoop_bos_bwk_cluster, fuzzyClusterIdU(beekrombout_landbiotoop_bos_bwk, 50, meter))
+deleteVariable(beekrombout_landbiotoop_bos_bwk)
+
+// landbiotoop_bos moet minimaal 5 ha groot zijn
+assign(beekrombout_landbiotoop_bos, cFilterGeArea(beekrombout_landbiotoop_bos_bwk_cluster, 5, hectare))
+deleteVariable(beekrombout_landbiotoop_bos_bwk_cluster)
+
+// omgevend landbiotoop_rest
+assign(beekrombout_landbiotoop_rest_bwk, bwk(ru%, 2180%, 9160%, 91E0%, 91F0%, sf%, rbbsf%, sg%, rbbsg%, sk%, 6210%, sm%, 7140%, 7230%, 91E0%, so%, rbbso%, sp%, rbbsp%, sz%, v%, q%, 2180%, 9110%, 9120%, 9130%, 9150%, 9160%, 9190%, f%, l%, p%, rbbppm%, n, n+, n-, kp%, h%, 6410%, 6430%, 6510%, rbbhc%, ku%, s%, 7140%, 7230%, 91E0%, rbbsf%, rbbsg%, rbbso%, rbbsp%, b%, a%, 3150%, 7140%, m%, 6430_hw%, 7210%, 7230%, rbbmc%, rbbmr%, rbbms%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het landbiotoop
+assign(beekrombout_landbiotoop_rest_bwk_cluster, fuzzyClusterIdU(beekrombout_landbiotoop_rest_bwk, 50, meter))
+deleteVariable(beekrombout_landbiotoop_rest_bwk)
+
+// landbiotoop_rest moet minimaal 50 ha groot zijn
+assign(beekrombout_landbiotoop_rest, cFilterGeArea(beekrombout_landbiotoop_rest_bwk_cluster, 50, hectare))
+deleteVariable(beekrombout_landbiotoop_rest_bwk_cluster)
+
+// landbiotoop_bos moet deel uitmaken van landbiotoop_rest
+assign(beekrombout_landbiotoop1, and(beekrombout_landbiotoop_rest, cellDistanceLe(beekrombout_landbiotoop_bos, 10, meter)))
+//write('beekrombout_landbiotoop1.asc', IsNonZero(beekrombout_landbiotoop1))
+
+deleteVariable(beekrombout_landbiotoop_bos)
+deleteVariable(beekrombout_landbiotoop_rest)
+
+assign(beekrombout_waterbiotoop, and(beekrombout_waterbiotoop1, cellDistanceLe(beekrombout_landbiotoop1, 500, meter)))
+//write('beekrombout_waterbiotoop.asc', IsNonZero(beekrombout_waterbiotoop))
+
+assign(beekrombout_landbiotoop, and(beekrombout_landbiotoop1, cellDistanceLe(beekrombout_waterbiotoop1, 500, meter)))
+//write('beekrombout_landbiotoop.asc', IsNonZero(beekrombout_landbiotoop))
+
+assign(beekrombout_leefgebied, or(beekrombout_landbiotoop, beekrombout_waterbiotoop))
+write('ANB2019_Beekrombout2018.asc', IsNonZero(beekrombout_leefgebied))
+
+deleteVariable(beekrombout_landbiotoop1)
+deleteVariable(beekrombout_waterbiotoop1)
+deleteVariable(beekrombout_landbiotoop)
+deleteVariable(beekrombout_waterbiotoop)
+deleteVariable(beekrombout_leefgebied)

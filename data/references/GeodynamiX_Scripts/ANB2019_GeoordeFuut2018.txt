@@ -1,0 +1,20 @@
+Vlaanderen_20m_met_maas.asc
+
+// baken geschikte waterbiotopen af; zelf enkele moerastypes toegevoegd op basis van LSVI tekst
+assign(geoordefuut_waterbiotoop1, bwk(ae%, 3140%, 3150%, aev%, ao%, 3160%, 7140%, 7150%, 3110%, 3130%, aom%, apo, apo+, md%, 7140%, mk%, 7230%, ms%, rbbms%))
+assign(geoordefuut_waterbiotoop1_cluster, fuzzyClusterIdU(geoordefuut_waterbiotoop1, 50, meter))
+deleteVariable(geoordefuut_waterbiotoop1)
+
+// oppervlakte waterbiotoop moet minstens 250ha zijn
+assign(geoordefuut_leefgebied, cFilterGeArea(geoordefuut_waterbiotoop1_cluster, 10, hectare))
+deleteVariable(geoordefuut_waterbiotoop1_cluster)
+
+// baken ecoregio van ecodistrictgebieden af
+assign(geoordefuut_ecodistrict, Ge('ecoregio.asc', 1))
+
+assign(geoordefuut_waterbiotoop_ecodistrict, and(geoordefuut_leefgebied, geoordefuut_ecodistrict))
+deleteVariable(geoordefuut_leefgebied)
+deleteVariable(geoordefuut_ecodistrict)
+
+write('ANB2019_GeoordeFuut2018.asc', IsNonZero(geoordefuut_waterbiotoop_ecodistrict))
+deleteVariable(geoordefuut_waterbiotoop_ecodistrict)

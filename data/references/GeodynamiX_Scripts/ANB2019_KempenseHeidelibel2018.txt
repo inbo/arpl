@@ -1,0 +1,84 @@
+vlaanderen_20m_met_maas.asc
+
+// waterbiotoop (min 1 ha)
+// Matig voedselrijke wateren: ae, Aom, Ao
+// Ruig grassland en moeras: hf, hr, hc, hu, hj, mr, mc, md, mk, mm, ms, sf, hf
+// Steeds moeten beiden aanwezig zijn, waarbij aandeel ruig grasland en moeras minstens 80 % bedraagt.
+
+// Direkte omgeving (5 ha)
+// Structuurrijke graslanden : ha, hc, hm, hu, hj, 
+// Heide: ce, cg, cm
+// Ruigtes: hf, hr, ku, 
+// Moeras: mr, mc, md, mk, mm, ms, 
+// Samen minstens 50 % van de patch
+
+// Verder  aanwezig
+// struweel: sf, so, sm, se, 
+// Bos: q*, ppm* pm*, l*, v* 
+
+// waterbiotoop
+
+assign(kempenseheidelibel_waterbiotoop_bwk1, bwk(3130%, ae%, 3140%, 3150%, ao%, 7140%, 7150%, k(ae%, k(ao%, hc%, 6410%, hf%, 6430%, hj%, hr%, hu%, mc%, rbbmc%, md%, 91E0%, mk%, 7230%, mm%, 7210%, mr%, rbbmr%, ms%, rbbms%, sf%, rbbsf%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het waterbiotoop
+assign(kempenseheidelibel_waterbiotoop_bwk1_cluster, fuzzyClusterIdU(kempenseheidelibel_waterbiotoop_bwk1, 20, meter))
+
+deleteVariable(kempenseheidelibel_waterbiotoop_bwk1)
+
+// waterbiotoop moet minimaal 1 ha groot zijn
+assign(kempenseheidelibel_waterbiotoop1, cFilterGeArea(kempenseheidelibel_waterbiotoop_bwk1_cluster, 1, hectare))
+//write('kempenseheidelibel_waterbiotoop1.asc', IsNonZero(kempenseheidelibel_waterbiotoop1))
+
+deleteVariable(kempenseheidelibel_waterbiotoop_bwk1_cluster)
+
+assign(kempenseheidelibel_waterbiotoop_bwk2, bwk(ce%, 4010%, 7150%, cg%, 2310%, 4030%, cm%, ha%, hc%, 6410%, hf%, 6430%, hj%, hm%, hr%, hu%, ku%, mc%, rbbmc%, md%, 7140%, 91E0%, mk%, 7230%, mm%, 7210%, mr%, rbbmr%, ms%, rbbms%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het waterbiotoop
+assign(kempenseheidelibel_waterbiotoop_bwk2_cluster, fuzzyClusterIdU(kempenseheidelibel_waterbiotoop_bwk2, 20, meter))
+
+deleteVariable(kempenseheidelibel_waterbiotoop_bwk2)
+
+// ruige graslanden en moeras moet minimaal 0.8 ha groot zijn
+assign(kempenseheidelibel_waterbiotoop2, cFilterGeArea(kempenseheidelibel_waterbiotoop_bwk2_cluster, 0.8, hectare))
+//write('kempenseheidelibel_waterbiotoop2.asc', IsNonZero(kempenseheidelibel_waterbiotoop2))
+
+deleteVariable(kempenseheidelibel_waterbiotoop_bwk2_cluster)
+
+assign(kempenseheidelibel_waterbiotoop3, cFilter(kempenseheidelibel_waterbiotoop1, and(kempenseheidelibel_waterbiotoop1, cellDistanceLe(kempenseheidelibel_waterbiotoop2, 10, meter))))
+//write('kempenseheidelibel_waterbiotoop3.asc', IsNonZero(kempenseheidelibel_waterbiotoop2))
+
+deleteVariable(kempenseheidelibel_waterbiotoop1)
+deleteVariable(kempenseheidelibel_waterbiotoop2)
+
+// omgevend landbiotoop nabij
+
+assign(kempenseheidelibel_landbiotoop_bwk, bwk(ce%, 4010%, 7150%, cg%, 2310%, 4030%, cm%, ha%, hc%, 6410%, hf%, 6430%, hj%, hm%, hr%, hu%, 6510%, ku%, l%, mc%, rbbmc%, md%, 7140%, 91E0%, mk%, 7230%, mm%, mr%, rbbmr%, ms%, rbbms%, ppm%, pm%, q%, se%, sf%, 91E0%, rbbsf%, sm%, 4010%, 7140%, 7230%, rbbsm%, so%, v%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het landbiotoop
+
+assign(kempenseheidelibel_landbiotoop_bwk_cluster, fuzzyClusterIdU(kempenseheidelibel_landbiotoop_bwk, 50, meter))
+
+deleteVariable(kempenseheidelibel_landbiotoop_bwk)
+
+// landbiotoop moet minimaal 2.5ha groot zijn
+
+assign(kempenseheidelibel_landbiotoop1, cFilterGeArea(kempenseheidelibel_landbiotoop_bwk_cluster, 2.5, hectare))
+//write('kempenseheidelibel_landbiotoop1.asc', IsNonZero(kempenseheidelibel_landbiotoop1))
+
+deleteVariable(kempenseheidelibel_landbiotoop_bwk_cluster)
+
+// zoek landbiotoop dat voldoende dicht bij waterbiotoop ligt
+
+assign(kempenseheidelibel_waterbiotoop, and(kempenseheidelibel_waterbiotoop3, cellDistanceLe(kempenseheidelibel_landbiotoop1, 100, meter)))
+//write('kempenseheidelibel_waterbiotoop.asc', IsNonZero(kempenseheidelibel_waterbiotoop))
+
+assign(kempenseheidelibel_landbiotoop, and(kempenseheidelibel_landbiotoop1, cellDistanceLe(kempenseheidelibel_waterbiotoop3, 100, meter)))
+//write('kempenseheidelibel_landbiotoop.asc', IsNonZero(kempenseheidelibel_landbiotoop))
+
+assign(kempenseheidelibel_leefgebied, or(kempenseheidelibel_waterbiotoop, kempenseheidelibel_landbiotoop))
+write('ANB2019_KempenseHeidelibel2018.asc', IsNonZero(kempenseheidelibel_waterbiotoop))
+
+deleteVariable(kempenseheidelibel_landbiotoop1)
+deleteVariable(kempenseheidelibel_waterbiotoop3)
+deleteVariable(kempenseheidelibel_landbiotoop)
+deleteVariable(kempenseheidelibel_waterbiotoop)

@@ -1,0 +1,53 @@
+vlaanderen_20m_met_maas.asc
+
+// waterbiotoop: (opp 100 m²): bij voorkeur voedselrijke wateren: Ae, kan ook Ao en Aom
+// plassen met waterplanten
+
+// Directe omgeving:
+// Afwisseling tussen alle types grasland, moeras (mr, mc, md, mk, mm, ms), natte heide (ce, cm, ms, t),  alle types bos, struweel en aanplant, ruigte (hf, ku, hr) 
+
+// Habitattypisch voor: (3150)
+
+// waterbiotoop
+
+assign(variabelewaterjuffer_waterbiotoop_bwk1, bwk(ae%, ao%, 3110%, 3150%, k(ae%, k(ao%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het waterbiotoop
+assign(variabelewaterjuffer_waterbiotoop_bwk_cluster, fuzzyClusterIdU(variabelewaterjuffer_waterbiotoop_bwk1, 50, meter))
+
+// waterbiotoop moet minimaal 10 m² groot zijn
+assign(variabelewaterjuffer_waterbiotoop1, cFilterGeArea(variabelewaterjuffer_waterbiotoop_bwk_cluster, 0.04, hectare))
+//write('variabelewaterjuffer_waterbiotoop1.asc', IsNonZero(variabelewaterjuffer_waterbiotoop1))
+
+deleteVariable(variabelewaterjuffer_waterbiotoop_bwk1)
+deleteVariable(variabelewaterjuffer_waterbiotoop_bwk_cluster)
+
+// omgevend landbiotoop nabij
+
+assign(variabelewaterjuffer_landbiotoop_bwk1, bwk(hc%, hf%, hj%, hm%, hu%, mr%, mc%, md%, mk%, mm%, ms%, ce%, cm%, ms%, t%, sp%, sz%, sf%, so%, sm%, ru%, v%, q%, l%, ppm%, pm%, n, n+, kbb%, kh%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het landbiotoop
+
+assign(variabelewaterjuffer_landbiotoop_bwk_cluster, fuzzyClusterIdU(variabelewaterjuffer_landbiotoop_bwk1, 50, meter))
+
+deleteVariable(variabelewaterjuffer_landbiotoop_bwk1)
+
+// landbiotoop moet minimaal 5 ha groot zijn
+
+assign(variabelewaterjuffer_landbiotoop1, cFilterGeArea(variabelewaterjuffer_landbiotoop_bwk_cluster, 5, hectare))
+//write('variabelewaterjuffer_landbiotoop1.asc', IsNonZero(variabelewaterjuffer_landbiotoop1))
+
+deleteVariable(variabelewaterjuffer_landbiotoop_bwk_cluster)
+
+// landbiotoop moet aanpalend zijn aan waterbiotoop
+
+assign(variabelewaterjuffer_waterbiotoop, and(variabelewaterjuffer_waterbiotoop1, cellDistanceLe(variabelewaterjuffer_landbiotoop1, 100, meter)))
+write('variabelewaterjuffer_waterbiotoop.asc', IsNonZero(variabelewaterjuffer_waterbiotoop))
+
+assign(variabelewaterjuffer_landbiotoop, and(variabelewaterjuffer_landbiotoop1, cellDistanceLe(variabelewaterjuffer_waterbiotoop1, 100, meter)))
+write('variabelewaterjuffer_landbiotoop.asc', IsNonZero(variabelewaterjuffer_landbiotoop))
+
+deleteVariable(variabelewaterjuffer_landbiotoop)
+deleteVariable(variabelewaterjuffer_landbiotoop1)
+deleteVariable(variabelewaterjuffer_waterbiotoop)
+deleteVariable(variabelewaterjuffer_waterbiotoop1)

@@ -1,0 +1,50 @@
+vlaanderen_20m.asc
+
+// lees de shape file in uit de vogelgebiedendatabank met minstens ?? pijlstaarten
+
+assign(pijlstaart_watervogelgebieden, 'leefgebied_pijlstaart_20m.asc')
+
+assign(pijlstaart_watervogelgebied1, and(ge(pijlstaart_watervogelgebieden, 1), le(pijlstaart_watervogelgebieden, 67)))
+deleteVariable(pijlstaart_watervogelgebieden)
+
+// baken de foerageergebieden binnen de telgebieden af
+
+assign(pijlstaart_foerageer_bwk, bwk(ae%, 2190%, 3140%, 3150%, aer%, aev%, ap%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, hp+%, hpr%, rbbkam%, rbbzil%, hpr+%))
+
+// waterlopen
+
+assign(pijlstaart_waterlopen, OrEq('rastert_huetzon1.asc', 11, 12, 13, 14, 17, 18))
+
+assign(pijlstaart_foerageer1, or(pijlstaart_foerageer_bwk, pijlstaart_waterlopen))
+deleteVariable(pijlstaart_waterlopen)
+deleteVariable(pijlstaart_foerageer_bwk)
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het leefgebied - er moet voldoende open gebied zijn!
+
+assign(pijlstaart_foerageer1_cluster, fuzzyClusterIdU(pijlstaart_foerageer1, 50, meter))
+deleteVariable(pijlstaart_foerageer1)
+
+// leefgebiedcluster moeten minimaal 5ha groot zijn
+
+assign(pijlstaart_leefgebied1, cFilterGeArea(pijlstaart_foerageer1_cluster, 5, hectare))
+deleteVariable(pijlstaart_foerageer1_cluster)
+
+assign(pijlstaart_leefgebied, and(pijlstaart_watervogelgebied1, pijlstaart_leefgebied1))
+deleteVariable(pijlstaart_watervogelgebied1)
+deleteVariable(pijlstaart_leefgebied1)
+
+// baken ecoregio van ecodistrictgebieden af
+
+assign(pijlstaart_ecodistrict, ge('ecoregio.asc', 1))
+
+assign(pijlstaart_leefgebied_ecodistrict1, and(pijlstaart_leefgebied, pijlstaart_ecodistrict))
+deleteVariable(pijlstaart_ecodistrict)
+deleteVariable(pijlstaart_leefgebied)
+
+assign(pijlstaart_leefgebied_ecodistrict1_cluster, FuzzyClusterIdU(pijlstaart_leefgebied_ecodistrict1, 50, meter))
+deleteVariable(pijlstaart_leefgebied_ecodistrict1)
+
+assign(pijlstaart_leefgebied_ecodistrict, cFilterGeArea(pijlstaart_leefgebied_ecodistrict1_cluster, 5, hectare))
+deleteVariable(pijlstaart_leefgebied_ecodistrict1_cluster)
+write('ANB2019_Pijlstaart2018.asc', IsNonzero(pijlstaart_leefgebied_ecodistrict))
+deleteVariable(pijlstaart_leefgebied_ecodistrict)

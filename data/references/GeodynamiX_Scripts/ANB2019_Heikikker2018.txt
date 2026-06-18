@@ -1,0 +1,101 @@
+Vlaanderen_20m.asc
+
+// baken geschikte waterbiotopen af
+// habitattypische soort: 3110, 3130, 3160
+
+assign(heikikker_waterbiotoop0, bwk(3110%, 3130%, ao%, 3160%, 7140%, 7150%))
+
+// uit Blauwe laag kleine waters proberen te filteren
+
+assign(BlauweLaag, eq('BlauweLaag_Plassen_06042017_20m_.asc', 1))
+
+assign(BlauweLaag_cluster, fuzzyClusterIdU(BlauweLaag, 10, meter))
+
+deleteVariable(BlauweLaag)
+
+assign(heikikker_kleinwater, cFilterLeArea(BlauweLaag_cluster, 0.4, hectare))
+
+assign(heikikker_waterbiotoop1, or(heikikker_waterbiotoop0, heikikker_kleinwater))
+
+deleteVariable(BlauweLaag_cluster)
+
+deleteVariable(heikikker_waterbiotoop0)
+deleteVariable(heikikker_kleinwater)
+
+// binnen een straal van 500m moeten minstens 5 (6-1 dwz 6 - de eigen poel) andere geschikte voortplantingsgebieden liggen
+
+assign(heikikker_waterbiotoop1_cluster, clusterId(heikikker_waterbiotoop1))
+
+deleteVariable(heikikker_waterbiotoop1)
+
+assign(heikikker_waterbiotoop2, GeUniqueCountInBuffer(heikikker_waterbiotoop1_cluster, 500, meter, heikikker_waterbiotoop1_cluster, 6))
+
+deleteVariable(heikikker_waterbiotoop1_cluster)
+
+// baken landbiotopen af
+
+assign(heikikker_landbiotoop1, bwk(ce%, 4010%, 7150%, cm, cm+, 4030%, ct, ct+, 7110%, hj%, hm%, hmo%, 6230%, mc%, mcb%, rbbmc%, md%, 7140%, mk%, 7230%, ms%, rbbms%, pms, pms+, ppms, ppms+, rbbppm%, qb, qb+, 9120%, 9190%, 2180%, qs, qs+, sm%, 4010%, 7140%, 7230%, 91E0%, so%, rbbso%, t%, 7110%, vo%, 91E0%, vt%, 91D0%))
+
+// waterbiotoop moet binnen een straal van 500 m van landbiotoop liggen
+
+assign(heikikker_waterbiotoop3, and(heikikker_waterbiotoop2, cellDistanceLe(heikikker_landbiotoop1, 500, meter)))
+
+//write('ANB2019_Heikikker2018_waterbiotoop.asc', IsNonZero(heikikker_waterbiotoop3))
+
+//exit
+
+// landbiotoop moet binnen een straal van 500 m van waterbiotoop liggen
+
+assign(heikikker_landbiotoop2, and(heikikker_landbiotoop1, cellDistanceLe(heikikker_waterbiotoop2, 500, meter)))
+
+deleteVariable(heikikker_landbiotoop1)
+deleteVariable(heikikker_waterbiotoop2)
+
+// leefgebied = waterbiotoop + landbiotoop
+
+assign(heikikker_leefgebied1, or(heikikker_landbiotoop2, heikikker_waterbiotoop3))
+
+// leefgebiedbiotoop moet minstens 50 ha groot zijn
+
+//clustering? Alle landbiotoop op een onderlinge afstand van maximaal 500m
+
+assign(heikikker_leefgebied1_cluster, fuzzyClusterIdU(heikikker_leefgebied1, 500, meter))
+
+//write('ANB2019_Heikikker2018_Dries.asc', IsNonZero(heikikker_leefgebied1_cluster))
+//exit
+
+deleteVariable(heikikker_leefgebied1)
+
+//oppervlakte landbiotoop moet minstens 50ha zijn
+
+assign(heikikker_leefgebied, cFilterGeArea(heikikker_leefgebied1_cluster, 50, hectare))
+
+deleteVariable(heikikker_leefgebied1_cluster)
+
+// baken ecoregio van ecodistrictgebieden af
+
+//assign(heikikker_ecodistrict, Ge('ecoregio.asc', 1))
+assign(heikikker_ecodistrict, OrEq('ecoregio.asc', 12, 13, 14, 15 ,16 ,17))
+ 
+assign(heikikker_landbiotoop_ecodistrict1, and(heikikker_landbiotoop2, heikikker_ecodistrict))
+
+deleteVariable(heikikker_landbiotoop2)
+deleteVariable(heikikker_landbiotoop_ecodistrict1)
+
+assign(heikikker_waterbiotoop_ecodistrict1, and(heikikker_waterbiotoop3, heikikker_ecodistrict))
+
+deleteVariable(heikikker_waterbiotoop_ecodistrict1)
+deleteVariable(heikikker_waterbiotoop3)
+
+assign(heikikker_leefgebied_ecodistrict1, and(heikikker_leefgebied, heikikker_ecodistrict))
+assign(heikikker_leefgebied_ecodistrict1_cluster, fuzzyClusterIdU(heikikker_leefgebied_ecodistrict1, 500, meter))
+
+deleteVariable(heikikker_leefgebied)
+deleteVariable(heikikker_ecodistrict)
+deleteVariable(heikikker_leefgebied_ecodistrict1)
+
+assign(heikikker_leefgebied_ecodistrict, cFilterGeArea(heikikker_leefgebied_ecodistrict1_cluster, 50, hectare))
+write('ANB2019_Heikikker2018.asc', IsNonZero(heikikker_leefgebied_ecodistrict))
+
+deleteVariable(heikikker_leefgebied_ecodistrict1_cluster)
+deleteVariable(heikikker_leefgebied_ecodistrict)

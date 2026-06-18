@@ -1,0 +1,78 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af
+
+assign(havik_voortplanting_bwk, bwk(fa%, 9120%, 9130%, fe%, fk%, 9150%, fl%, 9110%, fm%, fs%, lh%, ls%, n, n-, n+, pa%, pi%, pm%, pp%, ppa%, ppi%, ppmb%, rbbppm%, ppmh%, ppms%, qa%, 9160%, qb%, 9190%, qe%, qk%, 9150%, ql%, qs%, va%, 91E0%, vc%, vf%, vm%, vn%, vo%, vt%, 91D0%, 91F0%))
+
+// baken oude bossen af
+
+assign(havik_bosinventaris, OrEq('bosinventaris_2001.asc', 12, 13, 14, 22, 23, 24))
+
+assign(havik_voortplanting1, and(havik_voortplanting_bwk, havik_bosinventaris))
+
+deleteVariable(havik_bosinventaris)
+deleteVariable(havik_voortplanting_bwk)
+
+// clustering: indien geschikte cel binnen 100 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(havik_voortplanting_cluster, fuzzyClusterIdU(havik_voortplanting1, 100, meter))
+
+deleteVariable(havik_voortplanting1)
+
+// voortplantingscluster moeten minimaal 250ha groot zijn
+
+assign(havik_bos, cFilterGeArea(havik_voortplanting_cluster, 250, hectare))
+
+deleteVariable(havik_voortplanting_cluster)
+
+// baken open foerageergebied af
+
+assign(havik_foerageer_open, bwk(3260%, cd%, 2310%, 4030%, cdb%, cg%, 5130%, cgb%, cm%, 4010%, cmb%, cp%, 9120%, cpb%, cv%, cvb%, ha%, 2330%, 6230_ha%, hab%, hc%, 6410%, rbbhc%, hcb%, hk%, 6210%, hm%, 6230%, hmb%, hme%, hmm%, hmo%, hn%, hp%, hp+%, rbbkam%, rbbzil%, hpr%, hpr+%, hr%, 6430%, hu%, 6120%, 6510%, hub%, kb%, kh%, kn%, 3140%, kp%, kpa%, kpk%, kw%, mdb%, n, n+, n-, sf%, 2180%, 91E0%, rbbsf%, sg%, 2310%, rbbsg%, sgb%, sk%, sm%, 7140%, 7230%, 91E0%, rbbsm%))
+
+// clustering: indien geschikte cel binnen 500 meter, dan hoort die cel bij het foerageercluster
+
+assign(havik_foerageer_open_cluster, fuzzyClusterIdU(havik_foerageer_open, 500, meter))
+
+// open foerageercluster moet minstens 50 ha zijn
+
+assign(havik_openfoerageergebied, cFilterGeArea(havik_foerageer_open_cluster, 50, hectare))
+
+deleteVariable(havik_foerageer_open)
+deleteVariable(havik_foerageer_open_cluster)
+
+assign(havik_foerageer1, or(havik_bos, havik_openfoerageergebied))
+
+deleteVariable(havik_openfoerageergebied)
+
+// clustering: indien geschikte cel binnen 500 meter, dan hoort die cel bij het foerageercluster open
+
+assign(havik_foerageer1_cluster, fuzzyClusterIdU(havik_foerageer1, 500, meter))
+
+deleteVariable(havik_foerageer1)
+
+// optimale foerageerclusters moeten minimaal 100ha groot zijn
+
+assign(havik_foerageer2, cFilterGeArea(havik_foerageer1_cluster, 50, hectare))
+
+deleteVariable(havik_foerageer1_cluster)
+
+// geschikte foerageergebieden liggen minder dan 1 km van voortplantingsgebieden en omgekeerd
+
+assign(havik_voortplanting0, cFilter(havik_bos, cellDistanceLe(havik_foerageer2, 1000, meter)))
+assign(havik_foerageer0, and(havik_foerageer2, cellDistanceLe(havik_bos, 1000, meter)))
+
+deleteVariable(havik_foerageer2)
+deleteVariable(havik_bos)
+
+assign(havik_leefgebied1, or(havik_voortplanting0, havik_foerageer0))
+deleteVariable(havik_voortplanting0)
+
+deleteVariable(havik_foerageer0)
+assign(havik_leefgebied1_cluster, FuzzyClusterIdU(havik_leefgebied1, 500, meter))
+deleteVariable(havik_leefgebied1)
+
+assign(havik_leefgebied, cFilterGeArea(havik_leefgebied1_cluster, 250, hectare))
+deleteVariable(havik_leefgebied1_cluster)
+write('ANB2019_Havik2018.asc', IsNonZero(havik_leefgebied))
+deleteVariable(havik_leefgebied)
+

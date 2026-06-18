@@ -1,0 +1,64 @@
+vlaanderen_20m_met_maas.asc
+
+// waterlopen
+
+assign(bosbeekjuffer_waterlopen1, OrEq('rastert_huetzon1.asc', 1, 2, 3, 4, 5, 7, 8, 9, 10, 18))
+assign(bosbeekjuffer_waterlopen1_bwk, bwk(3260%))
+
+assign(bosbeekjuffer_waterlopen, or(bosbeekjuffer_waterlopen1, bosbeekjuffer_waterlopen1_bwk))
+deleteVariable(bosbeekjuffer_waterlopen1)
+deleteVariable(bosbeekjuffer_waterlopen1_bwk)
+//write('bosbeekjuffer_waterlopen.asc', IsNonZero(bosbeekjuffer_waterlopen))
+
+// clustering: indien geschikte cel binnen 10 meter, dan hoort die cel bij het waterbiotoop
+assign(bosbeekjuffer_waterlopen_cluster, fuzzyClusterIdU(bosbeekjuffer_waterlopen, 10, meter))
+deleteVariable(bosbeekjuffer_waterlopen)
+
+// waterbiotoop moet minimaal 0.4 ha groot zijn
+assign(bosbeekjuffer_waterbiotoop1, cFilterGeArea(bosbeekjuffer_waterlopen_cluster, 0.4, hectare))
+deleteVariable(bosbeekjuffer_waterlopen_cluster)
+//write('bosbeekjuffer_waterbiotoop1.asc', IsNonZero(bosbeekjuffer_waterbiotoop1))
+
+// omgevend landbiotoop_bos
+assign(bosbeekjuffer_landbiotoop_bos_bwk, bwk(f%, 9110%, 9120%, 9130%, 9150%, l%, p%, rbbppm%, q%, 9110%, 9120%, 9130%, 9150%, 9160%, 9190%, ru%, 91E0%, 91F0%, sf%, rbbsf%, sg%, rbbsg%, sk%, 6210%, sm%, 7140%, 7230%, sp%, rbbsp%, sz%, v%, 91E0%, n, n+, n-))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het landbiotoop
+assign(bosbeekjuffer_landbiotoop_bos_bwk_cluster, fuzzyClusterIdU(bosbeekjuffer_landbiotoop_bos_bwk, 50, meter))
+deleteVariable(bosbeekjuffer_landbiotoop_bos_bwk)
+
+// landbiotoop_bos moet minimaal 8 ha groot zijn
+assign(bosbeekjuffer_landbiotoop_bos, cFilterGeArea(bosbeekjuffer_landbiotoop_bos_bwk_cluster, 8, hectare))
+deleteVariable(bosbeekjuffer_landbiotoop_bos_bwk_cluster)
+
+// omgevend landbiotoop_rest
+assign(bosbeekjuffer_landbiotoop_rest_bwk, bwk(a%, 3150%, 7140%, b%, f%, 9110%, 9120%, 9130%, 9150%, h%, 6410%, 6430%, 6510%, l%, m%, 6430_hw%, 7140%, 7210%, 7230%, 91E0%, p%, rbbppm%, q%, 9110%, 9120%, 9130%, 9150%, 9160%, 9190%, ru%, s%, v%, 91E0%, n, n+, n-, kp%, kbb%, kh%, ku%, 6430%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het landbiotoop
+assign(bosbeekjuffer_landbiotoop_rest_bwk_cluster, fuzzyClusterIdU(bosbeekjuffer_landbiotoop_rest_bwk, 50, meter))
+deleteVariable(bosbeekjuffer_landbiotoop_rest_bwk)
+
+// landbiotoop_rest moet minimaal 20 ha groot zijn
+assign(bosbeekjuffer_landbiotoop_rest, cFilterGeArea(bosbeekjuffer_landbiotoop_rest_bwk_cluster, 20, hectare))
+deleteVariable(bosbeekjuffer_landbiotoop_rest_bwk_cluster)
+
+// landbiotoop_bos moet deel uitmaken van landbiotoop_rest
+assign(bosbeekjuffer_landbiotoop1, and(bosbeekjuffer_landbiotoop_rest, cellDistanceLe(bosbeekjuffer_landbiotoop_bos, 10, meter)))
+//write('bosbeekjuffer_landbiotoop1.asc', IsNonZero(bosbeekjuffer_landbiotoop1))
+
+deleteVariable(bosbeekjuffer_landbiotoop_bos)
+deleteVariable(bosbeekjuffer_landbiotoop_rest)
+
+assign(bosbeekjuffer_waterbiotoop, and(bosbeekjuffer_waterbiotoop1, cellDistanceLe(bosbeekjuffer_landbiotoop1, 500, meter)))
+//write('bosbeekjuffer_waterbiotoop.asc', IsNonZero(bosbeekjuffer_waterbiotoop))
+
+assign(bosbeekjuffer_landbiotoop, and(bosbeekjuffer_landbiotoop1, cellDistanceLe(bosbeekjuffer_waterbiotoop1, 500, meter)))
+//write('bosbeekjuffer_landbiotoop.asc', IsNonZero(bosbeekjuffer_landbiotoop))
+
+assign(bosbeekjuffer_leefgebied, or(bosbeekjuffer_landbiotoop, bosbeekjuffer_waterbiotoop))
+write('ANB2019_Bosbeekjuffer2018.asc', IsNonZero(bosbeekjuffer_leefgebied))
+
+deleteVariable(bosbeekjuffer_leefgebied)
+deleteVariable(bosbeekjuffer_landbiotoop1)
+deleteVariable(bosbeekjuffer_waterbiotoop1)
+deleteVariable(bosbeekjuffer_landbiotoop)
+deleteVariable(bosbeekjuffer_waterbiotoop)

@@ -1,0 +1,29 @@
+vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+assign(veldparelmoervlinder_bwk, bwk(ha%, 2310%, 2330%, hk%, 6210%, hn%, 6230%, hr%, hu%, 6120%, 6510%, kg%, sk%, sz%, 5130%))
+
+// Enkel op droge zandige bodems
+assign(veldparelmoervlinder_bodem, OrEq('bodem_textuur.asc', 3, 4, 5, 7, 13, 14, 16, 18, 20, 24, 25, 29, 30, 31, 32))
+
+assign(veldparelmoervlinder_leefgebied1, and(veldparelmoervlinder_bwk, veldparelmoervlinder_bodem))
+
+deleteVariable(veldparelmoervlinder_bwk)
+deleteVariable(veldparelmoervlinder_bodem)
+
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 50 meter liggen
+assign(veldparelmoervlinder_bwk_cluster, fuzzyClusterIdU(veldparelmoervlinder_leefgebied1, 50, meter))
+
+// leefgebied moet minstens 2 hectare groot zijn
+assign(veldparelmoervlinder_leefgebied, cFilterGeArea(veldparelmoervlinder_bwk_cluster, 1, hectare))
+deleteVariable(veldparelmoervlinder_bwk_cluster)
+
+// beperk de leefgebiedenkaart tot bepaalde ecoregio's
+assign(veldparelmoervlinder_ecodistrict, Ge('ecoregio.asc', 1))
+assign(veldparelmoervlinder_leefgebied_ecodistrict, and(veldparelmoervlinder_leefgebied, veldparelmoervlinder_ecodistrict))
+deleteVariable(veldparelmoervlinder_leefgebied)
+deleteVariable(veldparelmoervlinder_ecodistrict)
+
+// 0/1 kaarten maken
+write('ANB2019_Veldparelmoervlinder2018.asc', IsNonZero(veldparelmoervlinder_leefgebied_ecodistrict))
+deleteVariable(veldparelmoervlinder_leefgebied_ecodistrict)

@@ -1,0 +1,54 @@
+vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+assign(schavertje_bwk, bwk(2130%, 2150%, 2330%, 5130%, 6230%, ha%, hab%, had%, hd%, hn%, hnb%))
+
+// vochtkaart gebruiken om nattere delen te selecteren
+assign(schavertje_bodemdrainage, Ge('bodem_drainage.asc', 1))
+
+assign(schavertje2, and(schavertje_bwk, schavertje_bodemdrainage))
+
+deleteVariable(schavertje_bwk)
+deleteVariable(schavertje_bodemdrainage)
+
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 50 meter liggen
+assign(schavertje2_cluster, fuzzyClusterIdU(schavertje2, 50, meter))
+
+deleteVariable(schavertje2)
+
+// leefgebied moet minstens 5 hectare groot zijn
+assign(schavertje_leefgebied5ha, cFilterGeArea(schavertje2_cluster, 5, hectare))
+
+assign(schavertje_leefgebied1ha, cFilterGeArea(schavertje2_cluster, 1, hectare))
+//write('schavertje_leefgebied1ha.asc', IsNonZero(schavertje_leefgebied1ha))
+
+// indien leefgebied kleiner dan 5 ha dan moet die in een metapopulatiestructuur liggen, dwz met meerdere kleine patches samen (5? = 6 - 1)
+assign(schavertje_metapopulatie, GeUniqueCountInBuffer(schavertje_leefgebied1ha, 500, meter, schavertje_leefgebied1ha, 6))
+//write('schavertje_metapopulatie.asc', IsNonZero(schavertje_metapopulatie))
+
+assign(schavertje_leefgebied1, and(schavertje_leefgebied1ha, cellDistanceLe(schavertje_metapopulatie, 500, meter)))
+assign(schavertje_leefgebied2, and(schavertje_leefgebied5ha, cellDistanceLe(schavertje_metapopulatie, 500, meter)))
+
+deleteVariable(schavertje_leefgebied1ha)
+deleteVariable(schavertje_metapopulatie)
+
+assign(schavertje_leefgebied_metapopulatie, or(schavertje_leefgebied1, schavertje_leefgebied2))
+
+deleteVariable(schavertje_leefgebied1)
+deleteVariable(schavertje_leefgebied2)
+
+assign(schavertje_leefgebied, or(schavertje_leefgebied5ha, schavertje_leefgebied_metapopulatie))
+
+deleteVariable(schavertje_leefgebied_metapopulatie)
+deleteVariable(schavertje_leefgebied5ha)
+
+// beperk de leefgebiedenkaart tot bepaalde ecoregio's
+assign(schavertje_ecodistrict, OrEq('ecoregio.asc', 1, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17))
+assign(schavertje_leefgebied_ecodistrict, and(schavertje_leefgebied, schavertje_ecodistrict))
+deleteVariable(schavertje_ecodistrict)
+deleteVariable(schavertje_leefgebied)
+deleteVariable(schavertje2_cluster)
+
+// 0/1 kaarten maken
+write('ANB2019_Schavertje2018.asc', IsNonZero(schavertje_leefgebied_ecodistrict))
+deleteVariable(schavertje_leefgebied_ecodistrict)

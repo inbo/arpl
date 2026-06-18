@@ -1,0 +1,90 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af
+
+assign(grotestern_voortplanting1, bwk(dd%, 2120%, dl%, 1140%, 2110%, ds%, 1130%, 3270%, dz%))
+
+// leefgebied mag geen open water of ruigte of moeras zijn
+
+assign(openwater, bwk(ad%, ae%, 2190%, 3140%, 3150%, aer%, aes%, aev%, ah%, am%, ao%, 3160%, 7140%, 7150%, 3110%, 3130%, aom%, aoo%, ap%, apo%, app%, mz%, 1330%))
+
+assign(grotestern_voortplanting2, and(grotestern_voortplanting1, not(openwater)))
+
+deleteVariable(grotestern_voortplanting1)
+deleteVariable(openwater)
+
+// leefgebied moeten minimaal 20ha groot zijn
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het cluster
+
+assign(grotestern_voortplanting2_cluster, fuzzyClusterIdU(grotestern_voortplanting2, 50, meter))
+
+deleteVariable(grotestern_voortplanting2)
+
+assign(grotestern_voortplanting3, cFilterGeArea(grotestern_voortplanting2_cluster, 20, hectare))
+
+deleteVariable(grotestern_voortplanting2_cluster)
+
+// Zoek openwater in de kaarten van bwk, zee en waterlopen, die nog verrasterd moeten worden
+
+assign(grotestern_openwater, bwk(ad%, ae%, ap%, zee%, 1110%))
+
+// waterlopen
+
+assign(grotestern_waterlopen, OrEq('rastert_huetzon1.asc', 17, 19))
+
+assign(grotestern_foerageer1, or(grotestern_openwater, grotestern_waterlopen))
+
+deleteVariable(grotestern_waterlopen)
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het openwaterscluster
+
+assign(grotestern_foerageer1cl, fuzzyClusterIdU(grotestern_foerageer1, 50, meter))
+
+deleteVariable(grotestern_foerageer1)
+
+// Open water moet minstens 1 ha groot zijn
+
+assign(grotestern_openwater, cFilterGeArea(grotestern_foerageer1cl, 1, hectare))
+
+deleteVariable(grotestern_foerageer1cl)
+// zoek voortplantingsgebieden die maximaal 5000 meter van groot open water liggen
+
+assign(grotestern_voortplanting4, cFilter(grotestern_voortplanting3, cellDistanceLe(grotestern_openwater, 5000, meter)))
+assign(grotestern_foerageer4, cFilter(grotestern_openwater, cellDistanceLe(grotestern_voortplanting3, 5000, meter)))
+
+deleteVariable(grotestern_voortplanting3)
+deleteVariable(grotestern_openwater)
+
+assign(grotestern_leefgebied1, or(grotestern_voortplanting4, grotestern_foerageer4))
+
+assign(grotestern_leefgebied1_cluster, FuzzyClusterIdU(grotestern_leefgebied1, 50, meter))
+
+deleteVariable(grotestern_leefgebied1)
+
+assign(grotestern_leefgebied, cFilterGeArea(grotestern_leefgebied1_cluster, 20, hectare))
+//write('grotestern_leefgebied.asc', if(grotestern_leefgebied, grotestern_leefgebied1_cluster, 0))
+//write('grotestern_leefgebied.asc', IsNonZero(grotestern_leefgebied))
+
+deleteVariable(grotestern_leefgebied1_cluster)
+
+assign(grotestern_foerageer, and(grotestern_foerageer4, grotestern_leefgebied))
+
+deleteVariable(grotestern_foerageer4)
+//write('grotestern_foerageer.asc', IsNonZero(grotestern_foerageer))
+
+deleteVariable(grotestern_foerageer)
+
+assign(grotestern_voortplanting, and(grotestern_voortplanting4, grotestern_leefgebied))
+//write('grotestern_voortplanting.asc', grotestern_voortplanting)
+
+assign(grotestern_ecodistrict, Ge('ecoregio.asc', 1))
+assign(grotestern_leefgebied_ecodistrict, and(grotestern_leefgebied, grotestern_ecodistrict))
+write('ANB2019_GroteStern2018.asc', IsNonZero(grotestern_leefgebied_ecodistrict))
+
+deleteVariable(grotestern_ecodistrict)
+deleteVariable(grotestern_leefgebied)
+deleteVariable(grotestern_leefgebied_ecodistrict)
+
+deleteVariable(grotestern_voortplanting4)
+deleteVariable(grotestern_voortplanting)

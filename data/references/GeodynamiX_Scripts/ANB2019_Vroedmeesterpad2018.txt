@@ -1,0 +1,88 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af
+
+assign(vroedmeesterpad_waterbiotoop_bwk, bwk(ae%, 3140%, 3150%, aer%, aev%, ao%, 3160%, 7140%, 7150%, aom%, 3110%, 3130%, aoo%, kn%, ur%))
+
+// uit GRB-watergang, kleine waters proberen te filteren
+
+assign(BlauweLaag, eq('BlauweLaag_Plassen_06042017_20m_.asc', 1))
+
+assign(BlauweLaag_cluster, fuzzyClusterIdU(BlauweLaag, 10, meter))
+
+deleteVariable(BlauweLaag)
+
+assign(vroedmeesterpad_kleinwater, cFilterLeArea(BlauweLaag_cluster, 0.4, hectare))
+
+deleteVariable(BlauweLaag_cluster)
+
+assign(vroedmeesterpad_waterbiotoop1, or(vroedmeesterpad_waterbiotoop_bwk, vroedmeesterpad_kleinwater))
+
+deleteVariable(vroedmeesterpad_kleinwater)
+
+// binnen een straal van 500m moeten minstens 3 (4-1 dwz 4 - de eigen poel) andere geschikte voortplantingsgebieden liggen
+
+assign(vroedmeesterpad_waterbiotoop1_cluster, clusterId(vroedmeesterpad_waterbiotoop1))
+
+deleteVariable(vroedmeesterpad_waterbiotoop_bwk)
+deleteVariable(vroedmeesterpad_waterbiotoop1)
+
+assign(vroedmeesterpad_waterbiotoop2, GeUniqueCountInBuffer(vroedmeesterpad_waterbiotoop1_cluster, 500, meter, vroedmeesterpad_waterbiotoop1_cluster, 4))
+
+deleteVariable(vroedmeesterpad_waterbiotoop1_cluster)
+
+// baken landbiotoop af
+
+assign(vroedmeesterpad_landbiotoop_bwk, bwk(ha%, 2330%, 6230_ha%, hc%, 6410%, hk%, 6210%, hmo%, 6230%, hn%, hp%, hp+%, hpr%, hu%, 6120%, 6510%, kb%, kc%, kh%, khw%, kj%, kp%, kr%, kt%, kw%, sg%, 2310%, 4030%, rbbsg%, sk%, sp%, rbbsp%, sz%, ur%))
+
+// landbiotoop moet binnen de 500 m van waterbiotoop liggen
+
+assign(vroedmeesterpad_waterbiotoop3, and(vroedmeesterpad_waterbiotoop2, cellDistanceLe(vroedmeesterpad_landbiotoop_bwk, 500, meter)))
+
+// binnen landbiotoop van 1 ha moet binnen de 500m geschikt water liggen
+
+assign(vroedmeesterpad_landbiotoop1, and(vroedmeesterpad_landbiotoop_bwk, cellDistanceLe(vroedmeesterpad_waterbiotoop2, 500, meter)))
+
+deleteVariable(vroedmeesterpad_landbiotoop_bwk)
+deleteVariable(vroedmeesterpad_waterbiotoop2)
+
+assign(vroedmeesterpad_leefgebied1, or(vroedmeesterpad_waterbiotoop3, vroedmeesterpad_landbiotoop1))
+
+// clustering: indien geschikte cel binnen 500 meter, dan hoort die cel bij het landbiotoopcluster
+
+assign(vroedmeesterpad_leefgebied1_cluster, fuzzyClusterIdU(vroedmeesterpad_leefgebied1, 500, meter))
+
+deleteVariable(vroedmeesterpad_leefgebied1)
+
+// landclusters moeten minimaal 5ha groot zijn
+
+assign(vroedmeesterpad_leefgebied, cFilterGeArea(vroedmeesterpad_leefgebied1_cluster, 5, hectare))
+
+deleteVariable(vroedmeesterpad_leefgebied1_cluster)
+
+// eventueel nog ecodistricten afbakenen en gebruiken om verder te verfijnen
+
+assign(vroedmeesterpad_ecodistrict, Ge('ecoregio.asc', 1))
+
+//assign(vroedmeesterpad_waterbiotoop_ecodistrict1, and(vroedmeesterpad_waterbiotoop3, vroedmeesterpad_ecodistrict))
+
+deleteVariable(vroedmeesterpad_waterbiotoop3)
+
+//assign(vroedmeesterpad_landbiotoop_ecodistrict1, and(vroedmeesterpad_landbiotoop1, vroedmeesterpad_ecodistrict))
+
+deleteVariable(vroedmeesterpad_landbiotoop1)
+
+assign(vroedmeesterpad_leefgebied_ecodistrict1, and(vroedmeesterpad_leefgebied, vroedmeesterpad_ecodistrict))
+
+deleteVariable(vroedmeesterpad_leefgebied)
+deleteVariable(vroedmeesterpad_ecodistrict)
+
+assign(vroedmeesterpad_leefgebied_ecodistrict1_cluster, FuzzyClusterIdU(vroedmeesterpad_leefgebied_ecodistrict1, 500, meter))
+deleteVariable(vroedmeesterpad_leefgebied_ecodistrict1)
+
+assign(vroedmeesterpad_leefgebied_ecodistrict, cFilterGeArea(vroedmeesterpad_leefgebied_ecodistrict1_cluster, 5, hectare))
+deleteVariable(vroedmeesterpad_leefgebied_ecodistrict1_cluster)
+write('ANB2019_Vroedmeesterpad2018.asc', IsNonZero(vroedmeesterpad_leefgebied_ecodistrict))
+
+deleteVariable(vroedmeesterpad_leefgebied_ecodistrict)
+

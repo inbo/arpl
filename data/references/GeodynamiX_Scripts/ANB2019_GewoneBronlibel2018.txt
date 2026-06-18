@@ -1,0 +1,65 @@
+vlaanderen_20m_met_maas.asc
+
+// Voortplanting stromend
+// Voortplanting 
+// 3	Bk1		WKb			Kleine beek
+// 4	Bk2		WKb			Kleine beek
+// 5	BkK1		WKb(Kempen) 		Kleine beek Kempen
+// 6	BkK2		WKb(Kempen) 		Kleine beek Kempen
+
+// Directe omgeving (20 ha): 
+// -	Bos, struweel en Kbb en Kh samen min 50% (alle eenheden), max. 90%
+// -	Geen gesloten bossen, maar bos met open zonnige stukken
+
+
+assign(gewonebronlibel_waterlopen1, OrEq('rastert_huetzon1.asc', 3, 4, 5, 6))
+assign(gewonebronlibel_bwk1, bwk(3260%))
+assign(gewonebronlibel_bwk_waterlopen1, or(gewonebronlibel_waterlopen1, gewonebronlibel_bwk1))
+
+deleteVariable(gewonebronlibel_waterlopen1)
+deleteVariable(gewonebronlibel_bwk1)
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het waterbiotoop
+assign(gewonebronlibel_bwk_waterlopen_cluster, fuzzyClusterIdU(gewonebronlibel_bwk_waterlopen1, 50, meter))
+
+deleteVariable(gewonebronlibel_bwk_waterlopen1)
+
+// waterbiotoop moet minimaal 10 m² groot zijn
+assign(gewonebronlibel_voortplanting1, cFilterGeArea(gewonebronlibel_bwk_waterlopen_cluster, 0.04, hectare))
+//write('gewonebronlibel_waterlopen.asc', IsNonZero(gewonebronlibel_waterlopen))
+
+deleteVariable(gewonebronlibel_bwk_waterlopen_cluster)
+
+// omgevend landbiotoop nabij
+
+assign(gewonebronlibel_landbiotoop_bwk1, bwk(hc%, rbbhc%, hj%, kbb%, kh%, lhb%, lhi%, mc%, rbbmc%, md%, 7140%, 91E0%, mm%, 7210%, n, n+, n-, sf%, rbbsf%, sm%, rbbsm%, sp%, rbbsp%, sz%, va%, vm%, vn%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het landbiotoop
+
+assign(gewonebronlibel_landbiotoop_bwk_cluster, fuzzyClusterIdU(gewonebronlibel_landbiotoop_bwk1, 50, meter))
+
+deleteVariable(gewonebronlibel_landbiotoop_bwk1)
+
+// landbiotoop moet minimaal 10 ha groot zijn
+
+assign(gewonebronlibel_landbiotoop1, cFilterGeArea(gewonebronlibel_landbiotoop_bwk_cluster, 10, hectare))
+//write('gewonebronlibel_landbiotoop1.asc', IsNonZero(gewonebronlibel_landbiotoop1))
+
+deleteVariable(gewonebronlibel_landbiotoop_bwk_cluster)
+
+// landbiotoop moet aanpalend zijn aan waterbiotoop
+
+assign(gewonebronlibel_waterbiotoop, and(gewonebronlibel_voortplanting1, cellDistanceLe(gewonebronlibel_landbiotoop1, 100, meter)))
+//write('gewonebronlibel_waterbiotoop.asc', IsNonZero(gewonebronlibel_waterbiotoop))
+
+assign(gewonebronlibel_landbiotoop, and(gewonebronlibel_landbiotoop1, cellDistanceLe(gewonebronlibel_voortplanting1, 100, meter)))
+//write('gewonebronlibel_landbiotoop.asc', IsNonZero(gewonebronlibel_landbiotoop))
+
+assign(GewoneBronlibel_leefgebied, or(gewonebronlibel_landbiotoop, gewonebronlibel_waterbiotoop))
+write('ANB2019_GewoneBronlibel2018.asc', IsNonZero(GewoneBronlibel_leefgebied))
+
+deleteVariable(gewonebronlibel_voortplanting1)
+deleteVariable(gewonebronlibel_landbiotoop1)
+deleteVariable(gewonebronlibel_landbiotoop)
+deleteVariable(gewonebronlibel_waterbiotoop)
+deleteVariable(gewonebronlibel_leefgebied)

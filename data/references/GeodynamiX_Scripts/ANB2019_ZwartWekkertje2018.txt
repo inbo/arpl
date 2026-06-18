@@ -1,0 +1,55 @@
+vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+assign(zwartwekkertje_bwk, bwk(2310%, 4030%, 5130%, cd%, ce%, 4010%, 7150%, 7140_oli%, cg%, cm%, cp%, ct%, 7110%, cv%, ha%, 2330%, 6230_ha%, 2130%, 2150%, hd%, se%, t%, k(ce%, k(se%, k(cd%, k(cg%, k(cm%, k(cp%, k(ct%, k(cv%, k(t%, k(ha%, k(hd%))
+
+// vochtkaart gebruiken om nattere delen te selecteren
+assign(zwartwekkertje_bodemdrainage, Ge('bodem_drainage.asc', 1))
+
+assign(zwartwekkertje2, and(zwartwekkertje_bwk, zwartwekkertje_bodemdrainage))
+
+deleteVariable(zwartwekkertje_bwk)
+deleteVariable(zwartwekkertje_bodemdrainage)
+
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 50 meter liggen
+assign(zwartwekkertje2_cluster, fuzzyClusterIdU(zwartwekkertje2, 50, meter))
+
+deleteVariable(zwartwekkertje2)
+
+// leefgebied moet minstens 5 hectare groot zijn
+assign(zwartwekkertje_leefgebied5ha, cFilterGeArea(zwartwekkertje2_cluster, 5, hectare))
+
+assign(zwartwekkertje_leefgebied1ha, cFilterGeArea(zwartwekkertje2_cluster, 1, hectare))
+//write('zwartwekkertje_leefgebied1ha.asc', IsNonZero(zwartwekkertje_leefgebied1ha))
+
+// indien leefgebied kleiner dan 5 ha dan moet die in een metapopulatiestructuur liggen, dwz met meerdere kleine patches samen (5? = 6 - 1)
+assign(zwartwekkertje_metapopulatie, GeUniqueCountInBuffer(zwartwekkertje_leefgebied1ha, 500, meter, zwartwekkertje_leefgebied1ha, 6))
+//write('zwartwekkertje_metapopulatie.asc', IsNonZero(zwartwekkertje_metapopulatie))
+
+assign(zwartwekkertje_leefgebied1, and(zwartwekkertje_leefgebied1ha, cellDistanceLe(zwartwekkertje_metapopulatie, 500, meter)))
+assign(zwartwekkertje_leefgebied2, and(zwartwekkertje_leefgebied5ha, cellDistanceLe(zwartwekkertje_metapopulatie, 500, meter)))
+
+deleteVariable(zwartwekkertje_leefgebied1ha)
+deleteVariable(zwartwekkertje_metapopulatie)
+
+assign(zwartwekkertje_leefgebied_metapopulatie, or(zwartwekkertje_leefgebied1, zwartwekkertje_leefgebied2))
+
+deleteVariable(zwartwekkertje_leefgebied1)
+deleteVariable(zwartwekkertje_leefgebied2)
+
+assign(zwartwekkertje_leefgebied, or(zwartwekkertje_leefgebied5ha, zwartwekkertje_leefgebied_metapopulatie))
+
+deleteVariable(zwartwekkertje_leefgebied_metapopulatie)
+deleteVariable(zwartwekkertje_leefgebied5ha)
+
+// beperk de leefgebiedenkaart tot bepaalde ecoregio's
+assign(zwartwekkertje_ecodistrict, Ge('ecoregio.asc', 1))
+assign(zwartwekkertje_leefgebied_ecodistrict, and(zwartwekkertje_leefgebied, zwartwekkertje_ecodistrict))
+deleteVariable(zwartwekkertje_ecodistrict)
+deleteVariable(zwartwekkertje_leefgebied)
+
+deleteVariable(zwartwekkertje_cluster)
+
+// 0/1 kaarten maken
+write('ANB2019_ZwartWekkertje2018.asc', IsNonZero(zwartwekkertje_leefgebied_ecodistrict))
+deleteVariable(zwartwekkertje_leefgebied_ecodistrict)

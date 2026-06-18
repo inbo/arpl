@@ -1,0 +1,23 @@
+vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+assign(grotemodderkruiper_bwk, bwk(3150%, 3260%, ae+, aev+, aev))
+
+// waterlopen
+
+assign(grotemodderkruiper_waterlopen1, OrEq('rastert_huetzon1.asc', 15, 16))
+
+assign(grotemodderkruiper_water1, or(grotemodderkruiper_bwk, grotemodderkruiper_waterlopen1))
+deleteVariable(grotemodderkruiper_waterlopen1)
+deleteVariable(grotemodderkruiper_bwk)
+
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 50 meter liggen
+assign(grotemodderkruiper_water1_cluster, fuzzyClusterIdU(grotemodderkruiper_water1, 10, meter))
+
+// leefgebied moet minstens 0.04 hectare groot zijn
+assign(grotemodderkruiper_leefgebied, cFilterGeArea(grotemodderkruiper_water1_cluster, 0.04, hectare))
+deleteVariable(grotemodderkruiper_water1_cluster)
+
+// 0/1 kaarten maken
+write('ANB2019_GroteModderkruiper2018.asc', IsNonZero(grotemodderkruiper_leefgebied))
+deleteVariable(grotemodderkruiper_leefgebied)

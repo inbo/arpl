@@ -1,0 +1,101 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af
+
+assign(hazelmuis_voortplanting, bwk(9130%, 9150%, 9160%, cp%, 9120%, fa%, fe%, fk%, fl%, 9110%, fm%, fs%, kh(q%, kh(s%, qa%, qb%, 9190%, qe%, qk%, ql%, qs%, ru%, 91E0%, 91F0%, sf%, rbbsf%, sm%, rbbsm%, sz%, va%, vc%, vf%, vm%, vn%, vo%, vt%, 91D0%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(hazelmuis_voortplanting_cluster, fuzzyClusterIdU(hazelmuis_voortplanting, 20, meter))
+
+deleteVariable(hazelmuis_voortplanting)
+
+// voortplantingsclusters moeten minimaal 50ha groot zijn
+
+assign(hazelmuis_voortplanting1, cFilterGeArea(hazelmuis_voortplanting_cluster, 50, hectare))
+
+deleteVariable(hazelmuis_voortplanting_cluster)
+
+// zoek open gebieden die aan voortplantingsclusters grenzen
+
+assign(hazelmuis_open, bwk(cdb%, cg%, ha%, hc%, hf%, hj%, hp%, hp+%, hpr%, hr%, hu%))
+
+// clustering: indien geschikte cel binnen 100 meter, dan hoort die cel bij het open cluster
+
+assign(hazelmuis_open_cluster, fuzzyClusterIdU(hazelmuis_open, 100, meter))
+
+deleteVariable(hazelmuis_open)
+
+// open clusters moeten minimaal 5ha groot zijn
+
+assign(hazelmuis_open1, cFilterGeArea(hazelmuis_open_cluster, 5, hectare))
+
+deleteVariable(hazelmuis_open_cluster)
+
+// zoek bosranden tussen voortplanting en open gebieden
+
+assign(edge1, edgeDirected(hazelmuis_voortplanting1, hazelmuis_open1, 0,0,1,1,1,0,0,0))
+assign(edge2, edgeDirected(hazelmuis_open1, hazelmuis_voortplanting1, 1,0,0,0,0,0,1,1))
+deleteVariable(hazelmuis_voortplanting1)
+
+assign(hazelmuis_zuidelijkebosrand, or(edge1, edge2))
+
+deleteVariable(edge1)
+deleteVariable(edge2)
+deleteVariable(hazelmuis_open1)
+
+// lengte van bosrand tussen voortplantingsclusters en boscluster moet minstens 100 meter zijn
+
+assign(hazelmuis_zuidelijkebosrand_cluster, fuzzyClusterIdU(hazelmuis_zuidelijkebosrand, 100, meter))
+assign(hazelmuis_zuidelijkebosrand1, cFilterGeArea(hazelmuis_zuidelijkebosrand_cluster, 0.2, hectare))
+
+deleteVariable(hazelmuis_zuidelijkebosrand)
+deleteVariable(hazelmuis_zuidelijkebosrand_cluster)
+
+
+// baken lineaire voortplantingsgebieden af
+
+assign(hazelmuis_voortplanting_lineair, bwk(kt(sz%, kt, k(ku%, kh(vc%))
+
+// clustering: indien geschikte cel binnen 30 meter, dan hoort die cel bij het lineaire voortplantingscluster
+
+assign(hazelmuis_voortplanting_lineair_cluster, fuzzyClusterIdU(hazelmuis_voortplanting_lineair, 100, meter))
+
+deleteVariable(hazelmuis_voortplanting_lineair)
+
+// lineaire voortplantingsclusters moeten minimaal 100m lang zijn, d.i. 0.2ha groot zijn
+
+assign(hazelmuis_leefgebied_lineair1, cFilterGeArea(hazelmuis_voortplanting_lineair_cluster, 0.2, hectare))
+
+deleteVariable(hazelmuis_voortplanting_lineair_cluster)
+
+// alle leefgebied = bosranden + lineaire landschapselementen
+
+assign(hazelmuis_leefgebied1, or(hazelmuis_zuidelijkebosrand1, hazelmuis_leefgebied_lineair1))
+deleteVariable(hazelmuis_zuidelijkebosrand1)
+deleteVariable(hazelmuis_leefgebied_lineair1)
+
+
+assign(hazelmuis_leefgebied1_cluster, fuzzyClusterIdU(hazelmuis_leefgebied1, 100, meter))
+
+deleteVariable(hazelmuis_leefgebied1)
+
+// leefgebied moet minstens 0.3 ha groot zijn
+
+assign(hazelmuis_leefgebied, cFilterGeArea(hazelmuis_leefgebied1_cluster, 0.3, hectare))
+
+// externe kaarten bevragen
+
+// baken ecoregio van krijtgebieden af
+
+assign(hazelmuis_ecodistrict, Ge('ecoregio.asc', 1))
+
+assign(hazelmuis_leefgebied_ecodistrict, and(hazelmuis_leefgebied, hazelmuis_ecodistrict))
+
+deleteVariable(hazelmuis_ecodistrict)
+
+write('ANB2019_Hazelmuis2018.asc', IsNonZero(hazelmuis_leefgebied_ecodistrict))
+
+deleteVariable(hazelmuis_leefgebied)
+deleteVariable(hazelmuis_leefgebied_ecodistrict)
+deleteVariable(hazelmuis_leefgebied1_cluster)

@@ -1,0 +1,24 @@
+vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+assign(gentiaanblauwtje_bwk, bwk(ce%, 4010%, 7150%, ct%, 7110%))
+
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 50 meter liggen
+assign(gentiaanblauwtje_bwk_cluster, fuzzyClusterIdU(gentiaanblauwtje_bwk, 50, meter))
+deleteVariable(gentiaanblauwtje_bwk)
+
+// leefgebied moet minstens 1 hectare groot zijn
+assign(gentiaanblauwtje_leefgebied, cFilterGeArea(gentiaanblauwtje_bwk_cluster, 1, hectare))
+
+// beperk de leefgebiedenkaart tot bepaalde ecoregio's
+assign(gentiaanblauwtje_ecodistrict, Ge('ecoregio.asc', 1))
+assign(gentiaanblauwtje_leefgebied_ecodistrict, and(gentiaanblauwtje_leefgebied, gentiaanblauwtje_ecodistrict))
+deleteVariable(gentiaanblauwtje_ecodistrict)
+deleteVariable(gentiaanblauwtje_leefgebied)
+
+// individuele nummers geven aan clusters
+deleteVariable(gentiaanblauwtje_bwk_cluster)
+
+// 0/1 kaarten maken
+write('ANB2019_Gentiaanblauwtje2018.asc', IsNonZero(gentiaanblauwtje_leefgebied_ecodistrict))
+deleteVariable(gentiaanblauwtje_leefgebied_ecodistrict)

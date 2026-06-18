@@ -1,0 +1,181 @@
+Vlaanderen_20m.asc
+
+//Origineel ecologisch verhaal (Glenn Vermeersch, Filiep T'Jollyn)
+
+//Een koppel grutto's heeft nood aan minstens 100 ha aaneengesloten leefgebied
+//dat bij voorkeur bestaat uit soortenrijk, permanent grasland (BWK: hj, hp+, hpr, hpr+, hc, hu, hm)
+//met verspreide kleine poelen (BWK: ae, aer) en vochtige laagtes
+//ingebed in een groter landbouwgebied van minstens 1000 ha.
+//Het is belangrijk dat het leefgebied erg open is met bij voorkeur geen bomenrijen, houtkanten of bosranden langs de perceelsranden.
+//Variatie in hoogte van de grassen is belangrijk
+//en er dient doorheen het leefgebied een mozaiek beschikbaar te zijn van cultuurgraslanden en hooilanden.
+
+// baken soortenrijk en permanent grasland af
+
+assign(grutto_cultuur0a, bwk(hc, hc+, 6410%, rbbhc%, hj+, hj, hm, hm+, hme, hme+, hmo, hmo+, 6410%, 6230%, hp+, rbbkam%, rbbzil%, hpr+, hpr, hu, 6510%, hu+))
+
+// mag geen akker zijn ...?
+
+assign(grutto_akker, bwk(bc%, bg%, bk%, bl%, bs%, bu%))
+
+assign(grutto_cultuur, and(grutto_cultuur0a, not(grutto_akker)))
+
+deleteVariable(grutto_cultuur0a)
+
+assign(grutto_hooiland, bwk(hc, hc+, 2190%, 6410%, rbbhc%, hm, hm+, hme, hme+, hmm, hmm+, hmo, hmo+, 6230%, hu, hu+, 6120%, 6510%))
+
+//kleine eutrofe poelen; overlay maken van externe laag GRB_watergang én BWK-polygonen met vermelding van ae% of kn%; mag code ah, en evt. da, ook meegenomen worden? 
+
+assign(GRB_water, Eq('GRB_watergang_at.asc', 1))
+assign(GRB_water_cluster, fuzzyClusterIdU(GRB_water, 10, meter))
+
+deleteVariable(GRB_water)
+
+assign(grutto_kleinwater_grb, cFilterLeArea(GRB_water_cluster, 0.4, hectare))
+
+deleteVariable(GRB_water_cluster)
+
+assign(grutto_kleinwater_bwk, bwk(ae, 2190%, 3140%, 3150%, ae+, ae-, aer%, aev%, kn%))
+
+assign(grutto_kleinwater, and(grutto_kleinwater_grb, grutto_kleinwater_bwk))
+
+deleteVariable(grutto_kleinwater_bwk)
+deleteVariable(grutto_kleinwater_grb)
+
+// dit mag allemaal geen hooggroen zijn
+
+assign(grutto_hooggroen, eq('groenkaart2013_20m.asc', 1))
+
+assign(grutto_cultuur1, and(grutto_cultuur, not(grutto_hooggroen)))
+assign(grutto_hooiland1, and(grutto_hooiland, not(grutto_hooggroen)))
+assign(grutto_kleinwater1, and(grutto_kleinwater, not(grutto_hooggroen)))
+
+deleteVariable(grutto_cultuur)
+deleteVariable(grutto_hooiland)
+deleteVariable(grutto_kleinwater)
+
+//kernbiotoop bestaat uit hpr, hpr+, hp+ en hj+, of uit hp en hj op een maximale afstand van 100m van effectief overstromingsgevoelig gebied; kernbiotopen moeten daarnaast:
+//even nat of natter zijn dan drainageklasse d
+//op minstens 100 m van bebouwing gelegen zijn
+//op meer dan 50 m van aaneengesloten oppervlakte van hooggroen (>3m hoog, >20 are groot) gelegen zijn
+//geen hooggroen bevatten (>3m hoog)
+
+assign(grutto_kern1, bwk(hj+, hp+, rbbkam%, rbbzil%, hpr, hpr+, 2190%, 1330_hpr%, rbbvos%, rbbah%))
+
+assign(grutto_kern2, bwk(hp, hj, 2190%))
+assign(grutto_overstromingsgevoelig, OrEq('OVSTRGEV2014_20m.asc', 1))
+
+assign(grutto_kern1a, and(grutto_kern1, cellDistanceLe(grutto_overstromingsgevoelig, 100, meter)))
+assign(grutto_kern2a, and(grutto_kern2, cellDistanceLe(grutto_overstromingsgevoelig, 100, meter)))
+
+deleteVariable(grutto_kern2)
+deleteVariable(grutto_overstromingsgevoelig)
+
+assign(grutto_kern12, or(grutto_kern1, grutto_kern2a))
+
+deleteVariable(grutto_kern1)
+deleteVariable(grutto_kern1a)
+deleteVariable(grutto_kern2a)
+
+assign(grutto_bodemdrainage, OrEq('bodem_drainage.asc', 1, 2, 3, 7, 10, 11, 12, 14, 15))
+
+assign(grutto_kern3, and(grutto_kern12, grutto_bodemdrainage))
+
+deleteVariable(grutto_kern12)
+deleteVariable(grutto_bodemdrainage)
+
+// blijf met kern 100 meter van bebouwing en 50 meter van hooggroen
+
+assign(grutto_bebouwing_bwk, and(bwk(u%), not(bwk(ulm))))
+assign(grutto_bebouwing_bwk_cluster, fuzzyClusterIdU(grutto_bebouwing_bwk , 100, meter))
+assign(grutto_bebouwing, cFilterGeArea(grutto_bebouwing_bwk_cluster, 10, hectare))
+
+deleteVariable(grutto_bebouwing_bwk)
+deleteVariable(grutto_bebouwing_bwk_cluster)
+
+assign(grutto_kern4, and(grutto_kern3, cellDistanceGe(grutto_bebouwing, 100, meter)))
+
+deleteVariable(grutto_kern3)
+
+assign(grutto_kern5, and(grutto_kern4, cellDistanceGe(grutto_hooggroen, 50, meter)))
+
+deleteVariable(grutto_kern4)
+
+assign(grutto_kern5_cluster, fuzzyClusterIdU(grutto_kern5, 50, meter))
+
+deleteVariable(grutto_kern5)
+
+// kernbiotoop moet minstens 5 ha zijn!!
+
+assign(grutto_kern, cFilterGeArea(grutto_kern5_cluster, 10, hectare))
+
+deleteVariable(grutto_kern5_cluster)
+
+//write('grutto_kern.asc', grutto_kern)
+
+// bijkomende biotoop = kernbiotoop, met binnen een afstand van 200 meter ook nog het aanwezige cultuurgrasland, hooiland, of extra hp/hx/hr op minstens 100m van bebouwing, en op minstens 50m van aaneengesloten hooggroen van minstens 20 are groot
+
+assign(grutto_cultuurhooi1a, or(grutto_cultuur1, grutto_hooiland1, grutto_kleinwater1))
+
+deleteVariable(grutto_cultuur1)
+deleteVariable(grutto_hooiland1)
+deleteVariable(grutto_kleinwater1)
+
+assign(grutto_cultuurhooi1b, bwk(hx%, hp, hr+, 6430%, hr-, hr))
+
+assign(grutto_cultuurhooi1, or(grutto_cultuurhooi1a, grutto_cultuurhooi1b))
+
+deleteVariable(grutto_cultuurhooi1a)
+deleteVariable(grutto_cultuurhooi1b)
+
+assign(grutto_cultuurhooi2, and(grutto_cultuurhooi1, not(or(grutto_hooggroen, grutto_akker))))
+
+deleteVariable(grutto_akker)
+
+//?? and not vliegveld!
+
+deleteVariable(grutto_cultuurhooi1)
+
+// blijf met cultuurgraslanden 100 meter van bebouwing en 50 meter van hooggroen
+
+assign(grutto_cultuurhooi3, and(grutto_cultuurhooi2, cellDistanceGe(grutto_bebouwing, 100, meter)))
+
+deleteVariable(grutto_bebouwing)
+
+assign(grutto_cultuurhooi4, and(grutto_cultuurhooi3, cellDistanceGe(grutto_hooggroen, 50, meter)))
+
+assign(grutto_cultuurhooi4_cluster, fuzzyClusterIdU(grutto_cultuurhooi4, 50, meter))
+
+deleteVariable(grutto_cultuurhooi4)
+
+assign(grutto_cultuurhooi, cFilterGeArea(grutto_cultuurhooi4_cluster, 25, hectare))
+
+deleteVariable(grutto_cultuurhooi2)
+deleteVariable(grutto_cultuurhooi3)
+deleteVariable(grutto_cultuurhooi4_cluster)
+
+deleteVariable(grutto_hooggroen)
+
+//write('grutto_cultuurhooi.asc', grutto_cultuurhooi)
+
+//clustering
+
+assign(grutto_kern0, and(grutto_kern, cFilter(grutto_kern, cellDistanceLe(grutto_cultuurhooi, 200, meter))))
+assign(grutto_cultuurhooi0, and(grutto_cultuurhooi, cFilter(grutto_cultuurhooi, cellDistanceLe(grutto_kern0, 200, meter))))
+
+deleteVariable(grutto_cultuurhooi)
+deleteVariable(grutto_kern)
+
+assign(grutto_leefgebied1, or(grutto_kern0, grutto_cultuurhooi0))
+//write('grutto_leefgebied1.asc', IsNonZero(grutto_leefgebied1))
+
+deleteVariable(grutto_kern0)
+deleteVariable(grutto_cultuurhooi0)
+
+assign(grutto_leefgebied1_cluster, fuzzyClusterIdU(grutto_leefgebied1, 50, meter))
+deleteVariable(grutto_leefgebied1)
+
+assign(grutto_leefgebied, cFilterGeArea(grutto_leefgebied1_cluster, 25, hectare))
+write('ANB2019_Grutto2018.asc', IsNonZero(grutto_leefgebied))
+deleteVariable(grutto_leefgebied)
+deleteVariable(grutto_leefgebied1_cluster)

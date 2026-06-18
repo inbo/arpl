@@ -1,0 +1,53 @@
+Vlaanderen_20m.asc
+
+//Een koppel Graspiepers heeft een leefgebied nodig van minstens 5ha
+//dat bestaat uit weilanden in grote weidecomplexen in polders en riviervalleien, grazige vochtige heide, opgespoten en braakterreinen, grazige terrils, brede wegbermen, dijken en rivieroevers
+//(bwk:  hd, had, cg, ce, ces, cm, cd, ha, hc, hk, hm, hmm, hme, hmo, hn, hu, hj, hp, hp+, hpr, hpr+, ku, kz).
+//Dit leefgebied moet minstens 100m van de bosrand afliggen en er mogen geen hoge bomen in staan.
+
+//Vaststellingen: heel wat waarnemingen liggen nu ook in (grote) akkers; die vallen er nu tussen uit ...
+//Mogelijkheden om leefgebied in te krimpen: 
+//1. slecht ontwikkelde vormen van geschikte biotopen weglaten
+//2. bufferafstand inkrimpen of zelfs volledig weglaten (eis voor aaneengesloten clusters van de gevraagde minimumoppervlakte)
+//3. aandeel hoge bomen dat toegelaten wordt in clusters naar beneden trekken
+//4. criterium vanaf welke oppervlakte aan hooggroen iets als bos beschouwd wordt, bijstellen naar beneden; op die manier wordt iets sneller als bosrand beschouwd en neemt de impact ervan op het leefgebied toe
+//5. extra criteria invoegen (bv. afstand tot bebouwing, bodemvochtigheid, afstand tot water of overstromingsgebied, ...)
+
+///Geschikte biotopen
+
+//evt. nog toe te voegen, op basis van niet afgedekte actuele waarnemingen?: sd, dd, hz, verboste vormen
+
+assign(graspieper_bwk, bwk(cd, cd+, 2310%, 4030%, ce, 4010%, 7150%, 7140_oli%, ce+, ces, ces+, cm, cm+, ha, 2330%, 6230_ha%, ha+, had, had+, 2130%, 2130_had%, 2150%, hc, hc+, 2190%, 6410%, hd, hd+, 2130%, 2130_hd%, hj, hj+, hk, hk+, 6210%, hm, hm+, hme, hme+, hmm, hmm+, hmo, hmo+, 6230%, hn, hn+, hp, hp+, rbbkam%, rbbzil%, hpr, hpr+, hu, hu+, 2190%, 6120%, 6510%, hz, hz+, ku, ku+, 3270%, 6430%, kz, rbbvos%))
+
+//afstand van 50m tot bosrand
+
+assign(graspieper_bos, eq('groenkaart2013_20m.asc', 1))
+
+//beperking van impact van bos door te stellen dat de afstand van 100 m enkel geldt als de bossen/bomen een aaneengesloten oppervlakte van minstens 1 ha hebben
+
+assign(graspieper_bos_cluster, fuzzyClusterIdU(graspieper_bos, 20, meter))
+assign(graspieper_bos1, cFilterGeArea(graspieper_bos_cluster, 0.1, hectare))
+
+deleteVariable(graspieper_bos)
+deleteVariable(graspieper_bos_cluster)
+
+assign(graspieper_leefgebied1, and(graspieper_bwk, celldistanceGe(graspieper_bos1, 100, meter)))
+
+deleteVariable(graspieper_bwk)
+deleteVariable(graspieper_bos1)
+
+//Clustering met bufferafstand 50m
+
+assign(graspieper_leefgebied1_cluster, fuzzyClusterIdU(graspieper_leefgebied1, 50, meter))
+
+deleteVariable(graspieper_leefgebied1)
+
+//leefgebied moet minstens 5 ha groot zijn
+
+assign(graspieper_leefgebied, cFilterGeArea(graspieper_leefgebied1_cluster, 5, hectare))
+
+deleteVariable(graspieper_leefgebied1_cluster)
+
+write('ANB2019_Graspieper2018.asc', IsNonZero(graspieper_leefgebied))
+
+deleteVariable(graspieper_leefgebied)

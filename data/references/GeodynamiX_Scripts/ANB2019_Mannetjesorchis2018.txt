@@ -1,0 +1,19 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af (zonder opgespoten terreinen)
+
+assign(mannetjesorchis_voortplanting_bwk, bwk(9150%, 6210%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(mannetjesorchis_voortplanting_cluster, fuzzyClusterIdU(mannetjesorchis_voortplanting_bwk, 20, meter))
+
+deleteVariable(mannetjesorchis_voortplanting_bwk)
+
+// optimale voortplantingsclusters moeten minimaal 0.16ha groot zijn
+
+assign(mannetjesorchis_leefgebied, cFilterGeArea(mannetjesorchis_voortplanting_cluster, 0.16, hectare))
+deleteVariable(mannetjesorchis_voortplanting_cluster)
+
+write('ANB2019_Mannetjesorchis2018.asc', IsNonZero(mannetjesorchis_leefgebied))
+deleteVariable(mannetjesorchis_leefgebied)

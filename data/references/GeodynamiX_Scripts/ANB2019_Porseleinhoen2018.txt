@@ -1,0 +1,54 @@
+Vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+
+assign(porseleinhoen_grasland, bwk(ces%, 7140_oli%, hj%, hm%, 6410%, hme%, hmm%, hpr+, 2190%, rbbkam%, rbbzil%, hu%, 6510%, ku%, 3270%, 6430%))
+assign(porseleinhoen_moeras, bwk(hc%, 2190%, 6410%, rbbhc%, hf%, 6430%, rbbhf%, mc%, rbbmc%, md%, 7140%, 91E0%, mk%, 7230%, mm%, 7210%, mp%, 2190_mp%, mr%, 1130%, 1330%, 6430_hw%, 6430_mr%, rbbmr%, ms%, rbbms%))
+
+//zeer geschikte biotopen:
+
+assign(porseleinhoen_geschikt1, or(porseleinhoen_grasland, porseleinhoen_moeras))
+deleteVariable(porseleinhoen_moeras)
+deleteVariable(porseleinhoen_grasland)
+
+// baken hooggroen af
+
+assign(porseleinhoen_hooggroen, eq('groenkaart2013_20m.asc', 1))
+assign(porseleinhoen_terril, bwk(kg%))
+
+// geschikte gebieden mogen niet overlappen met hooggroen of terrils
+
+assign(porseleinhoen_geschikt2, and(porseleinhoen_geschikt1, not(or(porseleinhoen_hooggroen, porseleinhoen_terril))))
+
+deleteVariable(porseleinhoen_geschikt1)
+deleteVariable(porseleinhoen_terril)
+
+//Beperking van geschikte biotopen tot de valleigronden en overstromingsgevoelige gebieden (profielontwikkeling p en drainageklassen natter of gelijk aan d, effectief of mogelijks overstromingsgevoelig)
+
+assign(porseleinhoen_overstromingsgevoelig, OrEq('OVSTRGEV2014_20m.asc', 1, 2))
+
+assign(porseleinhoen_geschikt3, and(porseleinhoen_geschikt2, or(porseleinhoen_overstromingsgevoelig)))
+
+deleteVariable(porseleinhoen_geschikt2)
+deleteVariable(porseleinhoen_overstromingsgevoelig)
+
+// leefgebied moet minstens 3 ha groot zijn
+
+assign(porseleinhoen_geschikt3_cluster, fuzzyClusterIdU(porseleinhoen_geschikt3, 50, meter))
+deleteVariable(porseleinhoen_geschikt3)
+
+assign(porseleinhoen_geschikt4, CfilterGeArea(porseleinhoen_geschikt3_cluster, 3, hectare))
+deleteVariable(porseleinhoen_geschikt3_cluster)
+
+//wegfilteren van clusters die geen enkele rastercel bevatten die op meer dan 100m ligt van hooggroen dat minstens uit 5 cellen bestaat (i.e. 100m lijnvormig of 20 are in oppervlakte) op een maximale onderlinge afstand van 20 meter; cfr. eis 200 m open zicht
+
+assign(porseleinhoen_geschikt5, and(porseleinhoen_geschikt4, cellDistanceGe(porseleinhoen_hooggroen, 100, meter)))
+deleteVariable(porseleinhoen_geschikt4)
+deleteVariable(porseleinhoen_hooggroen)
+
+assign(porseleinhoen_geschikt5_cluster, fuzzyClusterIdU(porseleinhoen_geschikt5, 50, meter))
+deleteVariable(porseleinhoen_geschikt5)
+assign(porseleinhoen_leefgebied, cFilterGeArea(porseleinhoen_geschikt5_cluster, 10, hectare))
+deleteVariable(porseleinhoen_geschikt5_cluster)
+write('ANB2019_Porseleinhoen2018.asc', IsNonZero(porseleinhoen_leefgebied))
+deleteVariable(porseleinhoen_leefgebied)

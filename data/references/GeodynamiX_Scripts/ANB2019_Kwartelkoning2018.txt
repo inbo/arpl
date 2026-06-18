@@ -1,0 +1,115 @@
+Vlaanderen_20m.asc
+
+//Een koppel kwartelkoning heeft minstens 10 ha habitat nodig dat minimum een ononderbroken zicht heeft van 200m.
+//Dit habitat bestaat voor minstens 80% uit droge extensief beheerde, onbemeste bloemrijke graslanden met deels vochtige bodem (BWK: hc, hc-, hc+, hf, hf-, hf+, hfc, hfc-, hfc+, hft, hft-, hft+, hm, hm-, hm+, hme, hme-, hme+, hmm, hmm-, hmm+, hpr, hpr-, hpr+, hr, hr-, hr+, hu, hu-, hu+, ku, ku-, ku+)
+//met hoge grassen van minstens 20-30 cm (er mag niet gemaaid worden voor het einde van het broedseizoen-15juli)
+//en voor minder dan 20% uit moerasvegetaties (BWK:, mc-, mc+, mk, mk-, mk+, mp, mp-, mp+, mr, mr-, mr+, ms, ms-, ms+).
+//Grote delen van die graslanden mogen niet drassig of geïnundeerd zijn na mei. 
+
+///Veranderingen t.o.v. eerste versie
+//geen terrils, i.e. not(bwk(kg%))
+//biotopen enkel geschikt indien ze niet verbost zijn (hooggroen uit groenkaart 2013)
+//enkel clusters overhouden die een minimale oppervlakte hebben met biotoop dat minimaal 100 m gelegen is van bosclusters van minimaal 20 are
+//75% van oppervlakte moet bestaan uit zeer geschikt biotoop (op aangeven van ANB is dat Rbbhu, 6120, 6510, Rbbhc, 2190, 6410)
+//bufferafstand teruggebracht van 150 naar 50 m
+//hj en hp+ nog toegevoegd (matig geschikt biotoop volgens ANB)
+//net als de volgende habitattypen: 2190, 6120, 6410, 6510, 6430, 7140, 7230
+//alleen valleigronden overhouden (bodemkaart profielontwikkeling "p", of natte drainageklassen (>= "e" of "d"), of in overstromingsgevoelige gebieden)
+//lijnvormige biotopen niet geschikt en dus wegwerken met een majority-filter toepassen op 0/1 kaart met geschikte biotopen; MajorityFilter(map, mask, radius), met radius in aantal cellen, cirkelvormig, waarbij radius 2 een 3x3 window geeft
+//wegfilteren van polygonen van geschikte biotopen die op zich kleiner zijn dan 3 ha
+
+// baken geschikte biotopen af
+
+assign(kwartelkoning_grasland, bwk(hc%, 2190%, 6410%, rbbhc%, hf%, 6430%, rbbhf%, hft%, hj%, hm%, hp+, hpr, hpr-, hpr+, rbbkam%, rbbzil%, hr%, hu%, 6120%, 6510%, ku%, 3270%))
+assign(kwartelkoning_moeras, bwk(mc%, rbbmc%, mk%, 7140%, 7230%, mp%, 2190%, 2190_mp%, mr%, 6430_hw%, 6430_mr%, 7140_mrd%, rbbmr%, ms%, rbbms%))
+
+//zeer geschikte biotopen:
+
+assign(kwartelkoning_geschikt1, or(kwartelkoning_grasland, kwartelkoning_moeras))
+
+//assign(kwartelkoning_zeergeschikt1, bwk(hc%, 2190%, 6410%, rbbhc%, hu, hu+, 6120%, 6510%, rbbvos%))
+
+// Baken bossen af
+
+assign(kwartelkoning_hooggroen, eq('groenkaart2013_20m.asc', 1))
+assign(kwartelkoning_terril, bwk(kg%))
+
+// geschikte gebieden mogen niet overlappen met bos
+
+assign(kwartelkoning_geschikt2, and(kwartelkoning_geschikt1, not(or(kwartelkoning_hooggroen, kwartelkoning_terril))))
+deleteVariable(kwartelkoning_geschikt1)
+
+//assign(kwartelkoning_zeergeschikt2, and(kwartelkoning_zeergeschikt1, not(or(kwartelkoning_hooggroen, kwartelkoning_terril))))
+
+deleteVariable(kwartelkoning_terril)
+
+//Beperking van geschikte biotopen tot de valleigronden en overstromingsgevoelige gebieden (profielontwikkeling p en drainageklassen natter of gelijk aan d, effectief of mogelijks overstromingsgevoelig)
+
+assign(kwartelkoning_bodemprofiel, OrEq('bodem_profiel.asc', 1, 6))
+assign(kwartelkoning_bodemdrainage, OrEq('bodem_drainage.asc', 1, 2, 3, 7, 10, 11, 12, 14, 15))
+assign(kwartelkoning_overstromingsgevoelig, OrEq('OVSTRGEV2014_20m.asc', 1, 2))
+
+assign(kwartelkoning_geschikt3, and(kwartelkoning_geschikt2, or(kwartelkoning_bodemprofiel, kwartelkoning_bodemdrainage, kwartelkoning_overstromingsgevoelig)))
+deleteVariable(kwartelkoning_geschikt2)
+
+
+deleteVariable(kwartelkoning_bodemprofiel)
+deleteVariable(kwartelkoning_bodemdrainage)
+deleteVariable(kwartelkoning_overstromingsgevoelig)
+
+//Wegfilteren van lintvormige biotopen (wegbermen autostraden, kanalen, etc.)
+
+//assign(kwartelkoning_geschikte_biotopen_filter_lint, MajorityFilter(kwartelkoning_geschikte_biotopen + 1, 1, 2) - 1)
+
+//wegfilteren van de clusters kleiner dan 3 ha
+
+assign(kwartelkoning_geschikt3_cluster, fuzzyClusterIdU(kwartelkoning_geschikt3, 50, meter))
+deleteVariable(kwartelkoning_geschikt3)
+
+assign(kwartelkoning_geschikt4, CfilterGeArea(kwartelkoning_geschikt3_cluster, 3, hectare))
+deleteVariable(kwartelkoning_geschikt3_cluster)
+
+//wegfilteren van clusters die geen enkele rastercel bevatten die op meer dan 100m ligt van hooggroen dat minstens uit 5 cellen bestaat (i.e. 100m lijnvormig of 20 are in oppervlakte) op een maximale onderlinge afstand van 20 meter; cfr. eis 200 m open zicht
+
+assign(kwartelkoning_geschikt5, and(kwartelkoning_geschikt4, cellDistanceGe(kwartelkoning_hooggroen, 100, meter)))
+deleteVariable(kwartelkoning_geschikt4)
+
+
+deleteVariable(kwartelkoning_hooggroen)
+
+//compileren van geschikte biotopen à la mode; nu moet geschikt voldoen aan al de bovenstaande eisen:
+//assign(kwartelkoning_geschikte_biotopen, and(kwartelkoning_geschikte_biotopen_vallei, kwartelkoning_geschikte_biotopen_filter_lint, kwartelkoning_geschikte_biotopen_ge3ha, kwartelkoning_geschikte_biotopen_filter_openzicht, kwartelkoning_geschikte_biotopen_excl_hooggroen))
+
+//clustering
+
+assign(kwartelkoning_geschikt5_cluster, fuzzyClusterIdU(kwartelkoning_geschikt5, 50, meter))
+deleteVariable(kwartelkoning_geschikt5)
+
+assign(kwartelkoning_leefgebied1, cFilterGeArea(kwartelkoning_geschikt5_cluster, 10, hectare))
+deleteVariable(kwartelkoning_geschikt5_cluster)
+
+
+//Aandeel grasland minstens 75%
+
+assign(kwartelkoning_grasland_fractie, cSum(kwartelkoning_leefgebied1, kwartelkoning_grasland) / cSum(kwartelkoning_leefgebied1, 1))
+assign(kwartelkoning_grasland2, and(kwartelkoning_leefgebied1, cFilter(kwartelkoning_leefgebied1, ge(kwartelkoning_grasland_fractie, 0.75))))
+deleteVariable(kwartelkoning_grasland_fractie)
+
+
+//Aandeel moerasvegetatie lager dan 25%
+assign(kwartelkoning_moeras_fractie, cSum(kwartelkoning_leefgebied1, kwartelkoning_moeras) / cSum(kwartelkoning_leefgebied1, 1))
+assign(kwartelkoning_moeras2, and(kwartelkoning_leefgebied1, cFilter(kwartelkoning_leefgebied1, le(kwartelkoning_moeras_fractie, 0.25))))
+deleteVariable(kwartelkoning_moeras_fractie)
+
+deleteVariable(kwartelkoning_leefgebied1)
+
+
+deleteVariable(kwartelkoning_grasland)
+deleteVariable(kwartelkoning_moeras)
+
+assign(kwartelkoning_leefgebied, or(kwartelkoning_grasland2, kwartelkoning_moeras2))
+deleteVariable(kwartelkoning_moeras2)
+deleteVariable(kwartelkoning_grasland2)
+
+write('ANB2019_Kwartelkoning2018.asc', IsNonZero(kwartelkoning_leefgebied))
+deleteVariable(kwartelkoning_leefgebied)

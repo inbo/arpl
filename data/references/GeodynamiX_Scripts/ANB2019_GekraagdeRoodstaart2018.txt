@@ -1,0 +1,70 @@
+vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+assign(gekraagderoodstaart_bwk1, bwk(kj%, kp%, ppm%, rbbppm%, qb%, 9120%, 9190%))
+
+assign(gekraagderoodstaart_heide, bwk(c%, 2310%, 4030%, 4010%, 7140%, 7150%, 2310%, 5130%, 7110%, 9120%))
+assign(gekraagderoodstaart_bos, bwk(q%, 9110%, 9120%, 9130%, 9150%, 9160%, 2180%, 9190%, f%, p%, rbbppm%))
+assign(gekraagderoodstaart_stuifduin, bwk(dm%, 2330%))
+
+assign(gekraagderoodstaart_edge_heidebos, edge(IsNonZero(gekraagderoodstaart_heide), IsNonZero(gekraagderoodstaart_bos)))
+assign(gekraagderoodstaart_edge_bosheide, edge(IsNonZero(gekraagderoodstaart_bos), IsNonZero(gekraagderoodstaart_heide)))
+
+deleteVariable(gekraagderoodstaart_heide)
+
+assign(gekraagderoodstaart_edge1, or(gekraagderoodstaart_edge_bosheide, gekraagderoodstaart_edge_heidebos))
+//write('gekraagderoodstaart_edge1.asc', IsNonzero(gekraagderoodstaart_edge1))
+
+deleteVariable(gekraagderoodstaart_edge_heidebos)
+deleteVariable(gekraagderoodstaart_edge_bosheide)
+
+assign(gekraagderoodstaart_edge_stuifduinbos, edge(IsNonZero(gekraagderoodstaart_stuifduin), IsNonZero(gekraagderoodstaart_bos)))
+assign(gekraagderoodstaart_edge_bosstuifduin, edge(IsNonZero(gekraagderoodstaart_bos), IsNonZero(gekraagderoodstaart_stuifduin)))
+
+deleteVariable(gekraagderoodstaart_bos)
+deleteVariable(gekraagderoodstaart_stuifduin)
+
+assign(gekraagderoodstaart_edge2, or(gekraagderoodstaart_edge_stuifduinbos, gekraagderoodstaart_edge_bosstuifduin))
+//write('gekraagderoodstaart_edge2.asc', IsNonzero(gekraagderoodstaart_edge2))
+
+deleteVariable(gekraagderoodstaart_edge_stuifduinbos)
+deleteVariable(gekraagderoodstaart_edge_bosstuifduin)
+
+assign(gekraagderoodstaart_edge, or(gekraagderoodstaart_edge1, gekraagderoodstaart_edge2))
+
+deleteVariable(gekraagderoodstaart_edge1)
+deleteVariable(gekraagderoodstaart_edge2)
+
+//write('gekraagderoodstaart_edge.asc', IsNonzero(gekraagderoodstaart_edge))
+
+assign(gekraagderoodstaart_bwk2, or(gekraagderoodstaart_bwk1, gekraagderoodstaart_edge))
+
+deleteVariable(gekraagderoodstaart_bwk1)
+deleteVariable(gekraagderoodstaart_edge)
+
+assign(gekraagderoodstaart_notbwk, bwk(pa%))
+assign(gekraagderoodstaart_bwk, and(gekraagderoodstaart_bwk2, not(gekraagderoodstaart_notbwk)))
+
+deleteVariable(gekraagderoodstaart_notbwk)
+deleteVariable(gekraagderoodstaart_bwk2)
+
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 50 meter liggen
+assign(gekraagderoodstaart_bwk_cluster, fuzzyClusterIdU(gekraagderoodstaart_bwk, 50, meter))
+
+deleteVariable(gekraagderoodstaart_bwk)
+
+// leefgebied moet minstens 2.5 hectare groot zijn
+assign(gekraagderoodstaart_leefgebied, cFilterGeArea(gekraagderoodstaart_bwk_cluster, 2.5, hectare))
+
+// beperk de leefgebiedenkaart tot bepaalde ecoregio's
+assign(gekraagderoodstaart_ecodistrict, Ge('ecoregio.asc', 1))
+assign(gekraagderoodstaart_leefgebied_ecodistrict, and(gekraagderoodstaart_leefgebied, gekraagderoodstaart_ecodistrict))
+deleteVariable(gekraagderoodstaart_ecodistrict)
+deleteVariable(gekraagderoodstaart_leefgebied)
+
+// individuele nummers geven aan clusters
+deleteVariable(gekraagderoodstaart_bwk_cluster)
+
+// 0/1 kaarten maken
+write('ANB2019_GekraagdeRoodstaart2018.asc', IsNonZero(gekraagderoodstaart_leefgebied_ecodistrict))
+deleteVariable(gekraagderoodstaart_leefgebied_ecodistrict)

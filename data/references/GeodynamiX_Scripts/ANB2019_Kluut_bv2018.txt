@@ -1,0 +1,64 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af
+
+assign(kluut_voortplanting1, bwk(da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, hpr%, 2190%, rbbkam%, rbbzil%, ku%, 6430%, kz%))
+
+// leefgebied mag geen open water of ruigte of moeras zijn
+
+assign(openwater, bwk(ad%, ae%, 2190%, 3140%, 3150%, aer%, aes%, aev%, ah%, rbbah%, am%, ao%, 3160%, 7140%, 7150%, aom%, 3110%, 3130%, aoo%, ap%, apo%, app%, mz%, 1330_da%, 1330_hpr%))
+
+assign(kluut_voortplanting2, and(kluut_voortplanting1, not(openwater)))
+
+deleteVariable(kluut_voortplanting1)
+deleteVariable(openwater)
+
+// clustering: indien geschikte cel binnen 10 meter, dan hoort die cel bij het cluster
+
+assign(kluut_voortplanting2_cluster, fuzzyClusterIdU(kluut_voortplanting2, 50, meter))
+
+deleteVariable(kluut_voortplanting2)
+
+// voortplantingsclusters moeten minimaal 5ha groot zijn
+
+assign(kluut_voortplanting3, cFilterGeArea(kluut_voortplanting2_cluster, 5, hectare))
+
+deleteVariable(kluut_voortplanting2_cluster)
+
+// voortplantingscluster moet vrij dicht bij open water en vochtige weilanden liggen
+
+assign(kluut_foerageer1, bwk(aer%, ah%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, hpr%, 2190%, rbbkam%, rbbzil%, hpr+%, kn%, 3140%, 3150%, ku%, 3270%, 6430%, kz%))
+
+// clustering: indien geschikte cel binnen 10 meter, dan hoort die cel bij het cluster
+
+assign(kluut_foerageer1_cluster, fuzzyClusterIdU(kluut_foerageer1, 10, meter))
+
+deleteVariable(kluut_foerageer1)
+
+// foerageerclusters moeten minimaal 5ha groot zijn
+
+assign(kluut_foerageer2, cFilterGeArea(kluut_foerageer1_cluster, 5, hectare))
+deleteVariable(kluut_foerageer1_cluster)
+
+// geschikte foerageergebieden liggen minder dan 2 km van voortplantingsgebieden en omgekeerd
+
+assign(kluut_foerageer4, cFilter(kluut_foerageer2, cellDistanceLe(kluut_voortplanting3, 2000, meter)))
+assign(kluut_voortplanting4, cFilter(kluut_voortplanting3, cellDistanceLe(kluut_foerageer2, 2000, meter)))
+
+deleteVariable(kluut_voortplanting3)
+
+deleteVariable(kluut_foerageer2)
+
+assign(kluut_leefgebied1, or(kluut_voortplanting4, kluut_foerageer4))
+deleteVariable(kluut_foerageer4)
+deleteVariable(kluut_voortplanting4)
+
+assign(kluut_leefgebied1_cluster, FuzzyClusterIdU(kluut_leefgebied1, 50, meter))
+deleteVariable(kluut_leefgebied1)
+
+assign(kluut_leefgebied, cFilterGeArea(kluut_leefgebied1_cluster, 5, hectare))
+deleteVariable(kluut_leefgebied1_cluster)
+
+write('ANB2019_Kluut_bv2018.asc', IsNonZero(kluut_leefgebied))
+
+deleteVariable(kluut_leefgebied)

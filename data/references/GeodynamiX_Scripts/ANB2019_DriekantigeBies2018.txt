@@ -1,0 +1,19 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af (zonder opgespoten terreinen)
+
+assign(driekantigebies_voortplanting_bwk, bwk(1130%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(driekantigebies_voortplanting_cluster, fuzzyClusterIdU(driekantigebies_voortplanting_bwk, 20, meter))
+
+deleteVariable(driekantigebies_voortplanting_bwk)
+
+// optimale voortplantingsclusters moeten minimaal 0.16ha groot zijn
+
+assign(driekantigebies_leefgebied, cFilterGeArea(driekantigebies_voortplanting_cluster, 0.16, hectare))
+deleteVariable(driekantigebies_voortplanting_cluster)
+
+write('ANB2019_DriekantigeBies2018.asc', IsNonZero(driekantigebies_leefgebied))
+deleteVariable(driekantigebies_leefgebied)

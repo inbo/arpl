@@ -1,0 +1,25 @@
+vlaanderen_20m.asc
+
+// geschikte opgaande kleine landschapselementen (kle) uit Groenkaart2013
+
+assign(roestbruinekniptor_kle_groenkaart, edge(Eq('groenkaart2013_20m.asc', 1), OrEq('groenkaart2013_20m.asc', 2, 3, 4)))
+
+// geschikte biotopen volgens BWK
+
+assign(roestbruinekniptor_kle_bwk, bwk(kj, kj+, kp, kp+, kpk, kpk+))
+
+// baken bestanden af die al lang bos zijn op bosinventariskaart
+
+assign(roestbruinekniptor_bosinventaris, OrEq('bosinventaris_2001.asc', 13, 14))
+
+assign(roestbruinekniptor_leefgebied1, Or(roestbruinekniptor_kle_groenkaart, roestbruinekniptor_kle_bwk, roestbruinekniptor_bosinventaris))
+
+deleteVariable(roestbruinekniptor_kle_groenkaart)
+deleteVariable(roestbruinekniptor_kle_bwk)
+deleteVariable(roestbruinekniptor_bosinventaris)
+
+// leefgebieden nog beperken op basis van ecodistricten
+assign(roestbruinekniptor_ecodistrict, Ge('Ecoregio.asc', 1))
+assign(roestbruinekniptor_leefgebied_ecodistrict, and(roestbruinekniptor_leefgebied1, roestbruinekniptor_ecodistrict))
+deleteVariable(roestbruinekniptor_ecodistrict)
+write('ANB2019_RoestbruineKniptor2018.asc', IsNonzero(roestbruinekniptor_leefgebied_ecodistrict))

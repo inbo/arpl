@@ -1,0 +1,54 @@
+vlaanderen_20m.asc
+
+// baken geschikte biotopen af 
+assign(blauwvleugelsprinkhaan_bwk, bwk(2120%, 2130%, 2150%, 2310%, 4030%, 5130%, cg%, dd%, 2120%, ha%, 2330%, 6230_ha%, hd%, hn%, 6230%, hv%, kc%, kd%, kg%, ks%, ku, ku+, 3270%, 6430%, k(ha%, k(hn%, k(hv%, k(cg%, spoor%, 6120%))
+
+// vochtkaart gebruiken om drogere te selecteren
+assign(blauwvleugelsprinkhaan_bodemdrainage, Ge('bodem_drainage.asc', 1))
+
+assign(blauwvleugelsprinkhaan2, and(blauwvleugelsprinkhaan_bwk, blauwvleugelsprinkhaan_bodemdrainage))
+
+deleteVariable(blauwvleugelsprinkhaan_bwk)
+deleteVariable(blauwvleugelsprinkhaan_bodemdrainage)
+
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 50 meter liggen
+assign(blauwvleugelsprinkhaan2_cluster, fuzzyClusterIdU(blauwvleugelsprinkhaan2, 50, meter))
+
+deleteVariable(blauwvleugelsprinkhaan2)
+
+// leefgebied moet minstens 5 hectare groot zijn
+assign(blauwvleugelsprinkhaan_leefgebied5ha, cFilterGeArea(blauwvleugelsprinkhaan2_cluster, 5, hectare))
+
+assign(blauwvleugelsprinkhaan_leefgebied1ha, cFilterGeArea(blauwvleugelsprinkhaan2_cluster, 1, hectare))
+//write('blauwvleugelsprinkhaan_leefgebied1ha.asc', IsNonZero(blauwvleugelsprinkhaan_leefgebied1ha))
+
+// indien leefgebied kleiner dan 5 ha dan moet die in een metapopulatiestructuur liggen, dwz met meerdere kleine patches samen (5? = 6 - 1)
+assign(blauwvleugelsprinkhaan_metapopulatie, GeUniqueCountInBuffer(blauwvleugelsprinkhaan_leefgebied1ha, 500, meter, blauwvleugelsprinkhaan_leefgebied1ha, 6))
+//write('blauwvleugelsprinkhaan_metapopulatie.asc', IsNonZero(blauwvleugelsprinkhaan_metapopulatie))
+
+assign(blauwvleugelsprinkhaan_leefgebied1, and(blauwvleugelsprinkhaan_leefgebied1ha, cellDistanceLe(blauwvleugelsprinkhaan_metapopulatie, 500, meter)))
+assign(blauwvleugelsprinkhaan_leefgebied2, and(blauwvleugelsprinkhaan_leefgebied5ha, cellDistanceLe(blauwvleugelsprinkhaan_metapopulatie, 500, meter)))
+
+deleteVariable(blauwvleugelsprinkhaan_leefgebied1ha)
+deleteVariable(blauwvleugelsprinkhaan_metapopulatie)
+
+assign(blauwvleugelsprinkhaan_leefgebied_metapopulatie, or(blauwvleugelsprinkhaan_leefgebied1, blauwvleugelsprinkhaan_leefgebied2))
+
+deleteVariable(blauwvleugelsprinkhaan_leefgebied1)
+deleteVariable(blauwvleugelsprinkhaan_leefgebied2)
+
+assign(blauwvleugelsprinkhaan_leefgebied, or(blauwvleugelsprinkhaan_leefgebied5ha, blauwvleugelsprinkhaan_leefgebied_metapopulatie))
+
+deleteVariable(blauwvleugelsprinkhaan_leefgebied_metapopulatie)
+deleteVariable(blauwvleugelsprinkhaan_leefgebied5ha)
+
+// beperk de leefgebiedenkaart tot bepaalde ecoregio's
+assign(blauwvleugelsprinkhaan_ecodistrict, Ge('ecoregio.asc', 1))
+assign(blauwvleugelsprinkhaan_leefgebied_ecodistrict, and(blauwvleugelsprinkhaan_leefgebied, blauwvleugelsprinkhaan_ecodistrict))
+deleteVariable(blauwvleugelsprinkhaan_ecodistrict)
+deleteVariable(blauwvleugelsprinkhaan_leefgebied)
+deleteVariable(blauwvleugelsprinkhaan2_cluster)
+
+// 0/1 kaarten maken
+write('ANB2019_Blauwvleugelsprinkhaan2018.asc', IsNonZero(blauwvleugelsprinkhaan_leefgebied_ecodistrict))
+deleteVariable(blauwvleugelsprinkhaan_leefgebied_ecodistrict)

@@ -1,0 +1,39 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af met behulp van de gewassenkaart
+
+assign(europesehamster_graan, OrEq('epr2013.asc', 6, 49, 38, 36, 63, 100, 219, 21, 19, 225, 241, 74, 174, 45))
+//write('europesehamster_graan.asc', europesehamster_graan)
+
+assign(europesehamster_nietoverstroombaar, Eq('OVSTRGEV2014_20m.asc', 0))
+//write('europesehamster_nietoverstroombaar.asc', europesehamster_nietoverstroombaar)
+
+assign(europesehamster_bodem, Eq('bodem_textuur.asc', 6))
+//write('europesehamster_bodem.asc', europesehamster_bodem)
+
+assign(europesehamster_leefgebied1, and(europesehamster_graan, europesehamster_bodem)) 
+//write('europesehamster_leefgebied1.asc', europesehamster_leefgebied1)
+
+deleteVariable(europesehamster_graan)
+deleteVariable(europesehamster_nietoverstroombaar)
+deleteVariable(europesehamster_bodem)
+
+// als pixels minder dan 50 meter van elkaar liggen behoren ze tot dezelfde cluster
+
+assign(europesehamster_leefgebied1_cluster, fuzzyClusterIdU(europesehamster_leefgebied1, 50, meter))
+//write('europesehamster_leefgebied1_cluster.asc', europesehamster_leefgebied1_cluster)
+
+deleteVariable(europesehamster_leefgebied1)
+
+// oppervlakte moet minstens 125 ha groot zijn
+
+assign(europesehamster_leefgebied2, cFilterGeArea(europesehamster_leefgebied1_cluster, 125, hectare))
+write('ANB2019_EuropeseHamster2018.asc', IsNonZero(europesehamster_leefgebied2))
+
+deleteVariable(europesehamster_leefgebied2)
+deleteVariable(europesehamster_leefgebied1_cluster)
+
+// baken de taluds af
+
+//assign(europesehamster_taluds, bwk(kt%, kw%))
+//write('europesehamster_taluds.asc', europesehamster_taluds)

@@ -1,0 +1,19 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af (zonder opgespoten terreinen)
+
+assign(moerassmele_voortplanting_bwk, bwk(3130%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(moerassmele_voortplanting_cluster, fuzzyClusterIdU(moerassmele_voortplanting_bwk, 20, meter))
+
+deleteVariable(moerassmele_voortplanting_bwk)
+
+// optimale voortplantingsclusters moeten minimaal 0.16ha groot zijn
+
+assign(moerassmele_leefgebied, cFilterGeArea(moerassmele_voortplanting_cluster, 0.16, hectare))
+deleteVariable(moerassmele_voortplanting_cluster)
+
+write('ANB2019_Moerassmele2018.asc', IsNonZero(moerassmele_leefgebied))
+deleteVariable(moerassmele_leefgebied)

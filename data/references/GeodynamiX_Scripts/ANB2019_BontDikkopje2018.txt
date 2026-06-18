@@ -1,0 +1,80 @@
+vlaanderen_20m.asc
+
+// baken geschikte voortplantingsgebieden af
+assign(bontdikkopje_voortplanting_bwk, bwk(ce%, 4010%, 7150%, cg%, 2310%, 4030%, cm%, hj%, ms%, 7140%, se%, sf%, 2180%, 91E0%, rbbsf%, sm%, 7230%, so%, rbbso%, vo%, pmb%, pmh%, ppmb%, ppmh%, rbbppm%, qb%, 9190%, k(ce%, k(cg%, k(cm%, k(hj%, k(ms%, k(se%, k(sm%, k(so%, k(sf%, k(vo%, k(ppmh%, k(pmh%, k(pmb%, k(ppmb%, k(qb%))
+
+// de bodem moet voldoende vochtig zijn
+assign(bontdikkopjeVocht, OrEq('bodem_drainage.asc', 1, 2, 3, 7, 10, 11, 12, 14, 15))
+assign(bontdikkopje_voortplanting_vocht, and(bontdikkopje_voortplanting_bwk, bontdikkopjeVocht))
+
+deleteVariable(bontdikkopje_voortplanting_bwk)
+deleteVariable(bontdikkopjeVocht)
+
+// voortplantingsgebieden liggen doorgaans steeds in de buurt van open water
+assign(bontdikkopjeWater1, OrEq('GRB_watergang_at.asc', 1))
+assign(bontdikkopje_Waterbwk, bwk(ae, ae+, ae-, aev, aev+, aev-, ao%))
+assign(bontdikkopjeWater, or(bontdikkopjeWater1, bontdikkopje_Waterbwk))
+
+deleteVariable(bontdikkopjeWater1)
+deleteVariable(bontdikkopje_Waterbwk)
+
+assign(bontdikkopje_voortplanting, and(bontdikkopje_voortplanting_vocht, cellDistanceLe(bontdikkopjeWater, 200, meter)))
+
+deleteVariable(bontdikkopje_voortplanting_vocht)
+deleteVariable(bontdikkopjeWater)
+
+// geschikte biotopen mogen maximaal op een onderlinge afstand van 50 meter liggen
+assign(bontdikkopje_voortplanting_cluster, fuzzyClusterIdU(bontdikkopje_voortplanting, 50, meter))
+
+deleteVariable(bontdikkopje_voortplanting)
+
+// leefgebied moet minstens 5 hectare groot zijn
+assign(bontdikkopje_voortplanting_vocht5ha, cFilterGeArea(bontdikkopje_voortplanting_cluster, 5, hectare))
+
+// baken geschikte foerageergebieden af
+assign(bontdikkopje_foerageer_bwk, bwk(ce%, 4010%, 7150%, cg%, 2310%, 4030%, cm%, hj%, ms%, 7140%, se%, sf%, 2180%, 91E0%, rbbsf%, sm%, 7230%, so%, rbbso%, vo%, ppmh%, pmh%, pmb%, ppmb%, qb%, 9190%, k(ce%, k(cg%, k(cm%, k(hj%, k(ms%, k(se%, k(sm%, k(so%, k(sf%, k(vo%, k(ppmh%, k(pmh%, k(pmb%, k(ppmb%, k(qb%))
+
+// foerageergebied moet minstens 5 hectare groot zijn (Bink, 1992)
+assign(bontdikkopje_foerageer_cluster, fuzzyClusterIdU(bontdikkopje_foerageer_bwk, 50, meter))
+deleteVariable(bontdikkopje_foerageer_bwk)
+assign(bontdikkopje_foerageer10ha, cFilterGeArea(bontdikkopje_foerageer_cluster, 5, hectare))
+
+// voortplantingsgebieden en foerageergebieden mogen maximaal 500 meter uit elkaar liggen en omgekeerd
+assign(bontdikkopje_voortplanting, and(bontdikkopje_voortplanting_vocht5ha, cellDistanceLe(bontdikkopje_foerageer10ha, 500, meter)))
+assign(bontdikkopje_foerageer, and(bontdikkopje_foerageer10ha, cellDistanceLe(bontdikkopje_voortplanting_vocht5ha, 500, meter)))
+deleteVariable(bontdikkopje_foerageer10ha)
+deleteVariable(bontdikkopje_voortplanting_vocht5ha)
+
+// beperk de leefgebiedenkaart tot bepaalde ecoregio's
+assign(bontdikkopje_ecodistrict, Ge('ecoregio.asc', 1))
+
+// individuele nummers geven aan voortplantingsclusters
+assign(bontdikkopje_voortplanting_ecodistrict, and(bontdikkopje_voortplanting, bontdikkopje_ecodistrict))
+//write('bontdikkopje_voortplanting_ecodistrict.asc', if(bontdikkopje_voortplanting_ecodistrict, bontdikkopje_voortplanting_cluster, 0))
+
+// individuele nummers geven aan foerageerclusters
+assign(bontdikkopje_foerageer_ecodistrict, and(bontdikkopje_foerageer, bontdikkopje_ecodistrict))
+//write('bontdikkopje_foerageer_ecodistrict.asc', if(bontdikkopje_foerageer_ecodistrict, bontdikkopje_foerageer_bwk_cluster, 0))
+deleteVariable(bontdikkopje_foerageer_cluster)
+deleteVariable(bontdikkopje_ecodistrict)
+
+// 0/1 kaarten maken van voortplantingsclusters
+//write('bontdikkopje_voortplanting_ecodistrict.asc', IsNonZero(bontdikkopje_voortplanting_ecodistrict))
+deleteVariable(bontdikkopje_voortplanting)
+
+// 0/1 kaarten maken van foerageerclusters
+//write('bontdikkopje_foerageer_ecodistrict.asc', IsNonZero(bontdikkopje_foerageer_ecodistrict))
+deleteVariable(bontdikkopje_foerageer)
+
+assign(bontdikkopje_leefgebied_ecodistrict, or(bontdikkopje_voortplanting_ecodistrict, bontdikkopje_foerageer_ecodistrict))
+
+deleteVariable(bontdikkopje_voortplanting_ecodistrict)
+deleteVariable(bontdikkopje_foerageer_ecodistrict)
+
+// individuele nummers geven aan leefgebiedenclusters
+//write('bontdikkopje_leefgebied_ecodistrict_id.asc', if(bontdikkopje_leefgebied_ecodistrict, bontdikkopje_voortplanting_cluster, 0))
+deleteVariable(bontdikkopje_voortplanting_cluster)
+
+// 0/1 kaarten maken van leefgebiedenclusters
+write('ANB2019_BontDikkopje2018.asc', IsNonZero(bontdikkopje_leefgebied_ecodistrict))
+deleteVariable(bontdikkopje_leefgebied_ecodistrict)

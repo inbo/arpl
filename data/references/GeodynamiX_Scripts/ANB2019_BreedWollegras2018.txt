@@ -1,0 +1,19 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af (zonder opgespoten terreinen)
+
+assign(breedwollegras_voortplanting_bwk, bwk(7230%))
+
+// clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(breedwollegras_voortplanting_cluster, fuzzyClusterIdU(breedwollegras_voortplanting_bwk, 20, meter))
+
+deleteVariable(breedwollegras_voortplanting_bwk)
+
+// optimale voortplantingsclusters moeten minimaal 0.16ha groot zijn
+
+assign(breedwollegras_leefgebied, cFilterGeArea(breedwollegras_voortplanting_cluster, 0.16, hectare))
+deleteVariable(breedwollegras_voortplanting_cluster)
+
+write('ANB2019_BreedWollegras2018.asc', IsNonZero(breedwollegras_leefgebied))
+deleteVariable(breedwollegras_leefgebied)

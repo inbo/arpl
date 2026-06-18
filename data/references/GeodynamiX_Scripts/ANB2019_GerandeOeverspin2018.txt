@@ -1,0 +1,50 @@
+Vlaanderen_20m.asc
+
+// baken geschikte biotopen af
+assign(gerandeoeverspin_waterbiotoop, bwk(ao%, 3160%, 3150%, 3130%, 3110%, 7140%, 7150%))
+//write('gerandeoeverspin_waterbiotoop.asc', IsNonZero(gerandeoeverspin_waterbiotoop))
+
+assign(gerandeoeverspin_landbiotoop, bwk(7120%, 7210%, ce%, 4010%, 7150%, 7140_oli%, cm%, 2310%, 4030%, md%, 7140%, 91E0%, mk%, 7230%, mr%, 1130%, 1330%, 2190%, 6430_hw%, 6430_mr%, 7140_mrd%, rbbmr%, ms%, rbbms%, sm%, rbbsm%))
+//write('gerandeoeverspin_landbiotoop.asc', IsNonZero(gerandeoeverspin_landbiotoop))
+
+// waterbiotoop moet binnen een straal van 250 m van landbiotoop liggen
+assign(gerandeoeverspin_waterbiotoop1, and(gerandeoeverspin_waterbiotoop, cellDistanceLe(gerandeoeverspin_landbiotoop, 250, meter)))
+//write('gerandeoeverspin_waterbiotoop1.asc', IsNonZero(gerandeoeverspin_waterbiotoop1))
+
+// landbiotoop moet binnen een straal van 250 m van waterbiotoop liggen
+assign(gerandeoeverspin_landbiotoop1, and(gerandeoeverspin_landbiotoop, cellDistanceLe(gerandeoeverspin_waterbiotoop, 250, meter)))
+//write('gerandeoeverspin_landbiotoop1.asc', IsNonZero(gerandeoeverspin_landbiotoop1))
+
+deleteVariable(gerandeoeverspin_waterbiotoop)
+deleteVariable(gerandeoeverspin_landbiotoop)
+
+// in moerasbiotopen staat water dus die mogen erbij zonder de nabijheid van water
+assign(gerandeoeverspin_landbiotoop_moeras, bwk(md%, mk%, ms%))
+//write('gerandeoeverspin_landbiotoop_moeras.asc', IsNonZero(gerandeoeverspin_landbiotoop_moeras))
+
+// leefgebied = waterbiotoop + landbiotoop + landbiotoop_moeras
+assign(gerandeoeverspin_leefgebied1, or(gerandeoeverspin_landbiotoop1, gerandeoeverspin_waterbiotoop1, gerandeoeverspin_landbiotoop_moeras))
+//write('gerandeoeverspin_leefgebied1.asc', IsNonZero(gerandeoeverspin_leefgebied1))
+
+deleteVariable(gerandeoeverspin_waterbiotoop1)
+deleteVariable(gerandeoeverspin_landbiotoop1)
+deleteVariable(gerandeoeverspin_landbiotoop_moeras)
+
+//clustering? Alle biotoop op een onderlinge afstand van maximaal 50m
+assign(gerandeoeverspin_leefgebied1_cluster, fuzzyClusterIdU(gerandeoeverspin_leefgebied1, 50, meter))
+deleteVariable(gerandeoeverspin_leefgebied1)
+
+// leefgebiedbiotoop moet minstens 0.5 ha groot zijn
+assign(gerandeoeverspin_leefgebied2, cFilterGeArea(gerandeoeverspin_leefgebied1_cluster, 0.5, hectare))
+//write('gerandeoeverspin_leefgebied2.asc', IsNonZero(gerandeoeverspin_leefgebied2))
+
+// baken ecoregio van ecodistrictgebieden af (selecteer de regio’s waarin de soort momenteel voorkomt of potentieel kan voorkomen)
+assign(gerandeoeverspin_ecodistrict, Ge('ecoregio.asc', 1))
+assign(gerandeoeverspin_leefgebied_ecodistrict, and(gerandeoeverspin_leefgebied2, gerandeoeverspin_ecodistrict))
+deleteVariable(gerandeoeverspin_ecodistrict)
+write('ANB2019_GerandeOeverspin2018.asc', IsNonZero(gerandeoeverspin_leefgebied_ecodistrict))
+//write('gerandeoeverspin_leefgebied_ecodistrict_id.asc', if(gerandeoeverspin_leefgebied_ecodistrict, gerandeoeverspin_leefgebied2, 0))
+deleteVariable(gerandeoeverspin_leefgebied_ecodistrict)
+deleteVariable(gerandeoeverspin_leefgebied1_cluster)
+deleteVariable(gerandeoeverspin_leefgebied2)
+

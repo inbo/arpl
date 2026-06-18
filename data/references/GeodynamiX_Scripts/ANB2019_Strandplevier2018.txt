@@ -1,0 +1,52 @@
+vlaanderen_20m.asc
+
+// baken de voortplantingsgebieden af
+
+assign(strandplevier_voortplanting1, bwk(da%, 1310%, 1320%, 1330%, dd%, 2120%, dl%, 1140%, 2110%, dla%, dz%, ku%, 3270%, 6430%, kz%))
+
+// leefgebied mag geen open water of ruigte of moeras zijn
+
+assign(openwater, bwk(ad%, ae%, 2190%, 3140%, 3150%, aes%, aev%, ah%, rbbah%, am%, ao%, 3160%, 7140%, 7150%, aom%, 3110%, 3130%, aoo%, ap%, apo%, app%, mz%, 1130%, 1330%, 1330_da%, 1330_hpr%))
+
+assign(strandplevier_voortplanting2, and(strandplevier_voortplanting1, not(openwater)))
+
+deleteVariable(strandplevier_voortplanting1)
+deleteVariable(openwater)
+
+// clustering: indien geschikte cel binnen 10 meter, dan hoort die cel bij het voortplantingscluster
+
+assign(strandplevier_voortplanting2_cluster, fuzzyClusterIdU(strandplevier_voortplanting2, 50, meter))
+
+deleteVariable(strandplevier_voortplanting2)
+
+// voortplantingsclusters moeten minimaal 2ha groot zijn
+
+assign(strandplevier_voortplanting3, cFilterGeArea(strandplevier_voortplanting2_cluster, 2, hectare))
+
+deleteVariable(strandplevier_voortplanting2_cluster)
+
+// voortplantingscluster moet vrij dicht bij slik en strand liggen, dus baken slik af
+
+assign(strandplevier_slik, bwk(da%, 1310%, 1320%, 1330%, dl%, 2110%, ds%, 1130%, 1140%, 3270%, dz%))
+//write('strandplevier_slik.asc', IsNonZero(strandplevier_slik))
+
+// zoek voortplantingsgebieden die binnen de 200m van slik liggen en omgekeerd
+
+assign(strandplevier_voortplanting4, cFilter(strandplevier_voortplanting3, cellDistanceLe(strandplevier_slik, 200, meter)))
+assign(strandplevier_foerageer4, cFilter(strandplevier_slik, cellDistanceLe(strandplevier_voortplanting3, 200, meter)))
+deleteVariable(strandplevier_slik)
+deleteVariable(strandplevier_voortplanting3)
+
+//write('strandplevier_voortplanting.asc', IsNonZero(strandplevier_voortplanting4))
+
+assign(strandplevier_leefgebied0, and(strandplevier_voortplanting4, strandplevier_foerageer4))
+deleteVariable(strandplevier_foerageer4)
+deleteVariable(strandplevier_voortplanting4)
+
+assign(strandplevier_leefgebied0_cluster, FuzzyClusterIdU(strandplevier_leefgebied0, 50, meter))
+deleteVariable(strandplevier_leefgebied0)
+
+assign(strandplevier_leefgebied, cFilterGeArea(strandplevier_leefgebied0_cluster, 2, hectare))
+deleteVariable(strandplevier_leefgebied0_cluster)
+write('ANB2019_Strandplevier2018.asc', IsNonZero(strandplevier_leefgebied))
+deleteVariable(strandplevier_leefgebied)
