@@ -55,7 +55,7 @@ rsconnect/
 /data/input/Raster_Vlaanderen/BWK_Tabel_Turnhout_Plus_50km.rds
 
 # ASCI Files
-/data/references/ASCI Files
+/data/input/ASCI Files
 
 # Shapefiles
 /data/references/Shapefiles
