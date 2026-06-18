@@ -59,4 +59,7 @@ rsconnect/
 
 # Shapefiles
 /data/references/Shapefiles
+
+# Scenario_rds
+/data/input/Scenario_rds
 .positai
