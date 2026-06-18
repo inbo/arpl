@@ -49,8 +49,8 @@ po/*~
 rsconnect/
 
 # Raster kaart Vlaanderen 10x10 m
-/data/input/BWK_TidyTabel_Smal_Vlaanderen_2025.rds
+/data/input/Raster_Vlaanderen/BWK_TidyTabel_Smal_Vlaanderen_2025.rds
 
 # Raster kaart Turnhouts Vennegebied + 50 km buffer 10x10 m
-/data/input/BWK_Tabel_Turnhout_Plus_50km.rds
+/data/input/Raster_Vlaanderen/BWK_Tabel_Turnhout_Plus_50km.rds
 .positai
