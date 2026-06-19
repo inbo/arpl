@@ -1,0 +1,600 @@
+---
+title: "Scenario Leefgebiedenscript: Gevlekte Witsnuitlibel"
+author: "Bert Van Hecke"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    self_contained: true
+    toc: true
+    theme: flatly
+params:
+  scenario_rds_path: "../Scenario_rds/TV_Scenario_bosbehoudss_ss31fix_tvg_vrij_2026.rds"
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  include = FALSE
+)
+
+library(knitr)
+library(here)
+library(tidyverse)
+library(sf)
+library(terra)
+library(readxl)
+library(tidyterra)
+library(leaflet)
+library(kableExtra)
+library(data.table)
+
+conflicted::conflicts_prefer(dplyr::filter)
+conflicted::conflicts_prefer(dplyr::select)
+conflicted::conflicts_prefer(terra::intersect)
+conflicted::conflicts_prefer(terra::any)
+
+# Exacte hectare-berekening helper
+calc_ha_exact <- function(r) {
+  if(is.null(r)) return(0)
+  if(all(is.na(terra::values(r, mat=FALSE)))) return(0)
+  area_raster <- r * terra::cellSize(r, unit = "ha")
+  val <- terra::global(area_raster, "sum", na.rm = TRUE)[[1]]
+  return(as.numeric(val))
+}
+```
+
+# Soort informatie ophalen
+```{r Soort informatie}
+# Opvangen van de parameters uit het masterscript
+soort <- "gevlektewitsnuitlibel" 
+
+# Fail-safe voor handmatig knitten vs masterscript uitvoering
+if (basename(params$scenario_rds_path) == params$scenario_rds_path) {
+  scenario_path <- here(params$scenario_rds_path)
+} else {
+  scenario_path <- params$scenario_rds_path
+}
+
+# Extraheer de pure scenarionaam (wist de prefix en suffix)
+scen_volledig <- basename(scenario_path)
+scenario_naam <- gsub("^TV_Scenario_|.rds$", "", scen_volledig)
+
+message(paste("Verwerken van soort:", soort, "binnen scenario:", scenario_naam))
+
+# Laden soort-specifieke parameters
+df <- read_excel(here("Soorten_bwk_afstanden.xlsx"))
+resultaat <- df %>% filter(Soort == soort) %>% select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
+
+oppervlakte_ha <- resultaat$MinOpp_ha
+afstand_m      <- resultaat$AfstandBiotopen_m[1]
+buffer_m       <- 10000 # Libellen-specifieke vaste buffer behouden
+
+rm(df, resultaat)
+```
+
+# Gebied voorbereiden (Turnhouts Vennegebied)
+```{r Gebied Voorbereiden}
+area_shape  <- vect("../Turnhouts_Vennegebied.shp")
+master_grid <- rast("../Vlaanderen_MasterGrid_10m.tif")[[1]]
+
+df_namen_sleutel <- read_csv("../BWK_Laag_Namen_2025.csv", show_col_types = FALSE)
+gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
+
+area_shape_proj <- project(area_shape, crs(master_grid))
+area_buffer_fix <- buffer(area_shape_proj, width = buffer_m)
+
+id_raster_TV <- crop(master_grid, area_buffer_fix, snap = "near")
+
+globale_id_raster <- master_grid
+values(globale_id_raster) <- 1:ncell(globale_id_raster)
+
+id_raster_TV_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
+id_raster_TV_masked <- mask(id_raster_TV_globale_values, area_buffer_fix)
+
+df_extractie <- as.data.frame(id_raster_TV_masked, cells = TRUE)
+vertaal_df <- as.data.table(df_extractie)
+setnames(vertaal_df, c(1, 2), c("lokale_id", "globale_id"))
+vertaal_df <- vertaal_df[!is.na(globale_id)]
+
+studiegebied_globale_ids <- unique(vertaal_df$globale_id)
+
+values(id_raster_TV) <- NA
+template_TV          <- id_raster_TV * NA
+grens_web            <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
+
+rm(globale_id_raster, id_raster_TV_globale_values, id_raster_TV_masked)
+gc()
+
+```
+
+# Biotoopfiltering (BWK-codes)
+```{r Biotoopfiltering}
+df_nieuw <- read_csv("../Resultaten_Totaal_Samengevoegd.csv", show_col_types = FALSE)
+
+resultaten_gegroepeerd <- df_nieuw %>%
+  mutate(Soort_clean = tolower(trimws(Soort))) %>%
+  filter(Soort_clean == soort) %>%
+  group_by(Type) %>%
+  nest(Data = c(Code, Match))
+
+# HIER LEZEN WE DYNAMISCH HET SCENARIO IN I.P.V. DE REF-TABEL
+tabel_vlaanderen <- readRDS(scenario_path)
+setDT(tabel_vlaanderen)
+tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
+
+lijst_matches      <- list()
+lijst_oppervlaktes <- list()
+
+for(i in 1:nrow(resultaten_gegroepeerd)) {
+  h_type <- resultaten_gegroepeerd$Type[i]
+  h_data <- resultaten_gegroepeerd$Data[[i]]
+  
+  exact_codes <- tolower(trimws(h_data$Code[h_data$Match == "exact"]))
+  bevat_codes <- tolower(trimws(h_data$Code[h_data$Match == "bevat"]))
+  
+  if(length(bevat_codes) > 0) {
+    # 1. Ontsnap speciale regex-tekens (zoals haakjes) om syntaxfouten te voorkomen
+    bevat_codes_escaped <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
+    
+    # 2. CRUCIALE FIX: Plak een '^' voor elke individuele code. 
+    # Dit dwingt grepl() om alleen te matchen als de BWK-code BEGINT met deze letters.
+    bevat_codes_anchored <- paste0("^", bevat_codes_escaped)
+    regex_term <- paste0(bevat_codes_anchored, collapse = "|")
+    
+    # Filteren: EXACT-matches (geen letters voor/na) OF codes die BEGINNEN met de bevat-termen
+    tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes | grepl(regex_term, CODE)]
+  } else {
+    tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes]
+  }
+  
+  # Filter op studiegebied
+  tabel_TV <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
+  tabel_cel_som <- tabel_TV[, .(Oppervlakte = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
+  
+  r_match_type <- id_raster_TV * NA
+  r_opp_type   <- id_raster_TV * NA
+  
+  if(nrow(tabel_cel_som) > 0) {
+    tabel_cel_som[, Oppervlakte := pmin(Oppervlakte, 1)]
+    tabel_cel_som[, Match := ifelse(Oppervlakte >= 0.01, 1, 0)]
+    
+    setnames(tabel_cel_som, "cel_id", "globale_id")
+    tabel_finaal_mapping <- merge(tabel_cel_som, vertaal_df, by = "globale_id", all.x = TRUE)
+    tabel_finaal_mapping <- tabel_finaal_mapping[!is.na(lokale_id)]
+    
+    if(nrow(tabel_finaal_mapping) > 0) {
+      tabel_matches_clean <- tabel_finaal_mapping[Match == 1]
+      if(nrow(tabel_matches_clean) > 0) {
+        r_match_type[tabel_matches_clean$lokale_id] <- tabel_matches_clean$Match
+      }
+      r_opp_type[tabel_finaal_mapping$lokale_id] <- tabel_finaal_mapping$Oppervlakte
+      
+      # Sla de gegenereerde rasters op
+      lijst_matches[[h_type]]      <- r_match_type
+      lijst_oppervlaktes[[h_type]] <- r_opp_type
+    }
+  }
+}
+
+# Toewijzen specifieke bouwstenen
+voortplanting_bwk_max <- lijst_matches[["voortplanting_bwk"]]
+voortplanting_bwk_opp <- lijst_oppervlaktes[["voortplanting_bwk"]]
+foerageer0_max <- lijst_matches[["foerageer0"]]
+foerageer0_opp <- lijst_oppervlaktes[["foerageer0"]]
+struweel1_max <- lijst_matches[["struweel1"]]
+struweel1_opp <- lijst_oppervlaktes[["struweel1"]]
+
+raster_simpel_final <- id_raster_TV
+rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes, tabel_vlaanderen)
+gc()
+
+```
+
+# Voortplantingsbiotoop
+```{r Watervlakken en Kleine Waters}
+message("-> Watervlakken shapefile lokaal inlezen...")
+
+watervlakken_v <- vect("../ASCI Files/watervlakken2024.shp")
+watervlakken_proj <- project(watervlakken_v, crs(template_TV))
+
+area_buffer_clean <- makeValid(area_buffer_fix)
+area_buffer_clean <- aggregate(area_buffer_clean) 
+
+watervlakken_clean <- makeValid(watervlakken_proj)
+watervlakken_TV <- crop(watervlakken_clean, area_buffer_clean)
+
+watervlakken_buffered <- buffer(watervlakken_TV, width = 5)
+watervlakken_fuzzy_clusters <- aggregate(watervlakken_buffered, by = NULL)
+watervlakken_fuzzy_clusters$fuzzy_area_m2 <- terra::expanse(watervlakken_fuzzy_clusters)
+kleine_clusters_v <- watervlakken_fuzzy_clusters[watervlakken_fuzzy_clusters$fuzzy_area_m2 <= 4000, ]
+
+if (nrow(kleine_clusters_v) > 0) {
+  kleine_watervlakken_finaal <- crop(watervlakken_TV, kleine_clusters_v)
+  if (nrow(kleine_watervlakken_finaal) > 0) {
+    r_witsnuit_kleinwater <- terra::rasterize(kleine_watervlakken_finaal, template_TV, field = 1, background = NA)
+    r_witsnuit_waterbiotoop1 <- terra::cover(voortplanting_bwk_max, r_witsnuit_kleinwater)
+    r_witsnuit_waterbiotoop1_opp <- terra::cover(voortplanting_bwk_opp, r_witsnuit_kleinwater)
+  } else {
+    r_witsnuit_waterbiotoop1     <- voortplanting_bwk_max
+    r_witsnuit_waterbiotoop1_opp <- voortplanting_bwk_opp
+  }
+} else {
+  r_witsnuit_waterbiotoop1     <- voortplanting_bwk_max
+  r_witsnuit_waterbiotoop1_opp <- voortplanting_bwk_opp
+}
+
+suppressWarnings(
+  rm(watervlakken_v, watervlakken_proj, area_buffer_clean, watervlakken_clean, watervlakken_TV, 
+     watervlakken_buffered, watervlakken_fuzzy_clusters, kleine_clusters_v, kleine_watervlakken_finaal, r_witsnuit_kleinwater)
+)
+gc()
+```
+
+```{r 3 Buren}
+# ==============================================================================
+# 1. CLUSTERS IDENTIFICEREN & FILTEREN (Bestaande binaire logiek)
+# ==============================================================================
+message("-> Unieke clusters identificeren voor het waterbiotoop...")
+r_water_clusters <- terra::patches(r_witsnuit_waterbiotoop1, directions = 8)
+
+watervlakken_poly <- terra::as.polygons(r_water_clusters, dissolve = TRUE)
+centroids <- terra::centroids(watervlakken_poly)
+centroids_buffer <- terra::buffer(centroids, width = 500)
+intersect_matrix <- terra::relate(centroids_buffer, centroids, "intersects")
+cluster_counts <- rowSums(intersect_matrix)
+
+watervlakken_poly$unieke_buren_count <- cluster_counts
+goedgekeurde_clusters_poly <- watervlakken_poly[watervlakken_poly$unieke_buren_count >= 4, ]
+
+if (nrow(goedgekeurde_clusters_poly) > 0) {
+  gevlektewitsnuitlibel_voortplanting_max <- terra::rasterize(
+    goedgekeurde_clusters_poly, 
+    template_TV, 
+    field = 1, 
+    background = NA
+  )
+} else {
+  gevlektewitsnuitlibel_voortplanting_max <- template_TV * NA
+}
+
+rm(watervlakken_poly, centroids, centroids_buffer, intersect_matrix, cluster_counts, goedgekeurde_clusters_poly)
+gc()
+
+# ==============================================================================
+# 2. PARALLEL: WERKELIJKE OPPERVLAKTE BEREKENEN (_opp)
+# ==============================================================================
+gevlektewitsnuitlibel_voortplanting_opp <- terra::mask(
+  r_witsnuit_waterbiotoop1_opp, 
+  gevlektewitsnuitlibel_voortplanting_max
+)
+
+ha_potentie  <- calc_ha_exact(gevlektewitsnuitlibel_voortplanting_max)
+ha_werkelijk <- calc_ha_exact(gevlektewitsnuitlibel_voortplanting_opp)
+
+# GEFIXT: rm failsafe toegevoegd om waarschuwingen te onderdrukken
+suppressWarnings(rm(r_water_clusters))
+gc()
+```
+
+```{r Foerageergebied Afbakenen}
+# ==============================================================================
+# SCHIJF-GESTUURDE RASTER-CLUSTERING (VOLLEDIG SCHOON ZONDER PLACEHOLDERS)
+# ==============================================================================
+message("-> Start analyse foerageergebied via schijf-streaming...")
+
+# --- SPOOR A: MAXIMALE POTENTIE (Theorie) ---
+tmp_focal_max <- tempfile(fileext = ".tif")
+tmp_patch_max <- tempfile(fileext = ".tif")
+
+terra::focal(foerageer0_max, w = 5, fun = "max", na.rm = TRUE,
+             filename = tmp_focal_max, overwrite = TRUE, gdal = c("COMPRESS=LZW"))
+r_grow_max <- terra::rast(tmp_focal_max)
+
+terra::patches(r_grow_max, directions = 8, zeroAsNA = TRUE,
+               filename = tmp_patch_max, overwrite = TRUE, gdal = c("COMPRESS=LZW"))
+cl_id_max <- terra::rast(tmp_patch_max)
+cl_id_max <- terra::mask(cl_id_max, foerageer0_max)
+
+stats_max <- terra::zonal(foerageer0_max * 0.01, cl_id_max, fun = "sum", na.rm = TRUE)
+colnames(stats_max) <- c("Cluster_ID", "Potentie_ha")
+valide_cluster_ids_max <- stats_max$Cluster_ID[stats_max$Potentie_ha >= 35]
+
+if(length(valide_cluster_ids_max) > 0) {
+  masker_max <- terra::ifel(cl_id_max %in% valide_cluster_ids_max, 1, NA)
+  gevlektewitsnuitlibel_foerageer2_max <- terra::mask(foerageer0_max, masker_max)
+  gevlektewitsnuitlibel_foerageer2_max <- terra::crop(gevlektewitsnuitlibel_foerageer2_max, area_shape_proj, mask = TRUE)
+} else {
+  gevlektewitsnuitlibel_foerageer2_max <- template_TV * NA
+}
+
+rm(r_grow_max, cl_id_max, stats_max)
+unlink(c(tmp_focal_max, tmp_patch_max))
+gc()
+
+# --- SPOOR B: WERKELIJKE OPPERVLAKTE (Volledige C++ spoor) ---
+# GEFIXT: Volledige code geïntegreerd in plaats van placeholders
+tmp_focal_opp <- tempfile(fileext = ".tif")
+tmp_patch_opp <- tempfile(fileext = ".tif")
+
+terra::focal(foerageer0_opp, w = 5, fun = "max", na.rm = TRUE,
+             filename = tmp_focal_opp, overwrite = TRUE, gdal = c("COMPRESS=LZW"))
+r_grow_opp <- terra::rast(tmp_focal_opp)
+
+terra::patches(r_grow_opp, directions = 8, zeroAsNA = TRUE,
+               filename = tmp_patch_opp, overwrite = TRUE, gdal = c("COMPRESS=LZW"))
+cl_id_opp <- terra::rast(tmp_patch_opp)
+cl_id_opp <- terra::mask(cl_id_opp, foerageer0_opp)
+
+stats_opp <- terra::zonal(foerageer0_opp * 0.01, cl_id_opp, fun = "sum", na.rm = TRUE)
+colnames(stats_opp) <- c("Cluster_ID", "Werkelijke_ha")
+valide_cluster_ids_opp <- stats_opp$Cluster_ID[stats_opp$Werkelijke_ha >= 35]
+
+if(length(valide_cluster_ids_opp) > 0) {
+  masker_opp <- terra::ifel(cl_id_opp %in= valide_cluster_ids_opp, 1, NA)
+  gevlektewitsnuitlibel_foerageer2_opp <- terra::mask(foerageer0_opp, masker_opp)
+  gevlektewitsnuitlibel_foerageer2_opp <- terra::crop(gevlektewitsnuitlibel_foerageer2_opp, area_shape_proj, mask = TRUE)
+} else {
+  gevlektewitsnuitlibel_foerageer2_opp <- template_TV * NA
+}
+
+rm(r_grow_opp, cl_id_opp, stats_opp)
+unlink(c(tmp_focal_opp, tmp_patch_opp))
+gc()
+
+```
+
+```{r struweel}
+message("-> Start gestroomlijnde mozaïek-analyse (30% struweel-check)...")
+
+r_grow_foer_max <- terra::focal(foerageer0_max, w = 5, fun = "max", na.rm = TRUE)
+cl_id_foer_max  <- terra::patches(r_grow_foer_max, directions = 8, zeroAsNA = TRUE)
+cl_id_foer_max  <- terra::mask(cl_id_foer_max, foerageer0_max)
+
+stats_foer_totaal <- terra::zonal(foerageer0_max * 0.01, cl_id_foer_max, fun = "sum", na.rm = TRUE)
+colnames(stats_foer_totaal) <- c("Cluster_ID", "Totaal_Foer_ha")
+
+struweel_in_foer_max <- terra::mask(struweel1_max, cl_id_foer_max)
+stats_struweel_in_foer <- terra::zonal(struweel_in_foer_max * 0.01, cl_id_foer_max, fun = "sum", na.rm = TRUE)
+colnames(stats_struweel_in_foer) <- c("Cluster_ID", "Struweel_Foer_ha")
+
+df_mozaiek_max <- merge(stats_foer_totaal, stats_struweel_in_foer, by = "Cluster_ID", all.x = TRUE)
+df_mozaiek_max$Struweel_Foer_ha[is.na(df_mozaiek_max$Struweel_Foer_ha)] <- 0
+df_mozaiek_max$Percentage_Struweel <- (df_mozaiek_max$Struweel_Foer_ha / df_mozaiek_max$Totaal_Foer_ha) * 100
+
+valide_mozaiek_ids_max <- df_mozaiek_max$Cluster_ID[df_mozaiek_max$Percentage_Struweel >= 30]
+
+if(length(valide_mozaiek_ids_max) > 0) {
+  masker_mozaiek_max <- terra::ifel(cl_id_foer_max %in% valide_mozaiek_ids_max, 1, NA)
+  gevlektewitsnuitlibel_foerageer3_max <- terra::mask(foerageer0_max, masker_mozaiek_max)
+  gevlektewitsnuitlibel_foerageer3_max <- terra::crop(gevlektewitsnuitlibel_foerageer3_max, area_shape_proj, mask = TRUE)
+} else {
+  gevlektewitsnuitlibel_foerageer3_max <- template_TV * NA
+}
+
+# --- SPOOR B (WERKELIJKE FRACTIES) ---
+r_grow_foer_opp <- terra::focal(foerageer0_opp, w = 5, fun = "max", na.rm = TRUE)
+cl_id_foer_opp  <- terra::patches(r_grow_foer_opp, directions = 8, zeroAsNA = TRUE)
+cl_id_foer_opp  <- terra::mask(cl_id_foer_opp, foerageer0_opp)
+
+stats_foer_totaal_opp <- terra::zonal(foerageer0_opp * 0.01, cl_id_foer_opp, fun = "sum", na.rm = TRUE)
+colnames(stats_foer_totaal_opp) <- c("Cluster_ID", "Totaal_Foer_ha")
+
+struweel_in_foer_opp <- terra::mask(struweel1_opp, cl_id_foer_opp)
+stats_struweel_in_foer_opp <- terra::zonal(struweel_in_foer_opp * 0.01, cl_id_foer_opp, fun = "sum", na.rm = TRUE)
+colnames(stats_struweel_in_foer_opp) <- c("Cluster_ID", "Struweel_Foer_ha")
+
+df_mozaiek_opp <- merge(stats_foer_totaal_opp, stats_struweel_in_foer_opp, by = "Cluster_ID", all.x = TRUE)
+df_mozaiek_opp$Struweel_Foer_ha[is.na(df_mozaiek_opp$Struweel_Foer_ha)] <- 0
+df_mozaiek_opp$Percentage_Struweel <- (df_mozaiek_opp$Struweel_Foer_ha / df_mozaiek_opp$Totaal_Foer_ha) * 100
+
+valide_mozaiek_ids_opp <- df_mozaiek_opp$Cluster_ID[df_mozaiek_opp$Percentage_Struweel >= 30]
+
+if(length(valide_mozaiek_ids_opp) > 0) {
+  masker_mozaiek_opp <- terra::ifel(cl_id_foer_opp %in% valide_mozaiek_ids_opp, 1, NA)
+  gevlektewitsnuitlibel_foerageer3_opp <- terra::mask(foerageer0_opp, masker_mozaiek_opp)
+  gevlektewitsnuitlibel_foerageer3_opp <- terra::crop(gevlektewitsnuitlibel_foerageer3_opp, area_shape_proj, mask = TRUE)
+} else {
+  gevlektewitsnuitlibel_foerageer3_opp <- template_TV * NA
+}
+
+rm(r_grow_foer_max, cl_id_foer_max, struweel_in_foer_max, r_grow_foer_opp, cl_id_foer_opp, struweel_in_foer_opp)
+gc()
+```
+
+```{r foerageer + voortplanting}
+# ==============================================================================
+# FINALE SYNTHESE: KOPPELING OP VOLLEDIG CLUSTERNIVEAU (< 800M)
+# ==============================================================================
+message("-> Start finale koppeling op clusterniveau voor Gevlekte witsnuitlibel...")
+
+if(terra::hasValues(gevlektewitsnuitlibel_voortplanting_max) && 
+   terra::hasValues(gevlektewitsnuitlibel_foerageer3_max)) {
+  
+  vpt_prep_max  <- terra::crop(gevlektewitsnuitlibel_voortplanting_max, area_shape_proj, mask = TRUE)
+  foer_prep_max <- terra::crop(gevlektewitsnuitlibel_foerageer3_max, area_shape_proj, mask = TRUE)
+  
+  cl_vpt_max  <- terra::patches(vpt_prep_max, directions = 8, zeroAsNA = TRUE)
+  cl_foer_max <- terra::patches(foer_prep_max, directions = 8, zeroAsNA = TRUE)
+  
+  dist_from_water_max <- terra::distance(cl_vpt_max)
+  dist_from_foer_max  <- terra::distance(cl_foer_max)
+  
+  zone_foer_800 <- terra::ifel(dist_from_foer_max <= 800, 1, 0)
+  zone_water_800 <- terra::ifel(dist_from_water_max <= 800, 1, 0)
+  
+  ids_vpt_valide_max  <- terra::zonal(zone_foer_800, cl_vpt_max, fun = "max", na.rm = TRUE)
+  ids_foer_valide_max <- terra::zonal(zone_water_800, cl_foer_max, fun = "max", na.rm = TRUE)
+  
+  colnames(ids_vpt_valide_max)  <- c("Cluster_ID", "Status")
+  colnames(ids_foer_valide_max) <- c("Cluster_ID", "Status")
+  
+  winnaars_vpt_max  <- ids_vpt_valide_max$Cluster_ID[ids_vpt_valide_max$Status == 1]
+  winnaars_foer_max <- ids_foer_valide_max$Cluster_ID[ids_foer_valide_max$Status == 1]
+  
+  if(length(winnaars_vpt_max) > 0 && length(winnaars_foer_max) > 0) {
+    masker_vpt_max  <- cl_vpt_max %in% winnaars_vpt_max
+    masker_foer_max <- cl_foer_max %in% winnaars_foer_max
+    
+    gevlektewitsnuitlibel_voortplanting_finaal_max <- terra::mask(vpt_prep_max, terra::ifel(masker_vpt_max, 1, NA))
+    gevlektewitsnuitlibel_foerageer_finaal_max     <- terra::mask(foer_prep_max, terra::ifel(masker_foer_max, 1, NA))
+    
+    gevlektewitsnuitlibel_leefgebied_max           <- terra::cover(gevlektewitsnuitlibel_voortplanting_finaal_max, gevlektewitsnuitlibel_foerageer_finaal_max)
+  } else {
+    gevlektewitsnuitlibel_voortplanting_finaal_max <- template_TV * NA
+    gevlektewitsnuitlibel_foerageer_finaal_max     <- template_TV * NA
+    gevlektewitsnuitlibel_leefgebied_max           <- template_TV * NA
+  }
+} else {
+  gevlektewitsnuitlibel_voortplanting_finaal_max <- template_TV * NA
+  gevlektewitsnuitlibel_foerageer_finaal_max     <- template_TV * NA
+  gevlektewitsnuitlibel_leefgebied_max           <- template_TV * NA
+}
+
+# --- SPOOR B (WERKELIJKE OPPERVLAKTE) ---
+if(terra::hasValues(gevlektewitsnuitlibel_voortplanting_opp) && 
+   terra::hasValues(gevlektewitsnuitlibel_foerageer3_opp)) {
+  
+  if(exists("masker_vpt_max") && exists("masker_foer_max") && 
+     !all(is.na(terra::values(masker_vpt_max, mat=FALSE)))) {
+    
+    vpt_prep_opp  <- terra::crop(gevlektewitsnuitlibel_voortplanting_opp, area_shape_proj, mask = TRUE)
+    foer_prep_opp <- terra::crop(gevlektewitsnuitlibel_foerageer3_opp, area_shape_proj, mask = TRUE)
+    
+    gevlektewitsnuitlibel_voortplanting_finaal_opp <- terra::mask(vpt_prep_opp, terra::ifel(masker_vpt_max, 1, NA))
+    gevlektewitsnuitlibel_foerageer_finaal_opp     <- terra::mask(foer_prep_opp, terra::ifel(masker_foer_max, 1, NA))
+    
+    gevlektewitsnuitlibel_leefgebied_opp           <- terra::cover(gevlektewitsnuitlibel_voortplanting_finaal_opp, gevlektewitsnuitlibel_foerageer_finaal_opp)
+  } else {
+    gevlektewitsnuitlibel_voortplanting_finaal_opp <- template_TV * NA
+    gevlektewitsnuitlibel_foerageer_finaal_opp     <- template_TV * NA
+    gevlektewitsnuitlibel_leefgebied_opp           <- template_TV * NA
+  }
+} else {
+  gevlektewitsnuitlibel_voortplanting_finaal_opp <- template_TV * NA
+  gevlektewitsnuitlibel_foerageer_finaal_opp     <- template_TV * NA
+  gevlektewitsnuitlibel_leefgebied_opp           <- template_TV * NA
+}
+
+suppressWarnings(
+  rm(vpt_prep_max, foer_prep_max, cl_vpt_max, cl_foer_max, dist_from_water_max, dist_from_foer_max,
+     zone_foer_800, zone_water_800, ids_vpt_valide_max, ids_foer_valide_max, vpt_prep_opp, foer_prep_opp)
+)
+gc()
+```
+
+```{r hectareberekening}
+# ==============================================================================
+# HECTAREBEREKENING & RAPPORTAGE EINDOVERZICHT (GEFIXT: UNIEKE CHUNKNAAM)
+# ==============================================================================
+ha_finaal_vpt_pot  <- calc_ha_exact(gevlektewitsnuitlibel_voortplanting_finaal_max)
+ha_finaal_vpt_wek  <- calc_ha_exact(gevlektewitsnuitlibel_voortplanting_finaal_opp)
+
+ha_finaal_foer_pot <- calc_ha_exact(gevlektewitsnuitlibel_foerageer_finaal_max)
+ha_finaal_foer_wek <- calc_ha_exact(gevlektewitsnuitlibel_foerageer_finaal_opp)
+
+ha_finaal_leef_pot <- calc_ha_exact(gevlektewitsnuitlibel_leefgebied_max)
+ha_finaal_leef_wek <- calc_ha_exact(gevlektewitsnuitlibel_leefgebied_opp)
+
+cat("\n=========================================================\n")
+cat("     EINDRESULTATEN MODEL GEVLEKTEWITSNUITLIBEL (TV)     \n")
+cat("=========================================================\n")
+cat(paste("Voortplantingsbiotoop (Max Potentie):  ", round(ha_finaal_vpt_pot, 2), "ha\n"))
+cat(paste("Voortplantingsbiotoop (Werkelijke Fr): ", round(ha_finaal_vpt_wek, 2), "ha\n"))
+cat("---------------------------------------------------------\n")
+cat(paste("Foerageergebied (Max Potentie):        ", round(ha_finaal_foer_pot, 2), "ha\n"))
+cat(paste("Foerageergebied (Werkelijke Fractie):  ", round(ha_finaal_foer_wek, 2), "ha\n"))
+cat("---------------------------------------------------------\n")
+cat(paste("TOTAAL LEEFGEBIED (Max Potentie):      ", round(ha_finaal_leef_pot, 2), "ha\n"))
+cat(paste("TOTAAL LEEFGEBIED (Werkelijke Fractie): ", round(ha_finaal_leef_wek, 2), "ha\n"))
+cat("=========================================================\n\n")
+```
+
+```{r Export Scenario Raster}
+# 1. Map dynamisch genereren binnen de bestaande Rasters_Soorten hoofdmap
+scenario_raster_dir <- here("Rasters_Soorten", scenario_naam)
+if (!dir.exists(scenario_raster_dir)) dir.create(scenario_raster_dir, recursive = TRUE)
+
+# Koppel het berekende leefgebied aan de 'final_opp' variabele
+final_opp <- gevlektewitsnuitlibel_leefgebied_opp
+
+# 2. Omzetten naar binair (1/NA) conform de wasstraat-afspraak
+if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
+  werkelijk_scenario_rast <- terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA)
+} else {
+  werkelijk_scenario_rast <- terra::rast(template_TV, vals = NA)
+}
+
+# 3. Dynamische bestandsnaam opbouwen: TV_[scenario]_[soort].tif
+bestandsnaam <- paste0("TV_", scenario_naam, "_", soort, ".tif")
+file_path_scen <- file.path(scenario_raster_dir, bestandsnaam)
+
+# ==============================================================================
+# GEFIXT: DIEPE LOKALE KOPIE EN KOGELVRIJE WASSTRAAT-STYLING VOOR LIBEL SCENARIO
+# ==============================================================================
+export_rast <- terra::deepcopy(werkelijk_scenario_rast)
+export_rast <- terra::mask(export_rast, area_buffer_fix)
+
+if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
+  export_rast <- terra::ifel(is.na(export_rast), 0, 0)
+  export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+} else {
+  export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+}
+
+writeRaster(export_rast, 
+            filename = file_path_scen, 
+            overwrite = TRUE, 
+            gdal = c("COMPRESS=LZW"), 
+            datatype = "INT1U")
+
+message(paste("✓ Scenario-raster voor Gevlekte Witsnuitlibel succesvol weggeschreven naar:", file_path_scen))
+```
+
+```{r Interactieve kaart, include = TRUE}
+# ==============================================================================
+# STAP 13: INTERACTIEVE TRANSITIEKAART (SCENARIO VS REFERENTIE)
+# ==============================================================================
+
+referentie_file <- here("Rasters_Soorten", "02_Werkelijke_Oppervlakte", paste0("Habitat_Werkelijke_Oppervlaktes_", soort, ".tif"))
+
+if(file.exists(referentie_file)) {
+  r_ref <- rast(referentie_file) %>% terra::resample(template_TV, method = "near")
+} else {
+  r_ref <- terra::rast(template_TV, vals = NA)
+}
+
+r_scen <- werkelijk_scenario_rast
+
+# 2. RGB Matrix bepalen (1 = Rood/Verlies, 2 = Groen/Winst, 3 = Blauw/Status Quo)
+r_rgb <- terra::ifel(!is.na(r_ref) & is.na(r_scen), 1, NA)                                     # Rood
+r_rgb <- terra::cover(r_rgb, terra::ifel(is.na(r_ref) & !is.na(r_scen), 2, NA)) # Groen
+r_rgb <- terra::cover(r_rgb, terra::ifel(!is.na(r_ref) & !is.na(r_scen), 3, NA)) # Blauw
+
+r_rgb_web <- terra::project(terra::as.int(r_rgb), "EPSG:4326", method = "near")
+
+# Kleurenpalet definiëren
+kleuren_rgb <- c("#E74C3C", "#2ECC71", "#3498DB") 
+pal_rgb <- colorFactor(palette = kleuren_rgb, levels = 1:3, na.color = "transparent")
+
+leaflet() %>%
+  addTiles(group = "OSM (Kaart)") %>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet") %>%
+  fitBounds(st_bbox(grens_web)[['xmin']], st_bbox(grens_web)[['ymin']], st_bbox(grens_web)[['xmax']], st_bbox(grens_web)[['ymax']]) %>%
+  
+  addRasterImage(r_rgb_web, colors = pal_rgb, opacity = 0.7, group = "Scenario Vergelijking") %>%
+  addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens TV") %>%
+  
+  addLegend(
+    colors = kleuren_rgb,
+    labels = c("Verloren gegaan libellenhabitat (Scenario)", "Nieuw bijgekomen habitat", "Status Quo (Behouden habitat)"),
+    title = paste("Scenario vs Referentie:", scenario_naam),
+    position = "bottomright"
+  ) %>%
+  addLayersControl(
+    baseGroups = c("OSM (Kaart)", "Satelliet"),
+    overlayGroups = c("Scenario Vergelijking", "Grens TV"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+```

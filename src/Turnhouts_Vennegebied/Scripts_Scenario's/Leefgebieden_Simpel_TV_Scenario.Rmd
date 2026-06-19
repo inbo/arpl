@@ -1,0 +1,333 @@
+---
+title: "Scenario Analyse Leefgebieden: Turnhouts Vennegebied"
+author: "Bert Van Hecke"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    self_contained: true
+    toc: true
+    theme: flatly
+params:
+  scenario_rds_path: "TV_Scenario_bosbehoudss_ss31fix_tvg_vrij_2026.rds" # Wordt aangestuurd vanuit masterscript
+
+---
+
+```{r setup, include = FALSE}
+library(knitr)
+library(here)
+library(tidyverse)
+library(sf)
+library(terra)
+library(readxl)
+library(tidyterra)
+library(leaflet)
+library(kableExtra)
+library(data.table)
+
+knitr::opts_chunk$set(
+  echo =F,
+  message = F,
+  warning = F,
+  include = F
+)
+
+conflicted::conflicts_prefer(dplyr::filter)
+conflicted::conflicts_prefer(dplyr::select)
+conflicted::conflicts_prefer(terra::intersect)
+```
+
+# Scenario en Soort informatie ophalen
+```{r info ophalen}
+# 1. Fail-safe voor handmatig knitten vs masterscript uitvoering
+if (basename(params$scenario_rds_path) == params$scenario_rds_path) {
+  scenario_path <- here(params$scenario_rds_path)
+} else {
+  scenario_path <- params$scenario_rds_path
+}
+
+# Scenario naam kogelvrij extraheren uit het rds-pad via base R
+scenario_volledig <- basename(scenario_path)
+
+# Dit vis alles tussen 'Scenario_' en '.rds' eruit
+scenario_naam <- gsub("^.*Scenario_(.*)\\.rds$", "\\1", scenario_volledig)
+
+if(scenario_naam == scenario_volledig) {
+  stop("Fout: Het RDS-bestand voldoet niet aan het format '*_Scenario_NAAM.rds'")
+}
+
+message(paste("-> Script gestart voor Scenario:", scenario_naam))
+
+# 2. Soortkenmerken ophalen
+df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
+soort <- tolower(trimws(params$soort_invoer))
+
+resultaat <- df %>%
+  mutate(Soort_clean = tolower(trimws(Soort))) %>% 
+  filter(Soort_clean == soort) %>%
+  select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
+
+oppervlakte_ha <- resultaat$MinOpp_ha
+afstand_m      <- resultaat$AfstandBiotopen_m
+buffer_m       <- resultaat$Dispersiecap_m
+
+print(resultaat)
+```
+
+# Gebied voorbereiden (Turnhouts Vennegebied)
+```{r}
+area_shape   <- vect(here("data/input/Turnhouts_Vennegebied.shp"))
+master_grid  <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
+
+area_shape_proj <- project(area_shape, crs(master_grid))
+area_buffer_fix <- buffer(area_shape_proj, width = buffer_m)
+
+id_raster_TV <- crop(master_grid, area_buffer_fix, snap = "near")
+
+globale_id_raster <- master_grid
+values(globale_id_raster) <- 1:ncell(globale_id_raster)
+id_raster_TV_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
+
+extractie_ids <- terra::extract(id_raster_TV_globale_values, area_buffer_fix, cells = TRUE)
+
+vertaal_df <- as.data.table(extractie_ids)
+setnames(vertaal_df, c("cell", names(id_raster_TV_globale_values)), c("lokale_id", "globale_id"))
+vertaal_df <- vertaal_df[!is.na(globale_id)]
+
+studiegebied_globale_ids <- unique(vertaal_df$globale_id)
+
+values(id_raster_TV) <- NA
+template_TV          <- id_raster_TV * NA
+
+rm(globale_id_raster, id_raster_TV_globale_values)
+gc()
+```
+
+# Biotoopfiltering (BWK-codes)
+```{r}
+# Biotoopfiltering (BWK-codes)
+# 1. LAAD DE BRON-CROSSWALK IN
+df_nieuw <- read_csv(here("data/input/Excel_files/Resultaten_Totaal_Samengevoegd.csv"), show_col_types = FALSE)
+
+resultaten_gegroepeerd <- df_nieuw %>%
+  mutate(Soort_clean = tolower(trimws(Soort))) %>%
+  filter(Soort_clean == soort) %>%
+  group_by(Type) %>%
+  nest(Data = c(Code, Match))
+
+# 2. LAAD DE REGIONALE TABEL IN
+tabel_vlaanderen <- readRDS(here("data/input/Raster_Vlaanderen/BWK_Tabel_Turnhout_Plus_50km.rds"))
+setDT(tabel_vlaanderen)
+tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
+
+lijst_matches      <- list()
+lijst_oppervlaktes <- list()
+
+# 3. VERWERK ELK HABITAT-TYPE
+for(i in 1:nrow(resultaten_gegroepeerd)) {
+  h_type <- resultaten_gegroepeerd$Type[i]
+  h_data <- resultaten_gegroepeerd$Data[[i]]
+  
+  exact_codes <- tolower(trimws(h_data$Code[h_data$Match == "exact"]))
+  bevat_codes <- tolower(trimws(h_data$Code[h_data$Match == "bevat"]))
+  
+  if(length(bevat_codes) > 0) {
+    # 1. Ontsnap speciale regex-tekens (zoals haakjes) om syntaxfouten te voorkomen
+    bevat_codes_escaped <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
+    
+    # 2. CRUCIALE FIX: Plak een '^' voor elke individuele code. 
+    # Dit dwingt grepl() om alleen te matchen als de BWK-code BEGINT met deze letters.
+    bevat_codes_anchored <- paste0("^", bevat_codes_escaped)
+    regex_term <- paste0(bevat_codes_anchored, collapse = "|")
+    
+    # Filteren: EXACT-matches (geen letters voor/na) OF codes die BEGINNEN met de bevat-termen
+    tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes | grepl(regex_term, CODE)]
+  } else {
+    tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes]
+  }
+  
+  # Filter op studiegebied
+  tabel_TV <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
+  tabel_cel_som <- tabel_TV[, .(Oppervlakte = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
+  
+  r_match_type <- id_raster_TV * NA
+  r_opp_type   <- id_raster_TV * NA
+  
+  if(nrow(tabel_cel_som) > 0) {
+    tabel_cel_som[, Oppervlakte := pmin(Oppervlakte, 1)]
+    tabel_cel_som[, Match := ifelse(Oppervlakte >= 0.01, 1, 0)]
+    
+    setnames(tabel_cel_som, "cel_id", "globale_id")
+    tabel_finaal_mapping <- merge(tabel_cel_som, vertaal_df, by = "globale_id", all.x = TRUE)
+    tabel_finaal_mapping <- tabel_finaal_mapping[!is.na(lokale_id)]
+    
+    if(nrow(tabel_finaal_mapping) > 0) {
+      tabel_matches_clean <- tabel_finaal_mapping[Match == 1]
+      if(nrow(tabel_matches_clean) > 0) {
+        r_match_type[tabel_matches_clean$lokale_id] <- tabel_matches_clean$Match
+      }
+      r_opp_type[tabel_finaal_mapping$lokale_id] <- tabel_finaal_mapping$Oppervlakte
+      
+      # Sla de gegenereerde rasters op
+      lijst_matches[[h_type]]      <- r_match_type
+      lijst_oppervlaktes[[h_type]] <- r_opp_type
+    }
+  }
+}
+
+masker_bron <- lijst_matches[[1]]
+opp_bron    <- lijst_oppervlaktes[[1]]
+
+names(masker_bron) <- "Match"
+names(opp_bron)    <- "Oppervlakte"
+
+rm(tabel_vlaanderen, vertaal_df, lijst_matches, lijst_oppervlaktes)
+gc()
+```
+
+# Cluster-analyse en oppervlakte filter
+```{r}
+drempel_m2 <- oppervlakte_ha * 10000
+
+masker_bron <- alle_matches[["Match"]]
+masker_bron[masker_bron == 0] <- NA
+opp_bron <- alle_oppervlaktes[["Oppervlakte"]]
+
+cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = TRUE) {
+  if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
+    return(list(raster = masker * NA, clusters = masker * NA))
+  }
+  
+  temp_mask <- masker
+  if(dist_m > 0) temp_mask <- terra::buffer(masker, width = dist_m / 2)
+  
+  cl <- terra::patches(temp_mask, directions = 8, zeroAsNA = TRUE) %>% terra::mask(masker)
+  
+  stats_df <- terra::zonal(opp_laag, cl, fun = "sum", na.rm = TRUE)
+  colnames(stats_df) <- c("ID", "Waarde")
+  stats_df$Area_m2 <- stats_df$Waarde * 10000
+  
+  stats_df <- stats_df[!is.na(stats_df$ID), ]
+  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = cl * NA))
+  
+  voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
+  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = cl * NA))
+  
+  masker_binair <- cl %in% voldoet_ids
+  final_mask <- terra::ifel(masker_binair == 1, 1, NA)
+  
+  return(list(raster = terra::mask(masker, final_mask), clusters = cl))
+}
+
+# Run uitsluitend voor werkelijke oppervlakte drempel
+res_opp <- cluster_filter_compleet(masker_bron, opp_bron, drempel_m2, afstand_m, werkelijk = TRUE)
+final_opp <- res_opp$raster
+```
+
+```{r export}
+# 1. Map dynamisch genereren binnen de bestaande Rasters_Soorten hoofdmap
+scenario_raster_dir <- here("data/output/Turnhouts_vennegebied/Rasters_Soorten", scenario_naam)
+if (!dir.exists(scenario_raster_dir)) dir.create(scenario_raster_dir, recursive = TRUE)
+
+# Omzetten naar binair (1/NA) conform de wasstraat-afspraak
+if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
+  werkelijk_scenario_rast <- terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA)
+} else {
+  werkelijk_scenario_rast <- terra::rast(template_TV, vals = NA)
+}
+
+# 2. Dynamische bestandsnaam opbouwen: TV_[scenario]_[soort].tif
+bestandsnaam <- paste0("TV_", scenario_naam, "_", soort, ".tif")
+file_path_scen <- file.path(scenario_raster_dir, bestandsnaam)
+
+# ==============================================================================
+# GEFIXT: DIEPE KOPIE EN WASSTRAAT-STYLING VOOR SCENARIO EXPORT
+# ==============================================================================
+# Maak een diepe, losgekoppelde kopie zodat het Leaflet-raster zuiver blijft
+export_rast <- terra::deepcopy(werkelijk_scenario_rast)
+export_rast <- terra::mask(export_rast, area_buffer_fix)
+
+if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
+  # Scenario levert 0 resultaat op? Maak een egale 0/0 kaart binnen de buffer
+  export_rast <- terra::ifel(is.na(export_rast), 0, 0)
+  export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+} else {
+  # Scenario heeft wel habitat? Forceer de NoData-achtergrond strak naar 0 (1/0 kaart)
+  export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+}
+
+# Wegschrijven met LZW-compressie naar de schijf
+writeRaster(export_rast, 
+            filename = file_path_scen, 
+            overwrite = TRUE, 
+            gdal = c("COMPRESS=LZW"), 
+            datatype = "INT1U")
+
+message(paste("✓ Scenario-raster succesvol weggeschreven naar:", file_path_scen))
+```
+
+```{r RGB kaart, include = T}
+# Inlezen van de nulmetingskaart vanuit de vaste referentiemap
+nulmeting_path <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", "02_Werkelijke_Oppervlakte", paste0("Habitat_Werkelijke_Oppervlaktes_", soort, ".tif"))
+
+if(!file.exists(nulmeting_path)) {
+  stop(paste("Fout: Nulmetingskaart niet gevonden op pad:", nulmeting_path, ". Run eerst het hoofdscript voor deze soort."))
+}
+
+# GEFIXT: Gebruik template_TV in plaats van een ongedefinieerd raster om alignment-fouten te voorkomen
+r_nul  <- rast(nulmeting_path) %>% terra::resample(template_TV, method = "near")
+r_scen <- werkelijk_scenario_rast 
+
+# Logica for transitie-pixels:
+is_verlies <- !is.na(r_nul) & is.na(r_scen)
+is_winst   <- is.na(r_nul) & !is.na(r_scen)
+is_st_quo  <- !is.na(r_nul) & !is.na(r_scen)
+
+r_transitie <- terra::ifel(is_verlies, 1, NA)
+r_transitie <- terra::cover(r_transitie, terra::ifel(is_winst, 2, NA))
+r_transitie <- terra::cover(r_transitie, terra::ifel(is_st_quo, 3, NA))
+
+r_transitie <- terra::as.factor(r_transitie)
+trans_labels <- data.frame(ID = c(1, 2, 3), 
+                           Label = c("Verloren habitat (Scenario)", 
+                                     "Nieuw habitat (Scenario)", 
+                                     "Status Quo"))
+levels(r_transitie) <- trans_labels
+```
+
+# Interactieve kaart
+```{r}
+r_web_transitie <- terra::project(terra::as.int(r_transitie), "EPSG:4326", method = "near")
+
+grens_web <- st_transform(st_as_sf(area_shape_proj), 4326)
+bbox      <- st_bbox(grens_web)
+
+pal_transitie <- colorFactor(palette = c("#e41a1c", "#4daf4a", "#377eb8"), 
+                             levels = 1:3, 
+                             na.color = "transparent")
+
+leaflet() %>%
+  addTiles(group = "OSM (Kaart)") %>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet") %>%
+  fitBounds(bbox[['xmin']], bbox[['ymin']], bbox[['xmax']], bbox[['ymax']]) %>%
+  
+  addRasterImage(r_web_transitie, 
+                 colors = pal_transitie, 
+                 opacity = 0.7, 
+                 group = "Transitie Effecten") %>%
+  
+  addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens Studiegebied") %>%
+  
+  addLegend(
+    colors = c("#e41a1c", "#4daf4a", "#377eb8"),
+    labels = c("Verloren habitat (Scenario)", "Nieuw habitat (Scenario)", "Status Quo (Onveranderd)"), 
+    title = paste("Transitie:", scenario_naam),
+    position = "bottomright"
+  ) %>%
+  
+  addLayersControl(
+    baseGroups = c("OSM (Kaart)", "Satelliet"),
+    overlayGroups = c("Transitie Effecten", "Grens Studiegebied"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+```
+

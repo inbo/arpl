@@ -1,0 +1,448 @@
+---
+title: "Scenario Analyse Leefgebieden: Bontdikkopje"
+author: "Bert Van Hecke"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    self_contained: true
+    toc: true
+    theme: flatly
+params:
+  scenario_rds_path: "../Scenario_rds/TV_Scenario_bosbehoudss_ss31fix_tvg_vrij_2026.rds"
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  include = FALSE
+)
+
+library(knitr)
+library(here)
+library(tidyverse)
+library(sf)
+library(terra)
+library(readxl)
+library(tidyterra)
+library(leaflet)
+library(kableExtra)
+library(data.table)
+
+conflicted::conflicts_prefer(dplyr::filter)
+conflicted::conflicts_prefer(dplyr::select)
+conflicted::conflicts_prefer(terra::intersect)
+conflicted::conflicts_prefer(terra::any)
+
+# Exacte hectare-berekening behouden (cellSize voor 100% precisie)
+calc_ha_exact <- function(r) {
+  if(is.null(r)) return(0)
+  if(all(is.na(terra::values(r, mat=FALSE)))) return(0)
+  area_raster <- r * terra::cellSize(r, unit = "ha")
+  val <- terra::global(area_raster, "sum", na.rm = TRUE)[[1]]
+  return(as.numeric(val))
+}
+```
+
+# Soort en Scenario informatie ophalen
+```{r Informatie}
+# Opvangen van de parameters uit het masterscript
+soort <- "bontdikkopje" 
+
+# Fail-safe voor handmatig knitten vs masterscript uitvoering
+if (basename(params$scenario_rds_path) == params$scenario_rds_path) {
+  scenario_path <- here(params$scenario_rds_path)
+} else {
+  scenario_path <- params$scenario_rds_path
+}
+
+# Extraheer de pure scenarionaam (wist de prefix en suffix)
+scen_volledig <- basename(scenario_path)
+scenario_naam <- gsub("^TV_Scenario_|.rds$", "", scen_volledig)
+
+message(paste("Verwerken van soort:", soort, "binnen scenario:", scenario_naam))
+
+# Laden soort-specifieke parameters
+df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
+resultaat <- df %>% filter(Soort == soort) %>% select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
+
+oppervlakte_ha <- resultaat$MinOpp_ha[1]
+afstand_m      <- resultaat$AfstandBiotopen_m[1]
+buffer_m       <- resultaat$Dispersiecap_m[1]
+
+rm(df, resultaat)
+```
+
+# Gebied voorbereiden (Turnhouts Vennegebied)
+```{r Gebied Voorbereiden}
+area_shape  <- vect(here("data/input/Turnhouts_Vennegebied.shp"))
+master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
+
+# Inlezen van de CSV-sleutel (gebruikt om tabel-indices te mappen naar codes)
+df_namen_sleutel <- read_csv(here("data/input/Excel_files/BWK_Laag_Namen_2025.csv"), show_col_types = FALSE)
+gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
+
+area_shape_proj <- project(area_shape, crs(master_grid))
+area_buffer_fix <- buffer(area_shape_proj, width = buffer_m)
+
+# Vertaalraster bouwen (Zonder de zware TIF cube in te laden!)
+message("-> Vertaalraster voor globale/lokale cellen opbouwen...")
+id_raster_TV <- crop(master_grid, area_buffer_fix, snap = "near")
+
+globale_id_raster <- master_grid
+values(globale_id_raster) <- 1:ncell(globale_id_raster)
+id_raster_TV_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
+
+extractie_ids <- terra::extract(id_raster_TV_globale_values, area_buffer_fix, cells = TRUE)
+
+vertaal_df <- as.data.table(extractie_ids)
+setnames(vertaal_df, c("cell", names(id_raster_TV_globale_values)), c("lokale_id", "globale_id"))
+vertaal_df <- vertaal_df[!is.na(globale_id)]
+
+studiegebied_globale_ids <- unique(vertaal_df$globale_id)
+
+values(id_raster_TV) <- NA
+template_TV          <- id_raster_TV * NA
+
+grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
+
+rm(globale_id_raster, id_raster_TV_globale_values)
+gc()
+```
+
+# Biotoopfiltering (BWK-codes)
+```{r Biotoopfiltering}
+df_nieuw <- read_csv(here("data/input/Excel_files/Resultaten_Totaal_Samengevoegd.csv"), show_col_types = FALSE)
+
+resultaten_gegroepeerd <- df_nieuw %>%
+  mutate(Soort_clean = tolower(trimws(Soort))) %>%
+  filter(Soort_clean == soort) %>%
+  group_by(Type) %>%
+  nest(Data = c(Code, Match))
+
+# HIER LEZEN WE DYNAMISCH HET SCENARIO IN I.P.V. DE REF-TABEL
+tabel_vlaanderen <- readRDS(scenario_path)
+setDT(tabel_vlaanderen)
+tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
+
+lijst_matches      <- list()
+lijst_oppervlaktes <- list()
+
+for(i in 1:nrow(resultaten_gegroepeerd)) {
+  h_type <- resultaten_gegroepeerd$Type[i]
+  h_data <- resultaten_gegroepeerd$Data[[i]]
+  
+  exact_codes <- tolower(trimws(h_data$Code[h_data$Match == "exact"]))
+  bevat_codes <- tolower(trimws(h_data$Code[h_data$Match == "bevat"]))
+  
+  if(length(bevat_codes) > 0) {
+    # 1. Ontsnap speciale regex-tekens (zoals haakjes) om syntaxfouten te voorkomen
+    bevat_codes_escaped <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
+    
+    # 2. CRUCIALE FIX: Plak een '^' voor elke individuele code. 
+    # Dit dwingt grepl() om alleen te matchen als de BWK-code BEGINT met deze letters.
+    bevat_codes_anchored <- paste0("^", bevat_codes_escaped)
+    regex_term <- paste0(bevat_codes_anchored, collapse = "|")
+    
+    # Filteren: EXACT-matches (geen letters voor/na) OF codes die BEGINNEN met de bevat-termen
+    tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes | grepl(regex_term, CODE)]
+  } else {
+    tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes]
+  }
+  
+  # Filter op studiegebied
+  tabel_TV <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
+  tabel_cel_som <- tabel_TV[, .(Oppervlakte = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
+  
+  r_match_type <- id_raster_TV * NA
+  r_opp_type   <- id_raster_TV * NA
+  
+  if(nrow(tabel_cel_som) > 0) {
+    tabel_cel_som[, Oppervlakte := pmin(Oppervlakte, 1)]
+    tabel_cel_som[, Match := ifelse(Oppervlakte >= 0.01, 1, 0)]
+    
+    setnames(tabel_cel_som, "cel_id", "globale_id")
+    tabel_finaal_mapping <- merge(tabel_cel_som, vertaal_df, by = "globale_id", all.x = TRUE)
+    tabel_finaal_mapping <- tabel_finaal_mapping[!is.na(lokale_id)]
+    
+    if(nrow(tabel_finaal_mapping) > 0) {
+      tabel_matches_clean <- tabel_finaal_mapping[Match == 1]
+      if(nrow(tabel_matches_clean) > 0) {
+        r_match_type[tabel_matches_clean$lokale_id] <- tabel_matches_clean$Match
+      }
+      r_opp_type[tabel_finaal_mapping$lokale_id] <- tabel_finaal_mapping$Oppervlakte
+      
+      # Sla de gegenereerde rasters op
+      lijst_matches[[h_type]]      <- r_match_type
+      lijst_oppervlaktes[[h_type]] <- r_opp_type
+    }
+  }
+}
+
+# ENKEL HET REËLE FRACTIE-SPOOR EN BENODIGDE MAX-WATERMASKER BEHOUDEN
+voortplanting_bwk_opp <- lijst_oppervlaktes[["voortplanting_bwk"]]
+water_bwk_max <- lijst_matches[["Waterbwk"]]
+foerageer_bwk_opp <- lijst_oppervlaktes[["foerageer_bwk"]]
+
+raster_simpel_final <- id_raster_TV
+rm(tabel_vlaanderen, vertaal_df, lijst_matches, lijst_oppervlaktes)
+gc()
+```
+
+```{r drainagefilter}
+r_drain_raw   <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_drainage_10m.tif"))
+r_drain_local <- r_drain_raw %>% terra::crop(area_buffer_fix) %>% terra::resample(template_TV, method = "near")
+
+drain_cats           <- terra::cats(r_drain_local)[[1]]
+geselecteerde_letters <- c("d", "e", "f", "h", "i", "g", "e-f", "h-i", "e-i")
+bontdikkopje_drain_ids     <- drain_cats$value[drain_cats$Label %in% geselecteerde_letters]
+
+masker_drainage  <- r_drain_local %in% bontdikkopje_drain_ids
+
+# Direct de reële fracties filteren met de drainage
+voortplanting_vocht_opp <- terra::ifel(masker_drainage == 1, voortplanting_bwk_opp, NA)
+
+rm(r_drain_raw, r_drain_local, masker_drainage)
+```
+
+# Afstandsfilter tot open water
+```{r waterfilter}
+# 1. Laad het GRB-watergang raster in en lijn het uit met je studiegebied
+r_grb_water_raw   <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_grb_water_10m.tif"))
+r_grb_water_local <- r_grb_water_raw %>% 
+  terra::crop(area_buffer_fix, snap = "near") %>% 
+  terra::resample(template_TV, method = "near")
+
+crs(r_grb_water_local) <- crs(template_TV)
+
+masker_grb_water <- r_grb_water_local == 1
+masker_grb_water[masker_grb_water == 0] <- NA
+
+# 2. Combineer GRB-watergangen met de BWK-waterkaarten
+if(!is.null(water_bwk_max)) {
+  bontdikkopjeWater <- terra::cover(masker_grb_water, water_bwk_max)
+} else {
+  bontdikkopjeWater <- masker_grb_water
+}
+
+# 3. Bereken de afstand tot het water (max 200 meter)
+message("-> Afstandsmatrix tot water berekenen (max 200m)...")
+afstand_tot_water <- terra::distance(bontdikkopjeWater)
+zone_binnen_200m <- terra::ifel(afstand_tot_water <= 200, 1, NA)
+
+# 4. Pas de afstandsfilter toe op de vochtige voortplantingsgebieden
+if(!is.null(voortplanting_vocht_opp)) {
+  voortplanting_vocht_opp <- terra::mask(voortplanting_vocht_opp, zone_binnen_200m)
+}
+
+rm(r_grb_water_raw, r_grb_water_local, masker_grb_water, bontdikkopjeWater, afstand_tot_water, zone_binnen_200m)
+gc()
+```
+
+# Cluster-analyse en oppervlakte filter (Voortplanting)
+```{r Cluster Voortplanting}
+drempel_m2 <- oppervlakte_ha * 10000
+
+cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
+  if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
+    return(list(raster = masker * NA, clusters = masker * NA))
+  }
+  
+  temp_mask <- masker
+  if(dist_m > 0) temp_mask <- terra::buffer(masker, width = dist_m / 2)
+  
+  cl_network <- terra::patches(temp_mask, directions = 8, zeroAsNA = TRUE)
+  
+  if(werkelijk) {
+    stats_df <- terra::zonal(opp_laag, cl_network, fun = "sum", na.rm = TRUE)
+    colnames(stats_df) <- c("ID", "Waarde")
+    stats_df$Area_m2 <- stats_df$Waarde * 10000 
+  } else {
+    cl_biotoop_only <- terra::mask(cl_network, masker)
+    f <- terra::freq(cl_biotoop_only)
+    stats_df <- data.frame(ID = f$value, Waarde = f$count)
+    stats_df$Area_m2 <- stats_df$Waarde * 100 
+  }
+  
+  stats_df <- stats_df[!is.na(stats_df$ID), ]
+  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  
+  voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
+  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  
+  masker_binair <- cl_network %in% voldoet_ids
+  final_network_mask <- terra::ifel(masker_binair == 1, 1, NA)
+  
+  r_finaal  <- terra::mask(masker, final_network_mask)
+  cl_finaal <- terra::mask(cl_network, r_finaal) 
+  
+  return(list(raster = r_finaal, clusters = cl_finaal))
+}
+
+# Maak een binair masker van de vochtige voortplantingsgebieden als input voor de footprint
+voortplanting_vocht_bin <- terra::ifel(!is.na(voortplanting_vocht_opp) & voortplanting_vocht_opp > 0, 1, NA)
+
+res_opp_voortplanting <- cluster_filter_compleet(
+  masker = voortplanting_vocht_bin, 
+  opp_laag = voortplanting_vocht_opp, 
+  drempel_m2 = drempel_m2, 
+  dist_m = afstand_m, 
+  werkelijk = TRUE
+)
+
+voortplanting_finaal_opp <- res_opp_voortplanting$raster
+cl_voortplanting_opp     <- res_opp_voortplanting$clusters
+
+rm(res_opp_voortplanting, voortplanting_vocht_bin)
+gc()
+```
+
+# Cluster-analyse en oppervlakte filter (Foerageren)
+```{r Cluster Foerageren}
+# Maak een binair masker van de foerageergebieden als input voor de footprint
+foerageer_bwk_bin <- terra::ifel(!is.na(foerageer_bwk_opp) & foerageer_bwk_opp > 0, 1, NA)
+
+res_opp_foerageer <- cluster_filter_compleet(
+  masker = foerageer_bwk_bin, 
+  opp_laag = foerageer_bwk_opp, 
+  drempel_m2 = drempel_m2, 
+  dist_m = afstand_m, 
+  werkelijk = TRUE
+)
+
+foerageer_finaal_opp <- res_opp_foerageer$raster
+cl_foerageer_opp     <- res_opp_foerageer$clusters
+
+rm(res_opp_foerageer, foerageer_bwk_bin)
+gc()
+```
+
+# Wederzijdse afstandsfilter tussen voortplanting en foerageren (max 500m)
+```{r Afstandsfilter Voortplanting Foerageren}
+message("-> Wederzijdse afstandsfilters tussen voortplanting en foerageren berekenen (max 500m)...")
+
+# --- AFSTANDSFILTER VOOR DE NETTO VARIANT (WERKELIJKE OPPERVLAKTE) ---
+if (!all(is.na(terra::values(voortplanting_finaal_opp, mat=FALSE))) && 
+    !all(is.na(terra::values(foerageer_finaal_opp, mat=FALSE)))) {
+  
+  dist_naar_foerageer_opp <- terra::distance(foerageer_finaal_opp)
+  zone_foerageer_500m_opp <- terra::ifel(dist_naar_foerageer_opp <= 500, 1, NA)
+  
+  dist_naar_voortplanting_opp <- terra::distance(voortplanting_finaal_opp)
+  zone_voortplanting_500m_opp <- terra::ifel(dist_naar_voortplanting_opp <= 500, 1, NA)
+  
+  voortplanting_finaal_opp <- terra::mask(voortplanting_finaal_opp, zone_foerageer_500m_opp)
+  foerageer_finaal_opp     <- terra::mask(foerageer_finaal_opp, zone_voortplanting_500m_opp)
+  
+  cl_voortplanting_opp <- terra::mask(cl_voortplanting_opp, voortplanting_finaal_opp)
+  cl_foerageer_opp     <- terra::mask(cl_foerageer_opp, foerageer_finaal_opp)
+  
+  rm(dist_naar_foerageer_opp, zone_foerageer_500m_opp, dist_naar_voortplanting_opp, zone_voortplanting_500m_opp)
+} else {
+  voortplanting_finaal_opp <- template_TV
+  foerageer_finaal_opp     <- template_TV
+  cl_voortplanting_opp     <- template_TV
+  cl_foerageer_opp         <- template_TV
+}
+
+gc()
+```
+
+# Totaal leefgebied samenstellen (Combinatie voortplanting en foerageren)
+```{r Totaal Leefgebied}
+message("-> Totale leefgebiedslagen opbouwen via terra::cover...")
+final_opp <- terra::cover(voortplanting_finaal_opp, foerageer_finaal_opp)
+gc()
+```
+
+# Interactieve kaart
+```{r Interactieve kaart}
+# ==============================================================================
+# STAP 13: INTERACTIEVE TRANSITIEKAART (SCENARIO VS REFERENTIE)
+# ==============================================================================
+
+# 1. Lees de originele nulmeting/referentiekaart in vanuit de referentiemap
+referentie_file <- here("data/output/Turnhouts_vennegebied/Rasters_Soorten", "02_Werkelijke_Oppervlakte", paste0("Habitat_Werkelijke_Oppervlaktes_", soort, ".tif"))
+
+if(file.exists(referentie_file)) {
+  r_ref <- rast(referentie_file) %>% terra::resample(template_TV, method = "near")
+} else {
+  r_ref <- terra::rast(template_TV, vals = NA)
+}
+
+r_scen <- werkelijk_scenario_rast
+
+# 2. RGB Matrix bepalen (1 = Rood/Verlies, 2 = Groen/Winst, 3 = Blauw/Status Quo)
+r_rgb <- terra::ifel(!is.na(r_ref) & is.na(r_scen), 1, NA)                                     # Rood
+r_rgb <- terra::cover(r_rgb, terra::ifel(is.na(r_ref) & !is.na(r_scen), 2, NA)) # Groen
+r_rgb <- terra::cover(r_rgb, terra::ifel(!is.na(r_ref) & !is.na(r_scen), 3, NA)) # Blauw
+
+r_rgb_web <- terra::project(terra::as.int(r_rgb), "EPSG:4326", method = "near")
+
+# Kleurenpalet definiëren
+kleuren_rgb <- c("#E74C3C", "#2ECC71", "#3498DB") 
+pal_rgb <- colorFactor(palette = kleuren_rgb, levels = 1:3, na.color = "transparent")
+
+leaflet() %>%
+  addTiles(group = "OSM (Kaart)") %>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet") %>%
+  fitBounds(st_bbox(grens_web)[['xmin']], st_bbox(grens_web)[['ymin']], st_bbox(grens_web)[['xmax']], st_bbox(grens_web)[['ymax']]) %>%
+  
+  addRasterImage(r_rgb_web, colors = pal_rgb, opacity = 0.7, group = "Scenario Vergelijking") %>%
+  addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens TV") %>%
+  
+  addLegend(
+    colors = kleuren_rgb,
+    labels = c("Verloren gegaan bontdikkopjehabitat (Scenario)", "Nieuw bijgekomen habitat", "Status Quo (Behouden habitat)"),
+    title = paste("Scenario vs Referentie:", scenario_naam),
+    position = "bottomright"
+  ) %>%
+  addLayersControl(
+    baseGroups = c("OSM (Kaart)", "Satelliet"),
+    overlayGroups = c("Scenario Vergelijking", "Grens TV"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+```
+
+```{r export}
+# 1. Map dynamisch genereren binnen de bestaande Rasters_Soorten hoofdmap
+scenario_raster_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", scenario_naam)
+if (!dir.exists(scenario_raster_dir)) dir.create(scenario_raster_dir, recursive = TRUE)
+
+# 2. Omzetten naar binair (1/NA) conform de wasstraat-afspraak
+if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
+  werkelijk_scenario_rast <- terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA)
+} else {
+  werkelijk_scenario_rast <- terra::rast(template_TV, vals = NA)
+}
+
+# 3. Dynamische bestandsnaam opbouwen: TV_[scenario]_[soort].tif
+bestandsnaam <- paste0("TV_", scenario_naam, "_", soort, ".tif")
+file_path_scen <- file.path(scenario_raster_dir, bestandsnaam)
+
+# ==============================================================================
+# GEFIXT: DIEPE LOKALE KOPIE EN KOGELVRIJE WASSTRAAT-STYLING VOOR SCENARIO
+# ==============================================================================
+# Maak een fysieke, diepe kopie in het RAM zodat r_scen voor de kaart 100% zuiver blijft
+export_rast <- terra::deepcopy(werkelijk_scenario_rast)
+export_rast <- terra::mask(export_rast, area_buffer_fix)
+
+if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
+  # Scenario levert 0 resultaat op? Maak een egale 0/0 kaart binnen de buffer
+  export_rast <- terra::ifel(is.na(export_rast), 0, 0)
+  export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+} else {
+  # Scenario heeft wel habitat? Forceer de NoData-achtergrond strak naar 0 (1/0 kaart)
+  export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+}
+
+# Schrijf het gecorrigeerde raster weg als stabiele binaire INT1U met LZW-compressie
+writeRaster(export_rast, 
+            filename = file_path_scen, 
+            overwrite = TRUE, 
+            gdal = c("COMPRESS=LZW"), 
+            datatype = "INT1U")
+
+message(paste("✓ Scenario-raster voor Bontdikkopje succesvol weggeschreven naar:", file_path_scen))
+```
