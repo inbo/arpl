@@ -77,16 +77,16 @@ maak_kaart_laag <- function(res_list) {
 # Soort informatie ophalen
 ```{r Soort informatie}
 df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
-soort <- "adder"
+soort <- "bruineeikenpage"
 
 resultaat <- df %>%
 filter(Soort == soort) %>%
 select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
 
 # Variabelen definiëren
-oppervlakte_ha <- 25 #resultaat$MinOpp_ha
-afstand_m <- 100 #resultaat$AfstandBiotopen_m
-buffer_m <- 2000 # resultaat$Dispersiecap_m[1]
+oppervlakte_ha <- 5# resultaat$MinOpp_ha[1]
+afstand_m <- resultaat$AfstandBiotopen_m[1]
+buffer_m <- resultaat$Dispersiecap_m[1]
 
 print(resultaat)
 rm(df, resultaat)
@@ -216,8 +216,12 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
 }
 
 # Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
-masker_bron <- lijst_matches[[1]]
-opp_bron <- lijst_oppervlaktes[[1]]
+eiafzet_max <- lijst_matches[["eiafzet_bwk"]]
+eiafzet_opp <- lijst_oppervlaktes[["eiafzet_bwk"]]
+eiafzet_lin_max <- lijst_matches[["eiafzet_lineair"]]
+eiafzet_lin_opp <- lijst_oppervlaktes[["eiafzet_lineair"]]
+nectar_max <- lijst_matches[["nectar_bwk"]]
+nectar_opp <- lijst_oppervlaktes[["nectar_bwk"]]
 
 # Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
 rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
@@ -262,55 +266,126 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
   return(list(raster = terra::mask(masker, final_mask), clusters = cl))
 }
 
-res_max <- cluster_filter_compleet(masker_bron, opp_bron, drempel_m2, afstand_m, werkelijk = FALSE)
-res_opp <- cluster_filter_compleet(masker_bron, opp_bron, drempel_m2, afstand_m, werkelijk = TRUE)
+res_max <- cluster_filter_compleet(eiafzet_max, eiafzet_opp, drempel_m2, afstand_m, werkelijk = FALSE)
+res_opp <- cluster_filter_compleet(eiafzet_max, eiafzet_opp, drempel_m2, afstand_m, werkelijk = TRUE)
+```
 
-final_max <- res_max$raster
-final_opp <- res_opp$raster
-cl_max    <- res_max$clusters
-cl_opp    <- res_opp$clusters
+```{r combinatie eiafzet}
+message("-> Combineren van BWK eiafzet en lineaire eiafzet via optelling (capped op 1)...")
 
-grens_merged <- terra::aggregate(area_shape_proj)
-buffer_lijn  <- terra::buffer(grens_merged, width = buffer_m)
-binnen_masker <- terra::rasterize(grens_merged, template_TV, field = 1)
+# Haal de gefilterde rasters RECHTSTREEKS uit de resultaat-lijsten
+ei_bwk_filter_max <- res_max$raster
+ei_bwk_filter_opp <- res_opp$raster
 
-if (terra::global(is.na(final_max), "sum")[[1]] != terra::ncell(final_max)) {
-  is_loss   <- !is.na(final_max) & is.na(final_opp)
-  is_kept   <- !is.na(final_opp)
-  is_inside <- !is.na(binnen_masker)
-
-  r_status <- terra::ifel(is_loss & is_inside, 1, NA)
-  r_status <- terra::cover(r_status, terra::ifel(is_loss & !is_inside, 2, NA))
-  r_status <- terra::cover(r_status, terra::ifel(is_kept & is_inside, 3, NA))
-  r_status <- terra::cover(r_status, terra::ifel(is_kept & !is_inside, 4, NA))
+# --- SPOOR A: MAXIMALE POTENTIE (Binair: 1 of NA) ---
+if (!is.null(ei_bwk_filter_max) && !is.null(eiafzet_lin_max)) {
+  ei_combo_max <- terra::cover(ei_bwk_filter_max, eiafzet_lin_max)
 } else {
-  r_status <- terra::rast(template_TV, vals = NA)
-  message("Let op: Geen geschikte clusters gevonden voor deze soort.")
+  ei_combo_max <- terra::cover(ei_bwk_filter_max, template_TV)
 }
 
-r_status <- terra::as.factor(r_status)
-status_labels <- data.frame(ID = c(1, 2, 3, 4), 
-                            Label = c("Maximale Potentie (Binnen)", "Maximale Potentie (Buiten)", 
-                                      "Werkelijk Habitat (Binnen)", "Werkelijk Habitat (Buiten)"))
-levels(r_status) <- status_labels
+# --- SPOOR B: WERKELIJKE OPPERVLAKTE (FRACTIES OPTELLEN) ---
+ei_bwk_nul <- terra::ifel(is.na(ei_bwk_filter_opp), 0, ei_bwk_filter_opp)
+ei_lin_nul <- terra::ifel(is.na(eiafzet_lin_opp), 0, eiafzet_lin_opp)
+
+# Tel de fracties cel-voor-cel bij elkaar op
+ei_som <- ei_bwk_nul + ei_lin_nul
+
+# Zorg dat de waarde nooit groter kan worden dan 1 (100% van de pixel)
+ei_combo_opp <- terra::clamp(ei_som, upper = 1)
+ei_combo_opp <- terra::ifel(ei_combo_opp == 0, NA, ei_combo_opp)
+
+# Geef de gecombineerde rasters een heldere naam
+names(ei_combo_max) <- "Ei_Combo_Max"
+names(ei_combo_opp) <- "Ei_Combo_Opp"
+
+# ==============================================================================
+# CRUCIALE FIX: Genereer de cluster-ID rasters voor de gecombineerde eiafzet!
+# ==============================================================================
+message("-> Berekenen van gecombineerde eiafzet-clusters...")
+
+# Net zoals in je cluster_filter_compleet functie, overbruggen we de afstand_m via een buffer
+temp_mask_combo <- ei_combo_max
+if(afstand_m > 0) temp_mask_combo <- terra::buffer(ei_combo_max, width = afstand_m / 2)
+
+# Genereer de unieke cluster-ID's en maskeer ze terug naar de juiste voetafdruk
+cl_max <- terra::patches(temp_mask_combo, directions = 8, zeroAsNA = TRUE) %>% terra::mask(ei_combo_max)
+
+# Doe hetzelfde voor het werkelijke spoor
+temp_mask_combo_opp <- terra::ifel(ei_combo_opp > 0, 1, NA)
+if(afstand_m > 0) temp_mask_combo_opp <- terra::buffer(temp_mask_combo_opp, width = afstand_m / 2)
+cl_opp <- terra::patches(temp_mask_combo_opp, directions = 8, zeroAsNA = TRUE) %>% terra::mask(ei_combo_opp)
+```
+
+```{r nectarclusters}
+# Voer het filter uit en sla het op in een unieke resultaat-lijst (res_nectar_max)
+res_nectar_max <- cluster_filter_compleet(nectar_max, nectar_opp, drempel_m2, afstand_m, werkelijk = FALSE)
+res_nectar_opp <- cluster_filter_compleet(nectar_max, nectar_opp, drempel_m2, afstand_m, werkelijk = TRUE)
+
+# Pak daarna pas de schone rasters uit de lijst
+nectar_filter_max <- res_nectar_max$raster
+nectar_filter_opp <- res_nectar_opp$raster
+cl_nectar_max     <- res_nectar_max$clusters
+cl_nectar_opp     <- res_nectar_opp$clusters
+```
+
+```{r afstand tss vpt en nectar biotoop}
+message("-> Wederzijdse afstandsfilters tussen eiafzet en nectar berekenen...")
+
+# --- SPOOR A: MAXIMALE POTENTIE (_max) ---
+if (terra::hasValues(ei_combo_max) && terra::hasValues(nectar_filter_max) &&
+    terra::global(ei_combo_max, "notNA")$notNA > 0 && 
+    terra::global(nectar_filter_max, "notNA")$notNA > 0) {
+  
+  # Richting 1: Eiafzet moet binnen 250m van Nectar liggen
+  dist_naar_nectar_max <- terra::distance(nectar_filter_max)
+  zone_nectar_250m_max <- terra::ifel(dist_naar_nectar_max <= 250, 1, NA)
+  bruineeikenpage_eiafzet_max <- terra::mask(ei_combo_max, zone_nectar_250m_max)
+  
+  # Richting 2: Nectar moet binnen 500m van Eiafzet liggen
+  dist_naar_eiafzet_max <- terra::distance(ei_combo_max)
+  zone_eiafzet_500m_max <- terra::ifel(dist_naar_eiafzet_max <= 500, 1, NA)
+  bruineeikenpage_nectar_max  <- terra::mask(nectar_filter_max, zone_eiafzet_500m_max)
+  
+  # Synchroniseer de cluster-kaarten
+  cl_eiafzet_max <- terra::mask(cl_max, bruineeikenpage_eiafzet_max) # cl_max van je patches
+  cl_nectar_max  <- terra::mask(cl_nectar_max, bruineeikenpage_nectar_max)
+  
+  rm(dist_naar_nectar_max, zone_nectar_250m_max, dist_naar_eiafzet_max, zone_eiafzet_500m_max)
+} else {
+  bruineeikenpage_eiafzet_max <- template_TV
+  bruineeikenpage_nectar_max  <- template_TV
+  cl_eiafzet_max              <- template_TV
+  cl_nectar_max               <- template_TV
+}
 ```
 
 # Resultaten en Statistiek
 ```{r Resultaten en statistiek}
-# --- BEREKENING EN STATISTIEK EERST (VOORDAT DE EXPORT DE RASTERS WIJZIGT) ---
-soort_format <- paste0(toupper(substr(soort, 1, 1)), tolower(substr(soort, 2, nchar(soort))))
-soort_format <- gsub(" ", "_", soort_format)
+# ==============================================================================
+# 1. SYNCHRONISATIE EN FUSIE VOOR BRUINE EIKENPAGE
+# ==============================================================================
+# Het totale leefgebied is de optelsom (cover) van eiafzet en nectar
+final_max <- terra::cover(bruineeikenpage_eiafzet_max, bruineeikenpage_nectar_max)
+final_opp <- terra::cover(ei_combo_opp, nectar_filter_opp) # Netto reële fracties
 
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Adder_dummy.csv")
+# We gebruiken cl_max (de gecombineerde eiafzet-clusters) als master-leefgebied
+opp_bron  <- final_opp
+
+# --- CRUCIALE FIX: Maak het binnen_masker hier direct aan! ---
+# Dit zorgt ervoor dat terra::zonal() direct de grens van Turnhouts Vennegebied herkent.
+binnen_masker <- terra::rasterize(area_shape_proj, template_TV, field = 1)
+
+
+# ==============================================================================
+# 2. BESTAANDE SETUP VOOR WAARNEMINGEN KOPPELEN
+# ==============================================================================
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_BruineEikenpage_dummy.csv")
 
 if (file.exists(waarnemingen_path)) {
   waarnemingen_raw <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)
   df_points_sf <- st_as_sf(waarnemingen_raw, coords = c("x", "y"), crs = 31370)
-  
-  waarneming_smear_sf <- st_buffer(df_points_sf, dist = buffer_m) %>% 
-    st_union() %>% 
-    st_sf() 
-  
+  waarneming_smear_sf <- st_buffer(df_points_sf, dist = buffer_m) %>% st_union() %>% st_sf() 
   waarneming_blobs_vect  <- vect(waarneming_smear_sf)
   waarneming_punten_vect <- vect(df_points_sf)
   has_observations <- TRUE
@@ -326,11 +401,13 @@ if (file.exists(waarnemingen_path)) {
 verspreiding_raster <- terra::rast(template_TV, vals = NA)
 verspreiding_netwerk_count <- 0
 
-if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
+# ==============================================================================
+# 2. STATISTIEK EN CLUSTER-EVALUATIE
+# ==============================================================================
+if (terra::hasValues(cl_max) && terra::global(cl_max, "notNA")$notNA > 0) {
   stats_max_raw <- terra::freq(cl_max)
   stats_act_raw <- terra::zonal(opp_bron, cl_max, fun = "sum", na.rm = TRUE)
   colnames(stats_act_raw) <- c("ID", "Werk_ha") 
-  # CORRECTIE: Zet de som van de fracties om naar echte hectares
   stats_act_raw$Werk_ha <- stats_act_raw$Werk_ha * 0.01
 
   zonal_zone <- terra::zonal(binnen_masker, cl_max, fun = "max", na.rm = TRUE)
@@ -339,7 +416,7 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   
   ids_werkelijk_totaal <- stats_act_raw$ID[stats_act_raw$Werk_ha >= oppervlakte_ha]
   
-  # A. ARPL Extractie
+  # A. ARPL Extractie (Via blobs met buffer voor maximale trefzekerheid)
   if(has_observations && nrow(df_points_sf) > 0) {
     extract_ids_max <- terra::extract(cl_max, waarneming_blobs_vect, ID = FALSE)
     ids_raken_waarneming <- if(nrow(extract_ids_max) > 0) unique(na.omit(extract_ids_max[[1]])) else c()
@@ -348,9 +425,9 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   }
   ids_actueel_relevant <- intersect(ids_werkelijk_totaal, ids_raken_waarneming)
 
-  # B. Actuele Verspreiding Extractie
+  # B. Actuele Verspreiding Extractie (Ook via blobs om netwerken niet te missen)
   if(has_observations && nrow(df_points_sf) > 0) {
-    extract_ids_verspr <- terra::extract(cl_max, waarneming_punten_vect, ID = FALSE)
+    extract_ids_verspr <- terra::extract(cl_max, waarneming_blobs_vect, ID = FALSE)
     ids_raken_punten <- if(nrow(extract_ids_verspr) > 0) unique(na.omit(extract_ids_verspr[[1]])) else c()
   } else {
     ids_raken_punten <- c()
@@ -379,8 +456,7 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
     } else {
       r_opp <- terra::mask(opp_bron, masker_ids)
       val <- terra::global(r_opp, "sum", na.rm=TRUE)[[1]]
-      # CORRECTIE: val is de som van fracties, vermenigvuldig met 0.01 voor ha
-      return(round(val * 0.01, 2))
+      return(round(val * 0.01, 2)) # Vermenigvuldig met 0.01 voor ha fractie
     }
   }
 
@@ -400,7 +476,7 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
 
 } else {
   ids_pot_bin <- ids_pot_buit <- ids_werk_bin <- ids_werk_buit <- ids_actueel_relevant <- c()
-  ha_pot_bin <- ha_pot_buit <- ha_werk_bin <- ha_werk_buit <- ha_arpl <- 0
+  ha_pot_bin <- ha_pot_buit <- ha_werk_bin <- ha_werk_buit <- ha_arpl <- ha_verspreiding <- 0
   arpl_raster <- terra::rast(template_TV, vals = NA)
 }
 
@@ -421,7 +497,35 @@ tabel_totaal %>%
 
 # Interactieve kaart
 ```{r Interactieve kaart}
-# --- DE KAART REKENT NU MET DE ZUIVERE GEGEVENS ---
+# ==============================================================================
+# 1. REPARATIE: BEREKEN R_STATUS EERST (VOORDAT WE GAAN PROJECTEREN!)
+# ==============================================================================
+if (terra::hasValues(final_max) && terra::global(final_max, "notNA")$notNA > 0) {
+  is_loss   <- !is.na(final_max) & is.na(final_opp)
+  is_kept   <- !is.na(final_opp)
+  is_inside <- !is.na(binnen_masker)
+
+  r_status <- terra::ifel(is_loss & is_inside, 1, NA)
+  r_status <- terra::cover(r_status, terra::ifel(is_loss & !is_inside, 2, NA))
+  r_status <- terra::cover(r_status, terra::ifel(is_kept & is_inside, 3, NA))
+  r_status <- terra::cover(r_status, terra::ifel(is_kept & !is_inside, 4, NA))
+} else {
+  r_status <- terra::rast(template_TV, vals = NA)
+}
+
+r_status <- terra::as.factor(r_status)
+status_labels <- data.frame(ID = c(1, 2, 3, 4), 
+                            Label = c("Maximale Potentie (Binnen)", "Maximale Potentie (Buiten)", 
+                                      "Werkelijk Habitat (Binnen)", "Werkelijk Habitat (Buiten)"))
+levels(r_status) <- status_labels
+
+# ==============================================================================
+# 2. PROJECTIE EN SETUP GEOM_DATA VOOR LEAFLET
+# ==============================================================================
+r_web_status         <- terra::project(r_status, "EPSG:4326", method = "near")
+grens_web            <- st_transform(st_as_sf(area_shape_proj), 4326)
+bbox                 <- st_bbox(grens_web)
+
 if (has_observations && nrow(df_points_sf) > 0) {
   waarneming_smear_web <- st_transform(waarneming_smear_sf, 4326)
   points_web           <- st_transform(df_points_sf, 4326)
@@ -430,7 +534,7 @@ if (has_observations && nrow(df_points_sf) > 0) {
   points_web           <- st_sf(st_sfc(crs = 4326))
 }
 
-if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
+if (terra::hasValues(cl_max) && terra::global(cl_max, "notNA")$notNA > 0) {
   cluster_info <- data.frame(
       ID = stats_max_raw$value, 
       Pot_ha = stats_max_raw$count * 0.01 
@@ -465,10 +569,9 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   cl_poly_final <- st_sf(st_sfc(crs = 4326))
 }
 
-r_web_status         <- terra::project(r_status, "EPSG:4326", method = "near")
-grens_web            <- st_transform(st_as_sf(area_shape_proj), 4326)
-bbox                 <- st_bbox(grens_web)
-
+# ==============================================================================
+# 3. INTERACTIEVE KAART SELECTION
+# ==============================================================================
 pal_status <- colorFactor(palette = c("#4daf4a", "#e41a1c"), levels = c("Werkelijk Habitat", "Potentieel (Niet Werkelijk)"))
 pal_4 <- colorFactor(palette = c("#FF00FF", "#FF8C00", "#4daf4a", "#377eb8"), levels = 1:4, na.color = "transparent")
 
