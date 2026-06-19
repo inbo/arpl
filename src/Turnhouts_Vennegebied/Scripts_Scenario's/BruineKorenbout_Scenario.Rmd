@@ -60,7 +60,7 @@ scenario_naam <- gsub("^TV_Scenario_|.rds$", "", scen_volledig)
 message(paste("-> Script gestart voor Scenario:", scenario_naam))
 
 # 2. Soortkenmerken ophalen
-df <- read_excel(here("Soorten_bwk_afstanden.xlsx"))
+df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
 soort <- "bruinekorenbout"
 
 resultaat <- df %>%
@@ -75,10 +75,10 @@ rm(df, resultaat)
 
 # Gebied voorbereiden (Turnhouts Vennegebied)
 ```{r Gebied Voorbereiden}
-area_shape  <- vect("../Turnhouts_Vennegebied.shp")
-master_grid <- rast("../Vlaanderen_MasterGrid_10m.tif")[[1]]
+area_shape  <- vect(here("data/input/Turnhouts_Vennegebied.shp"))
+master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
 
-df_namen_sleutel <- read_csv("../BWK_Laag_Namen_2025.csv", show_col_types = FALSE)
+df_namen_sleutel <- read_csv(here("data/input/Excel_files/BWK_Laag_Namen_2025.csv"), show_col_types = FALSE)
 gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
 
 area_shape_proj <- project(area_shape, crs(master_grid))
@@ -107,7 +107,7 @@ gc()
 
 # Biotoopfiltering (BWK-codes)
 ```{r Biotoopfiltering}
-df_nieuw <- read_csv("../Resultaten_Totaal_Samengevoegd.csv", show_col_types = FALSE)
+df_nieuw <- read_csv(here("data/input/Excel_files/Resultaten_Totaal_Samengevoegd.csv"), show_col_types = FALSE)
 
 resultaten_gegroepeerd <- df_nieuw %>%
   mutate(Soort_clean = tolower(trimws(Soort))) %>%
@@ -180,7 +180,7 @@ gc()
 
 ```{r waterlopen}
 message("-> Huet-zones (waterlopen) inlezen en integreren...")
-r_huetzon_vlaanderen <- rast("../Raster_Vlaanderen/vlaanderen_huetzon_10m.tif")
+r_huetzon_vlaanderen <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_huetzon_10m.tif"))
 r_huetzon_local <- r_huetzon_vlaanderen %>% terra::crop(area_buffer_fix) %>% terra::resample(template_TV, method = "near")
 
 valide_ids <- 3:10 
@@ -275,7 +275,7 @@ gc()
 
 ```{r export}
 # 1. Map dynamisch genereren binnen de Rasters_Soorten hoofdmap
-scenario_raster_dir <- here("Rasters_Soorten", scenario_naam)
+scenario_raster_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", scenario_naam)
 if (!dir.exists(scenario_raster_dir)) dir.create(scenario_raster_dir, recursive = TRUE)
 
 # 2. Omzetten naar binair (1/NA) conform de wasstraat-afspraak
@@ -310,7 +310,7 @@ message(paste("✓ Scenario-raster voor Bruine Korenbout succesvol weggeschreven
 
 ```{r Interactieve kaart}
 # 1. Lees de originele nulmeting/referentiekaart in vanuit de referentiemap
-referentie_file <- here("Rasters_Soorten", "02_Werkelijke_Oppervlakte", paste0("Habitat_Werkelijke_Oppervlaktes_", soort, ".tif"))
+referentie_file <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", "02_Werkelijke_Oppervlakte", paste0("Habitat_Werkelijke_Oppervlaktes_", soort, ".tif"))
 
 if(file.exists(referentie_file)) {
   r_ref <- rast(referentie_file) %>% terra::resample(template_TV, method = "near")
