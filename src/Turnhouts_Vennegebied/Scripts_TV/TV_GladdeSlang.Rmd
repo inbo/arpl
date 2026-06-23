@@ -280,110 +280,145 @@ hooggroen_binair  <- terra::classify(hooggroen_local_raw, matrix(c(0.5, 1.5, 1),
 hooggroen_10m_raw <- terra::aggregate(hooggroen_binair, fact = 10, fun = "max")
 hooggroen_sync    <- project(hooggroen_10m_raw, crs(id_raster_TV)) %>% terra::resample(id_raster_TV, method = "near")
 
+# Stel hier centraal de gewenste bosrandbreedte in (LARCH-standaard of gevoel)
+rand_breedte_m <- 50
+
 # ==============================================================================
-# STAP 1: COMBINEER OPEN BIOTOOP EN BOSRAND (Conform gladdeslang_biotoop3)
+# AUDIT - NULMETING: Wat komt er puur uit de BWK-crosswalk?
+# ==============================================================================
+cat("\n=== [AUDIT] START GLADDESLANG HABITATANALYSE ===\n")
+cat("0. Basisinvoer vanuit BWK-crosswalk:\n")
+cat("   - Bruto potentieel (pixels):", round(terra::global(gladdeslang_biotoop1_max, "notNA")$notNA * 0.01, 2), "ha\n")
+cat("   - Netto werkelijk (fracties):", round(terra::global(gladdeslang_biotoop1_opp, "sum", na.rm=TRUE)[[1]] * 0.01, 2), "ha\n\n")
+
+# ==============================================================================
+# STAP 1: FILTER OP OPEN HABITAT (Boomkronen uitsluiten)
 # ==============================================================================
 gladdeslang_open_max <- terra::mask(gladdeslang_biotoop1_max, hooggroen_sync, maskvalues = 1)
 gladdeslang_open_opp <- terra::mask(gladdeslang_biotoop1_opp, hooggroen_sync, maskvalues = 1)
 
-zoekzone_50m_max <- terra::buffer(gladdeslang_open_max, width = 50)
-zoekzone_50m_opp <- terra::buffer(gladdeslang_open_opp, width = 50)
+cat("1. Na uitsluiting van hooggroen (enkel open structuren over):\n")
+cat("   - Bruto potentieel:", round(terra::global(gladdeslang_open_max, "notNA")$notNA * 0.01, 2), "ha\n")
+cat("   - Netto werkelijk:", round(terra::global(gladdeslang_open_opp, "sum", na.rm=TRUE)[[1]] * 0.01, 2), "ha\n\n")
 
-bos_in_zoekzone_max <- terra::mask(hooggroen_sync, zoekzone_50m_max)
-bos_in_zoekzone_opp <- terra::mask(hooggroen_sync, zoekzone_50m_opp)
+# ==============================================================================
+# STAP 2: STRIKTE BOSRAND-GENERATIE (Enkel de eerste X meter bosrand)
+# ==============================================================================
+# 1. Maak de zoekzone binaire maskers (1 waar buffer is, NA daarbuiten)
+# terra::buffer geeft standaard 1 binnen de buffer.
+zoekzone_rand_max <- terra::buffer(gladdeslang_open_max, width = rand_breedte_m)
+zoekzone_rand_opp <- terra::buffer(gladdeslang_open_opp, width = rand_breedte_m)
 
-gladdeslang_bufferbos_max <- terra::ifel(bos_in_zoekzone_max == 1, 1, NA)
-gladdeslang_bufferbos_opp <- terra::ifel(bos_in_zoekzone_opp == 1, 1, NA)
+# 2. CRUCIALE FIX: Vermenigvuldig of maskeer strikt met maskvalues = 0 / NA.
+# We behouden alleen bos (1) als er een 1 in de zoekzone staat én het bos daar effectief 1 is.
+gladdeslang_bufferbos_max <- terra::ifel(hooggroen_sync == 1 & zoekzone_rand_max == 1, 1, NA)
+gladdeslang_bufferbos_opp <- terra::ifel(hooggroen_sync == 1 & zoekzone_rand_opp == 1, 1, NA)
 
+# 3. Voeg nu de open structuren samen met de STRIKTE bosrand
 bruto_biotoop3_max <- terra::cover(gladdeslang_open_max, gladdeslang_bufferbos_max)
 bruto_biotoop3_opp <- terra::cover(gladdeslang_open_opp, gladdeslang_bufferbos_opp)
 
+cat("2. Na toevoeging van aangrenzend bos (STRIKTE", rand_breedte_m, "m bosrand):\n")
+cat("   - Toegevoegd bosoppervlak (bruto):", round(terra::global(gladdeslang_bufferbos_max, "notNA")$notNA * 0.01, 2), "ha\n")
+cat("   - TOTAAL gecombineerd biotoop (bruto):", round(terra::global(bruto_biotoop3_max, "notNA")$notNA * 0.01, 2), "ha\n")
+cat("   - TOTAAL gecombineerd biotoop (netto):", round(terra::global(bruto_biotoop3_opp, "sum", na.rm=TRUE)[[1]] * 0.01, 2), "ha\n\n")
+
 # ==============================================================================
-# STAP 2: CLUSTERING VIA FUZZY BUFFER (Smelt de rafels samen tot de supercluster)
+# STAP 3: CLUSTERING VIA FUZZY BUFFER (Micro-gaten dichten)
 # ==============================================================================
-# We maken een tijdelijke buffer van 50m rond het bruto biotoop om micro-gaten te dichten
 fuzzy_mask_max <- terra::buffer(bruto_biotoop3_max, width = 50)
 fuzzy_mask_opp <- terra::buffer(bruto_biotoop3_opp, width = 50)
 
-# Bereken de unieke cluster IDs op de samengesmolten vlekken
 cl_fuzzy_max <- terra::patches(fuzzy_mask_max, directions = 8, zeroAsNA = TRUE)
 cl_fuzzy_opp <- terra::patches(fuzzy_mask_opp, directions = 8, zeroAsNA = TRUE)
 
-# Snijd de overdreven buffer weer strak af op het originele bruto biotoop
-# Hierdoor behouden we de exacte oppervlakte, maar vallen de rafels onder hetzelfde ID!
 cl_max_bruto <- terra::mask(cl_fuzzy_max, bruto_biotoop3_max)
 cl_opp_bruto <- terra::mask(cl_fuzzy_opp, bruto_biotoop3_opp)
 
 # ==============================================================================
-# STAP 3: BEREKEN HET TOTALE OPPERVLAKTE PER CLUSTER EN FILTER OP 20 HA
+# STAP 4: MINIMALE OPPERVLAKTETHEREPEL (20 ha filter)
 # ==============================================================================
-drempel_pixels <- (oppervlakte_ha * 10000) / 100 # 20 ha = 2000 pixels van 10x10m
+drempel_pixels <- (oppervlakte_ha * 10000) / 100 
 
 # Maximaal Potentieel Filter
 f_max <- as.data.frame(terra::freq(cl_max_bruto))
 ids_voldoet_max <- f_max$value[f_max$count >= drempel_pixels & !is.na(f_max$value)]
 
-# Werkelijk Habitat Filter (Filteren op basis van de totale binaire grid-vlek)
+# Werkelijk Habitat Filter
 f_opp <- as.data.frame(terra::freq(cl_opp_bruto))
 ids_voldoet_opp <- f_opp$value[f_opp$count >= drempel_pixels & !is.na(f_opp$value)]
 
-# Hard filteren: behoud alleen de clusters die de drempel halen
 cl_max <- terra::ifel(cl_max_bruto %in% ids_voldoet_max, cl_max_bruto, NA)
 cl_opp <- terra::ifel(cl_opp_bruto %in% ids_voldoet_opp, cl_opp_bruto, NA)
 
 final_max <- terra::ifel(!is.na(cl_max), bruto_biotoop3_max, NA)
 final_opp <- terra::ifel(!is.na(cl_opp), bruto_biotoop3_opp, NA)
 
-# CRUCIALE SYNCHRONISATIE VOOR MAP EN FUNCTIES (Voorkomt NA's)
+cat("3. Na toepassen van de minimale clustergrootte-drempel (>= 20 ha):\n")
+cat("   - Aantal clusters over (bruto):", length(ids_voldoet_max), "\n")
+cat("   - Finaal goedgekeurd leefgebied (bruto):", round(terra::global(final_max, "notNA")$notNA * 0.01, 2), "ha\n")
+cat("   - Finaal goedgekeurd leefgebied (netto):", round(terra::global(final_opp, "sum", na.rm=TRUE)[[1]] * 0.01, 2), "ha\n")
+cat("=== [AUDIT] EINDE GLADDESLANG HABITATANALYSE ===\n\n")
+
+# SYNCHRONISATIE VOOR MAP EN FUNCTIES
 r_status  <- terra::ifel(!is.na(final_max), 3, NA)
 cl_id_max <- cl_max
 cl_id_opp <- cl_opp
 
-# Nette opruiming van de tijdelijke rasters
-rm(gladdeslang_open_max, gladdeslang_open_opp, zoekzone_50m_max, zoekzone_50m_opp, 
-   bos_in_zoekzone_max, bos_in_zoekzone_opp, gladdeslang_bufferbos_max, gladdeslang_bufferbos_opp,
+# Nette opruiming
+rm(gladdeslang_open_max, gladdeslang_open_opp, zoekzone_rand_max, zoekzone_rand_opp, 
+   gladdeslang_bufferbos_max, gladdeslang_bufferbos_opp,
    bruto_biotoop3_max, bruto_biotoop3_opp, fuzzy_mask_max, fuzzy_mask_opp, 
    cl_fuzzy_max, cl_fuzzy_opp, cl_max_bruto, cl_opp_bruto)
 ```
 
 ```{r GladdeSlang Audit Tabel Gehele Clusters Waterdicht}
+# ==============================================================================
+# 1. WAARNEMINGEN INLADEN (GECORRIGEERD EN WATERDICHT)
+# ==============================================================================
 waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_GladdeSlang.csv")
 
 if (file.exists(waarnemingen_path)) {
+  # Inlezen via de nieuwe Python-export (gescheiden door ;, decimalen zijn .)
   waarnemingen_raw <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)
-  df_points_sf <- st_as_sf(waarnemingen_raw, coords = c("x", "y"), crs = 31370)
+  colnames(waarnemingen_raw) <- tolower(colnames(waarnemingen_raw))
   
-  waarneming_smear_sf <- st_buffer(df_points_sf, dist = buffer_m) %>% 
-    st_union() %>% 
-    st_sf() 
+  # Filter eventuele lege coördinaten eruit
+  waarnemingen_clean <- waarnemingen_raw %>% filter(!is.na(lon) & !is.na(lat))
   
-  waarneming_blobs_vect  <- vect(waarneming_smear_sf)
-  waarneming_punten_vect <- vect(df_points_sf)
-  has_observations <- TRUE
+  # Omzetten van GPS-graden naar Lambert 72 meters
+  df_points_gps       <- st_as_sf(waarnemingen_clean, coords = c("lon", "lat"), crs = 4326)
+  df_points_sf        <- st_transform(df_points_gps, crs = 31370)
+  
+  # Maak de dispersiebufferwolk (smear)
+  waarneming_buffer_ruw <- st_buffer(df_points_sf, dist = buffer_m)
+  waarneming_union      <- st_union(waarneming_buffer_ruw)
+  waarneming_smear_sf   <- st_sf(id = 1, geometry = waarneming_union)
+  
+  # Omzetten naar Terra SpatVectors
+  waarneming_blobs_vect  <- terra::vect(waarneming_smear_sf)
+  waarneming_punten_vect <- terra::vect(df_points_sf) 
+  has_observations       <- TRUE
 } else {
-  message(paste("⚠️ Waarschuwing: Geen waarnemingsbestand gevonden op pad:", waarnemingen_path))
-  df_points_sf <- st_sf(st_sfc(crs = 31370)) 
-  waarneming_smear_sf <- st_sf(st_sfc(crs = 31370))
+  df_points_sf           <- st_sf(st_sfc(crs = 31370)) 
+  waarneming_smear_sf    <- st_sf(st_sfc(crs = 31370))
   waarneming_blobs_vect  <- vect(st_sf(st_sfc(crs = 31370)))
   waarneming_punten_vect <- vect(st_sf(st_sfc(crs = 31370)))
-  has_observations <- FALSE
+  has_observations       <- FALSE
 }
 
-# ==============================================================================
-# STAP 4: ARPL & ACTUELE VERSPREIDING AUTOMATISCH DOORREKENEN (DEFINITIEF COUPLING)
-# ==============================================================================
-# 1. Initialiseer EERST alle teller- en oppervlakte-indicatoren netjes op 0
-ha_pot_bin   <- ha_pot_buit  <- ha_werk_bin <- ha_werk_buit <- 0
-n_cl_pot_bin <- n_cl_pot_buit <- n_cl_werk_bin <- n_cl_werk_buit <- 0
-arpl_count   <- verspreiding_count <- 0
-ha_arpl      <- ha_versp           <- 0
+# Initialiseer alle tabel-tellers vooraf hard op 0 (Voorkomt 0.00 ha / lege tabel-fouten)
+n_cl_pot_bin  <- 0; n_cl_pot_buit  <- 0; ha_pot_bin  <- 0; ha_pot_buit  <- 0
+n_cl_werk_bin <- 0; n_cl_werk_buit <- 0; ha_werk_bin <- 0; ha_werk_buit <- 0
+arpl_count    <- 0; verspreiding_count <- 0; ha_arpl    <- 0; ha_versp    <- 0
 
-gladdeslang_arpl_opp <- template_TV
+gladdeslang_arpl_opp         <- template_TV
 gladdeslang_verspreiding_bin <- template_TV
+grens_sf                     <- sf::st_as_sf(area_shape_proj)
 
-grens_sf <- sf::st_as_sf(area_shape_proj)
-
+# ==============================================================================
 # 2. ANALYSE MAXIMAAL POTENTIEEL
+# ==============================================================================
 if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   f_max_totaal <- as.data.frame(terra::freq(cl_max))
   colnames(f_max_totaal) <- c("layer", "Cluster_ID", "Pixels")
@@ -393,7 +428,7 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   p_max <- terra::as.polygons(cl_max, aggregate = TRUE) %>% sf::st_as_sf()
   colnames(p_max)[1] <- "Cluster_ID"
   
-  intersect_max <- sf::st_intersects(p_max, grens_sf)
+  intersect_max  <- sf::st_intersects(p_max, grens_sf)
   ids_binnen_max <- p_max$Cluster_ID[lengths(intersect_max) > 0]
   
   df_max_analyse <- f_max_totaal %>%
@@ -405,7 +440,9 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   ha_pot_buit   <- round(sum(df_max_analyse$Totaal_ha[df_max_analyse$Zone == "Buiten"]), 2)
 }
 
+# ==============================================================================
 # 3. ANALYSE WERKELIJK HABITAT
+# ==============================================================================
 if (!all(is.na(terra::values(cl_opp, mat=FALSE)))) {
   zonal_opp_ha <- as.data.frame(terra::zonal(final_opp * 0.01, cl_opp, fun = "sum", na.rm = TRUE))
   colnames(zonal_opp_ha) <- c("Cluster_ID", "Totaal_ha")
@@ -414,7 +451,7 @@ if (!all(is.na(terra::values(cl_opp, mat=FALSE)))) {
   p_opp <- terra::as.polygons(cl_opp, aggregate = TRUE) %>% sf::st_as_sf()
   colnames(p_opp)[1] <- "Cluster_ID"
   
-  intersect_opp <- sf::st_intersects(p_opp, grens_sf)
+  intersect_opp  <- sf::st_intersects(p_opp, grens_sf)
   ids_binnen_opp <- p_opp$Cluster_ID[lengths(intersect_opp) > 0]
   
   df_opp_analyse <- zonal_opp_ha %>%
@@ -426,28 +463,32 @@ if (!all(is.na(terra::values(cl_opp, mat=FALSE)))) {
   ha_werk_buit   <- round(sum(df_opp_analyse$Totaal_ha[df_opp_analyse$Zone == "Buiten"]), 2)
 }
 
-# 4. BEREKEN ARPL & ACTUELE VERSPREIDING (GECORRIGEERDE NAMEN)
-if (exists("waarneming_blobs_vect") && !all(is.na(terra::values(cl_max, mat=FALSE)))) {
+# ==============================================================================
+# 4. BEREKEN ARPL & ACTUELE VERSPREIDING (WATERDICHTE INTERSECTIE)
+# ==============================================================================
+if (has_observations && nrow(df_points_sf) > 0 && !all(is.na(terra::values(cl_max, mat=FALSE)))) {
   ext_arpl <- terra::extract(cl_max, waarneming_blobs_vect, ID = FALSE)
   ids_arpl <- unique(na.omit(ext_arpl[[1]]))
   
   if (length(ids_arpl) > 0) {
-    cl_arpl_filtered <- cl_max %in% ids_arpl
-    gladdeslang_arpl_opp <- terra::mask(final_opp, cl_arpl_filtered, maskvalues = FALSE)
+    cl_arpl_filtered             <- cl_max %in% ids_arpl
+    gladdeslang_arpl_opp         <- terra::mask(final_opp, cl_arpl_filtered, maskvalues = FALSE)
     gladdeslang_verspreiding_bin <- terra::mask(final_max, cl_arpl_filtered, maskvalues = FALSE)
     
-    # CRUCIALE SYNCHRONISATIE: Match de namen met de tabel-variabelen!
-    arpl_count <- length(ids_arpl)
+    arpl_count         <- length(ids_arpl)
     verspreiding_count <- length(ids_arpl)
     
-    ha_cluster_match <- sum(df_opp_analyse$Totaal_ha[df_opp_analyse$Cluster_ID %in% ids_arpl])
+    # FIX: Bereken de hectares direct loepzuiver via het resulterende werkelijke habitat-raster
+    global_arpl_sum <- terra::global(gladdeslang_arpl_opp, "sum", na.rm = TRUE)[[1]]
     
-    ha_arpl <- round(ha_cluster_match, 2)
-    ha_versp <- round(ha_cluster_match, 2)
+    ha_arpl <- round(global_arpl_sum * 0.01, 2)
+    ha_versp <- round(global_arpl_sum * 0.01, 2)
   }
 }
 
+# ==============================================================================
 # 5. TABEL OPBOUWEN
+# ==============================================================================
 gladdeslang_audit_tabel <- data.frame(
   Type = c("Maximaal Potentieel (Minstens deels Binnen TV)", 
            "Maximaal Potentieel (Volledig Buiten TV)", 
@@ -491,7 +532,8 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   
   # 3. Welke clusters worden geraakt door ARPL waarnemingen?
   ids_arpl_raken <- c()
-  if (has_observations) {
+  if (has_observations && nrow(df_points_sf) > 0) {
+    # Gebruik de correcte, in Lambert 72 geprojecteerde vectoren voor de extractie
     ext_arpl       <- terra::extract(cl_max, waarneming_blobs_vect, ID = FALSE)
     ids_arpl_raken <- unique(na.omit(ext_arpl[[1]]))
   }
@@ -507,7 +549,7 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
         "<strong>Cluster ID:</strong> ", Cluster_ID, "<br><hr>",
         "<strong>Status:</strong> Goedgekeurd Leefgebied (Fuzzy Cluster)<br>",
         "<strong>Actueel Relevant (ARPL):</strong> ", 
-        ifelse(ARPL, "<span style='color:green; font-weight:bold;'>JA</span>", 
+        ifelse(ARPL, "<span style='color:green; font-weight:bold;'>JA (Raakt waarneming)</span>", 
                      "<span style='color:red;'>NEE (Geen waarneming binnen dispersiebereik)</span>"), "<br><br>",
         "<strong>Potentieel Oppervlak (Grid):</strong> ", round(Pot_ha, 2), " ha<br>",
         "<strong>Werkelijk Habitat (Fractie):</strong> ", round(coalesce(Werk_ha, 0), 2), " ha",
@@ -519,8 +561,8 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   cl_poly_sf <- terra::as.polygons(cl_max, aggregate = TRUE) %>% 
     st_as_sf()
   
-  # FORCEER ID KOLOMNAAM: Ongeacht hoe terra het noemt (value, lyr.1, etc.), we pakken de eerste kolom
-  st_geometry(cl_poly_sf) <- "geometry" # Zorg voor een voorspelbare geometrie naam
+  # FORCEER ID KOLOMNAAM
+  st_geometry(cl_poly_sf) <- "geometry"
   names(cl_poly_sf)[1] <- "Cluster_ID"
   
   # Projecteer naar Leaflet-projectie (WGS84)

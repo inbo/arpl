@@ -297,65 +297,74 @@ gc()
 
 ```{r 5 buren}
 # ==============================================================================
-# 1. CLUSTERS IDENTIFICEREN & FILTEREN (Boomkikker Metapopulatie-logica)
+# 1. CLUSTERS IDENTIFICEREN & CONNECTIVITEITSCHECK (5 buren binnen 500m)
 # ==============================================================================
 message("-> Unieke clusters identificeren voor het waterbiotoop van de boomkikker...")
-r_water_clusters <- terra::patches(r_boomkikker_waterbiotoop1, directions = 8)
+r_water_clusters <- terra::patches(r_boomkikker_waterbiotoop1, directions = 8, zeroAsNA = TRUE)
 
-# GEOPTIMALISEERD & VEILIG: via matrix-vermenigvuldiging.
-message("-> BLIKSEMSNEL: Unieke naburige clusters tellen via vector-centroids...")
+# Initialiseer de finale objecten als leeg (failsafe)
+boomkikker_waterbiotoop1_finaal_max <- template_TV * NA
+watervlakken_poly <- NULL
+goedgekeurde_clusters_poly <- NULL
 
-# 1. Zet het cluster-raster om naar polygonen (1 polygoon per cluster)
-watervlakken_poly <- terra::as.polygons(r_water_clusters, dissolve = TRUE)
-
-# 2. Neem het exacte middelpunt (centroid) van elk cluster
-centroids <- terra::centroids(watervlakken_poly)
-
-# 3. Trek een buffer van 500 meter rondom de centroids
-centroids_buffer <- terra::buffer(centroids, width = 500)
-
-# 4. Tel hoeveel centroids er binnen elke 500m buffer vallen (intersect)
-# 'terra::relate' geeft een matrix van welke buffers welke centroids raken
-intersect_matrix <- terra::relate(centroids_buffer, centroids, "intersects")
-
-# 5. Tel per rij hoeveel TRUE's er zijn (dit is inclusief de eigen poel!)
-cluster_counts <- rowSums(intersect_matrix)
-
-# 6. Koppel deze counts terug aan de polygonen
-watervlakken_poly$unieke_buren_count <- cluster_counts
-
-# 7. Selecteer alleen de polygonen die aan de eis voldoen.
-# Eis: minstens 5 ANDERE poelen. Omdat de eigen poel ook meetsnijdt, zoeken we naar >= 6.
-goedgekeurde_clusters_poly <- watervlakken_poly[watervlakken_poly$unieke_buren_count >= 6, ]
-
-# ==============================================================================
-# FINALE RASTERISATIE (Boomkikker Waterbiotoop Max Potentie)
-# ==============================================================================
-message("-> Goedgekeurde boomkikkerclusters terugzetten naar mastergrid...")
-
-if (nrow(goedgekeurde_clusters_poly) > 0) {
-  # Verraster de goedgekeurde polygonen direct terug naar een binaire '1'
-  boomkikker_waterbiotoop1_finaal_max <- terra::rasterize(
-    goedgekeurde_clusters_poly, 
-    template_TV, 
-    field = 1, 
-    background = NA
-  )
+if (!all(is.na(terra::values(r_water_clusters, mat=FALSE)))) {
+  
+  message("-> Unieke naburige clusters tellen via edge-to-edge vector buffers...")
+  
+  # 1. Zet het cluster-raster om naar polygonen
+  watervlakken_poly <- terra::as.polygons(r_water_clusters, dissolve = TRUE)
+  
+  # CRUCIALE EXTRA CHECK: Bestaan er daadwerkelijk polygonen?
+  if (!is.null(watervlakken_poly) && nrow(watervlakken_poly) > 0) {
+    
+    # 2. Trek een buffer van 500 meter rondom de VOLLEDIGE polygoon
+    poly_buffer <- terra::buffer(watervlakken_poly, width = 500)
+    
+    message("-> Relaties berekenen via terra::is.related...")
+    # 3. Binaire intersectie checken (Geeft een NxN matrix terug)
+    intersect_matrix <- terra::is.related(poly_buffer, watervlakken_poly, "intersects")
+    
+    # Omzetten naar een zuivere, dimensie-veilige matrix
+    intersect_matrix <- matrix(intersect_matrix, nrow = nrow(poly_buffer), ncol = nrow(watervlakken_poly))
+    
+    # 4. Tel per rij hoeveel TRUE's er zijn (inclusief eigen cluster)
+    cluster_counts <- rowSums(intersect_matrix)
+    
+    # 5. Koppel counts terug aan de polygonen via een nieuwe kolom
+    watervlakken_poly$unieke_buren_count <- cluster_counts
+    
+    # 6. Filter: minimaal 5 andere poelen + zichzelf = 6
+    goedgekeurde_clusters_poly <- watervlakken_poly[watervlakken_poly$unieke_buren_count >= 6, ]
+    
+    # ==============================================================================
+    # FINALE RASTERISATIE
+    # ==============================================================================
+    if (nrow(goedgekeurde_clusters_poly) > 0) {
+      message("-> Goedgekeurde boomkikkerclusters terugzetten naar mastergrid...")
+      boomkikker_waterbiotoop1_finaal_max <- terra::rasterize(
+        goedgekeurde_clusters_poly, 
+        template_TV, 
+        field = 1, 
+        background = NA
+      )
+    } else {
+      message("⚠️ Waarschuwing: Geen enkel cluster voldoet aan de connectiviteitseis van 5 buren.")
+    }
+    
+    # Opruimen tijdelijke objecten binnen de check
+    suppressWarnings(rm(poly_buffer, intersect_matrix, cluster_counts))
+    
+  } else {
+    message("⚠️ Waarschuwing: Geen geometrieën gevonden na as.polygons().")
+  }
 } else {
-  message("⚠️ Waarschuwing: Geen enkel cluster voldoet aan de connectiviteitseis voor boomkikker.")
-  boomkikker_waterbiotoop1_finaal_max <- template_TV * NA
+  message("⚠️ Waarschuwing: Geen initiële waterbiotopen gevonden om de connectiviteitscheck op uit te voeren.")
 }
-
-# Netjes opruimen van de vector-tussenstappen
-rm(watervlakken_poly, centroids, centroids_buffer, intersect_matrix, cluster_counts, goedgekeurde_clusters_poly)
-gc()
 
 # ==============================================================================
 # 2. PARALLEL: WERKELIJKE OPPERVLAKTE BEREKENEN (_opp)
 # ==============================================================================
 message("-> Werkelijke oppervlakte filteren op basis van de connectiviteitscheck...")
-
-# We maskeren het samengestelde oppervlakteraster (BWK + watervlakken fracties) voor de boomkikker
 boomkikker_waterbiotoop1_finaal_opp <- terra::mask(
   r_boomkikker_waterbiotoop1_opp, 
   boomkikker_waterbiotoop1_finaal_max
@@ -364,22 +373,17 @@ boomkikker_waterbiotoop1_finaal_opp <- terra::mask(
 # ==============================================================================
 # 3. HECTAREBEREKENING & PRINTEN
 # ==============================================================================
-# Bereken de exacte hectares met jouw eigen functie
 ha_potentie  <- calc_ha_exact(boomkikker_waterbiotoop1_finaal_max)
 ha_werkelijk <- calc_ha_exact(boomkikker_waterbiotoop1_finaal_opp)
 
-# Netjes en overzichtelijk printen in de console/HTML output
 cat("\n=========================================================\n")
-cat("          RESULTATEN WATERBIOTOOP BOOMKIKKER             \n")
+cat("          RESULTATEN WATERBIOTOOP boomkikker              \n")
 cat("=========================================================\n")
 cat(paste("Geschikt gebied (Maximale Potentie):  ", round(ha_potentie, 2), "ha\n"))
 cat(paste("Geschikt gebied (Werkelijke Fractie): ", round(ha_werkelijk, 2), "ha\n"))
 cat("=========================================================\n\n")
 
-# Opruimen van de resterende raster-tussenstappen
-suppressWarnings(
-  rm(r_water_clusters)
-)
+suppressWarnings(rm(r_water_clusters, watervlakken_poly, goedgekeurde_clusters_poly))
 gc()
 ```
 

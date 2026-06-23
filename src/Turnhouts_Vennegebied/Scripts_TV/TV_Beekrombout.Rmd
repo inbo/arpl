@@ -391,88 +391,76 @@ bos_cluster_max <- verwerk_leefgebied(landbiotoop_bos_max, max_afstand_m = 50, m
 bos_cluster_opp <- verwerk_leefgebied(landbiotoop_bos_opp, max_afstand_m = 50, min_opp_ha = 5)
 ```
 
-```{r clustering rest}
+```{r}
+# ==============================================================================
+# STAP: RESTBIOTOOP CLUSTEREN (>= 50 ha)
+# ==============================================================================
+message("-> Clusteren van overkoepelend landbiotoop (Drempel: 50 ha)...")
 rest_cluster_max <- verwerk_leefgebied(landbiotoop_rest_max, max_afstand_m = 50, min_opp_ha = 50)
-
-# Uitvoeren op de OPP-laag (oppervlaktefracties)
 rest_cluster_opp <- verwerk_leefgebied(landbiotoop_rest_opp, max_afstand_m = 50, min_opp_ha = 50)
-```
 
-```{r koppeling rest en bos}
-message("-> Selecteren van restbiotoop-clusters die bos bevatten (max 10m speling)...")
+# ==============================================================================
+# STAP: BOSKERNEN (>= 5 ha) FILTEREN OP BASIS VAN RESTEILAND (>= 50 ha)
+# ==============================================================================
+message("-> Filteren van boskernen: Bos moet deel uitmaken van een geschikt overkoepelend landbiotoop...")
 
-# --- FUNCTIE OM REST-CLUSTERS TE FILTEREN OP BASIS VAN BOS-OVERLAP ---
-filter_rest_met_bos <- function(r_rest_clusters, r_bos_clusters, max_afstand_m = 10) {
-  if (is.null(r_rest_clusters) || is.null(r_bos_clusters)) return(template_TV)
-  if (all(is.na(terra::values(r_rest_clusters, mat = FALSE)))) return(template_TV)
+filter_bos_in_landmatrice <- function(r_bos_clusters, r_rest_clusters) {
+  if (is.null(r_bos_clusters) || is.null(r_rest_clusters)) return(template_TV)
   if (all(is.na(terra::values(r_bos_clusters, mat = FALSE)))) return(template_TV)
+  if (all(is.na(terra::values(r_rest_clusters, mat = FALSE)))) return(template_TV)
   
-  # Step 1: Maak een zone rondom het bos met de gevraagde speling (10 meter)
-  # Aangezien je cellen 10m zijn, dekt een 3x3 matrix (focal max) exact 10 meter in alle richtingen.
+  # 10 meter speling rond de rest-matrix (om aanliggend bos ook mee te nemen)
   w_matrix <- matrix(1, nrow = 3, ncol = 3)
-  bos_zone <- terra::focal(r_bos_clusters, w = w_matrix, fun = "max", na.rm = TRUE)
+  rest_zone <- terra::focal(r_rest_clusters, w = w_matrix, fun = "max", na.rm = TRUE)
   
-  # Step 2: Welke BOS-waarden liggen er onder welke REST-clusters?
-  # terra::zonal geeft een tabel met alle unieke Rest-Cluster ID's en of er een bos-ID in ligt.
-  # We gebruiken "max" (als er bos ligt is de waarde > 0, als er geen bos ligt is het NA).
-  overlap_tabel <- terra::zonal(bos_zone, r_rest_clusters, fun = "max", na.rm = TRUE)
-  colnames(overlap_tabel) <- c("Rest_Cluster_ID", "Bos_Aanwezig")
+  # Welke BOS-clusters liggen in/tegen een goedgekeurd rest-gebied van 50 ha?
+  overlap_tabel <- terra::zonal(rest_zone, r_bos_clusters, fun = "max", na.rm = TRUE)
+  colnames(overlap_tabel) <- c("Bos_Cluster_ID", "Rest_Aanwezig")
   
-  # Step 3: Filter de ID's die een geldige match hebben met het bos
-  geldige_rest_ids <- overlap_tabel$Rest_Cluster_ID[!is.na(overlap_tabel$Bos_Aanwezig)]
+  # Filter de Bos-IDs die gekoppeld zijn aan een geldige rest-matrice
+  geldige_bos_ids <- overlap_tabel$Bos_Cluster_ID[!is.na(overlap_tabel$Rest_Aanwezig)]
   
-  if (length(geldige_rest_ids) == 0) {
-    message("-> Geen enkele restbiotoop-cluster voldoet aan de bos-voorwaarde.")
-    return(template_TV)
+  if (length(geldige_bos_ids) == 0) {
+    return(r_bos_clusters * NA)
   }
   
-  # Step 4: Behoud alleen de volledige rest-clusters die in onze lijst staan
-  r_gefilterd <- terra::ifel(r_rest_clusters %in% geldige_rest_ids, r_rest_clusters, NA)
-  return(r_gefilterd)
+  # Geef alleen de cellen van de goedgekeurde BOS-clusters terug
+  r_bos_goedgekeurd <- terra::ifel(r_bos_clusters %in% geldige_bos_ids, 1, NA)
+  return(r_bos_goedgekeurd)
 }
 
-# ==============================================================================
-# PARALLELLE UITVOERING (Spoor A en Spoor B)
-# ==============================================================================
+# --- PARALLELLE UITVOERING ---
+# Spoor A (Max) - Binaire selectie van de goedgekeurde boskernen
+bos_goedgekeurd_max <- filter_bos_in_landmatrice(bos_cluster_max, rest_cluster_max)
 
-# --- SPOOR A: MAXIMALE POTENTIE ---
-# Filter de rest-clusters (die al gefilterd waren op >= 50ha) op basis van de bos-clusters (>= 5ha)
-rest_gekoppeld_max <- filter_rest_met_bos(rest_cluster_max, bos_cluster_max, max_afstand_m = 10)
-
-# --- SPOOR B: WERKELIJKE OPPERVLAKTE ---
-rest_gekoppeld_opp <- filter_rest_met_bos(rest_cluster_opp, bos_cluster_opp, max_afstand_m = 10)
-
-# Controle-berichten naar de console
-n_cl_voor <- length(unique(terra::values(rest_cluster_max, mat=FALSE))) - 1 # -1 voor de NA
-n_cl_na   <- length(unique(terra::values(rest_gekoppeld_max, mat=FALSE))) - 1
-print(paste("-> Spoor A: Van de", n_cl_voor, "restclusters zijn er", n_cl_na, "overgebleven na bos-koppeling."))
+# Spoor B (Opp) - Behoud de werkelijke fracties (opp) van de goedgekeurde bos-cellen
+r_bos_masker_opp    <- filter_bos_in_landmatrice(bos_cluster_opp, rest_cluster_opp)
+bos_goedgekeurd_opp <- terra::mask(landbiotoop_bos_opp, r_bos_masker_opp)
 ```
 
 ```{r afstandsfilter tss land en waterbiotoop}
-message("-> Wederzijdse afstandsfilters tussen water- en landbiotoop berekenen (max 500m)...")
+message("-> Wederzijdse afstandsfilters tussen water- en de goedgekeurde boskernen (max 500m)...")
 
-# --- 1. AFSTANDSFILTER VOOR DE BRUTO VARIANT (_max / Maximale Potentie) ---
-if (terra::hasValues(waterlopen_max) && terra::hasValues(rest_gekoppeld_max) &&
+# --- 1. SPOOR A: MAX ---
+if (terra::hasValues(waterlopen_max) && terra::hasValues(bos_goedgekeurd_max) &&
     terra::global(waterlopen_max, "notNA")$notNA > 0 && 
-    terra::global(rest_gekoppeld_max, "notNA")$notNA > 0) {
+    terra::global(bos_goedgekeurd_max, "notNA")$notNA > 0) {
   
-  # Afstand van elke cel tot het dichtstbijzijnde landbiotoop (rest+bos)
-  dist_naar_land_max <- terra::distance(rest_gekoppeld_max)
-  zone_land_500m_max <- terra::ifel(dist_naar_land_max <= 500, 1, NA)
+  dist_naar_bos_max <- terra::distance(bos_goedgekeurd_max)
+  zone_bos_500m_max <- terra::ifel(dist_naar_bos_max <= 500, 1, NA)
   
-  # Afstand van elke cel tot het dichtstbijzijnde waterbiotoop
   dist_naar_water_max <- terra::distance(waterlopen_max)
   zone_water_500m_max <- terra::ifel(dist_naar_water_max <= 500, 1, NA)
   
-  # Toepassen van de filters (Wederzijdse 500m koppeling)
-  beekrombout_waterbiotoop_max <- terra::mask(waterlopen_max, zone_land_500m_max)
-  beekrombout_landbiotoop_max  <- terra::mask(rest_gekoppeld_max, zone_water_500m_max)
+  # Wederzijdse maskering: Bos maskeert water, water maskeert bos
+  beekrombout_waterbiotoop_max <- terra::mask(waterlopen_max, zone_bos_500m_max)
+  beekrombout_landbiotoop_max  <- terra::mask(bos_goedgekeurd_max, zone_water_500m_max)
   
-  # Synchroniseer de cluster-ID rasters direct mee
+  # Cluster-ID synchronisatie ten behoeve van de statistiek en kaarten
   cl_waterbiotoop_max <- terra::mask(cl_id_max, beekrombout_waterbiotoop_max)
-  cl_landbiotoop_max  <- terra::mask(rest_cluster_max, beekrombout_landbiotoop_max)
+  cl_landbiotoop_max  <- terra::mask(bos_cluster_max, beekrombout_landbiotoop_max)
   
-  rm(dist_naar_land_max, zone_land_500m_max, dist_naar_water_max, zone_water_500m_max)
+  rm(dist_naar_bos_max, zone_bos_500m_max, dist_naar_water_max, zone_water_500m_max)
 } else {
   beekrombout_waterbiotoop_max <- template_TV
   beekrombout_landbiotoop_max  <- template_TV
@@ -480,33 +468,24 @@ if (terra::hasValues(waterlopen_max) && terra::hasValues(rest_gekoppeld_max) &&
   cl_landbiotoop_max           <- template_TV
 }
 
-
-# --- 2. AFSTANDSFILTER VOOR DE NETTO VARIANT (_opp / Werkelijke Oppervlakte) ---
-if (terra::hasValues(waterlopen_opp) && terra::hasValues(rest_gekoppeld_opp) &&
+# --- 2. SPOOR B: OPP ---
+if (terra::hasValues(waterlopen_opp) && terra::hasValues(bos_goedgekeurd_opp) &&
     terra::global(waterlopen_opp, "notNA")$notNA > 0 && 
-    terra::global(rest_gekoppeld_opp, "notNA")$notNA > 0) {
+    terra::global(bos_goedgekeurd_opp, "notNA")$notNA > 0) {
   
-  # Afstand berekenen op basis van de aanwezigheid van de werkelijke fracties
-  dist_naar_land_opp <- terra::distance(rest_gekoppeld_opp)
-  zone_land_500m_opp <- terra::ifel(dist_naar_land_opp <= 500, 1, NA)
+  dist_naar_bos_opp <- terra::distance(bos_goedgekeurd_opp)
+  zone_bos_500m_opp <- terra::ifel(dist_naar_bos_opp <= 500, 1, NA)
   
   dist_naar_water_opp <- terra::distance(waterlopen_opp)
-  zone_water_500m_opp <- terra::ifel(dist_naar_water_opp <= 500, 1, NA)
+  zone_water_500m_opp = terra::ifel(dist_naar_water_opp <= 500, 1, NA)
   
-  # Toepassen van de filters op de werkelijke fracties
-  beekrombout_waterbiotoop_opp <- terra::mask(waterlopen_opp, zone_land_500m_opp)
-  beekrombout_landbiotoop_opp  <- terra::mask(rest_gekoppeld_opp, zone_water_500m_opp)
+  beekrombout_waterbiotoop_opp <- terra::mask(waterlopen_opp, zone_bos_500m_opp)
+  beekrombout_landbiotoop_opp  <- terra::mask(bos_goedgekeurd_opp, zone_water_500m_opp)
   
-  # Synchroniseer de cluster-ID rasters direct mee
-  cl_waterbiotoop_opp <- terra::mask(cl_id_opp, beekrombout_waterbiotoop_opp)
-  cl_landbiotoop_opp  <- terra::mask(rest_cluster_opp, beekrombout_landbiotoop_opp)
-  
-  rm(dist_naar_land_opp, zone_land_500m_opp, dist_naar_water_opp, zone_water_500m_opp)
+  rm(dist_naar_bos_opp, zone_bos_500m_opp, dist_naar_water_opp, zone_water_500m_opp)
 } else {
   beekrombout_waterbiotoop_opp <- template_TV
   beekrombout_landbiotoop_opp  <- template_TV
-  cl_waterbiotoop_opp          <- template_TV
-  cl_landbiotoop_opp           <- template_TV
 }
 
 gc()
@@ -515,21 +494,33 @@ gc()
 # Resultaten en Statistiek
 ```{r Resultaten en statistiek}
 # ==============================================================================
-# 1. NAAMGEVING EN FUSIE SYNCHRONISEREN VOOR BEEKROMBOUT
+# HERSCHREVEN STAP: RESULTATEN EN STATISTIEK (CORRECTE MULTI-BIOTOOP AUDIT)
 # ==============================================================================
-# Combineer water en land tot het totale leefgebied (LARCH: or)
+message("-> Statistieken berekenen op basis van correct gesynchroniseerde biotoopclusters...")
+
+# 1. Synchroniseer het totale leefgebied (Spoor A en Spoor B)
 final_max <- terra::cover(beekrombout_waterbiotoop_max, beekrombout_landbiotoop_max)
 final_opp <- terra::cover(beekrombout_waterbiotoop_opp, beekrombout_landbiotoop_opp)
 
-# Als hoofd-clusterkaart gebruiken we de waterloop-netwerken
-cl_max <- cl_waterbiotoop_max
+# 2. CRUCIALE FIX: Master-clusterkaart bouwen met de ECHTE unieke IDs van water én bos
+max_water_id <- if(terra::hasValues(cl_id_max)) as.numeric(terra::global(cl_id_max, "max", na.rm=TRUE)[[1]]) else 0
+if(is.na(max_water_id) || max_water_id == 0) max_water_id <- 1000
+
+# Verschuif de echte bos-cluster-ID's zodat ze nooit overlappen met de waterlopen
+cl_bos_correct_ids <- bos_cluster_max + (max_water_id + 500)
+
+# Combineer ze tot één master-auditkaart, strikt gelimiteerd tot de goedgekeurde zones
+cl_max <- terra::cover(
+  terra::mask(cl_id_max, beekrombout_waterbiotoop_max),
+  terra::mask(cl_bos_correct_ids, beekrombout_landbiotoop_max)
+)
 
 # Hulpraster aanmaken voor de 'Binnen TV' check (1 binnen grens, NA buiten grens)
 binnen_masker <- terra::mask(terra::ifel(!is.na(template_TV), 1, 1), area_shape_proj)
 
-# --- Bestaande setup voor waarnemingen ---
+# --- Setup voor waarnemingen (Blijft ongewijzigd) ---
 opp_bron <- final_opp
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Beekrombout_dummy.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Beekrombout.csv")
 
 if (file.exists(waarnemingen_path)) {
   waarnemingen_raw <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)
@@ -550,7 +541,7 @@ verspreiding_raster <- terra::rast(template_TV, vals = NA)
 verspreiding_netwerk_count <- 0
 
 # ==============================================================================
-# 2. STATISTIEK BEREKENINGEN
+# 3. STATISTIEK BEREKENINGEN (Nu op de gecombineerde cl_max)
 # ==============================================================================
 if (terra::hasValues(cl_max) && terra::global(cl_max, "notNA")$notNA > 0) {
   stats_max_raw <- terra::freq(cl_max)
@@ -563,6 +554,7 @@ if (terra::hasValues(cl_max) && terra::global(cl_max, "notNA")$notNA > 0) {
   colnames(zonal_zone) <- c("ID", "In_TV")
   ids_binnen <- zonal_zone$ID[!is.na(zonal_zone$In_TV) & zonal_zone$In_TV > 0]
   
+  # Filter op basis van de LARCH-oppervlaktedrempel uit je excel
   ids_werkelijk_totaal <- stats_act_raw$ID[stats_act_raw$Werk_ha >= oppervlakte_ha]
   
   if(has_observations && nrow(df_points_sf) > 0) {
@@ -641,129 +633,117 @@ tabel_totaal %>%
 
 # Interactieve kaart
 ```{r Interactieve kaart}
-if (has_observations && nrow(df_points_sf) > 0) {
-  waarneming_smear_web <- st_transform(waarneming_smear_sf, 4326)
-  points_web           <- st_transform(df_points_sf, 4326)
-} else {
-  waarneming_smear_web <- st_sf(st_sfc(crs = 4326))
-  points_web           <- st_sf(st_sfc(crs = 4326))
-}
+# ==============================================================================
+# HERSCHREVEN STAP: INTERACTIEVE KAART (MET DYNAMISCHE POPUPS PER CLUSTER)
+# ==============================================================================
+message("-> Interactieve kaart opbouwen met gedetailleerde cluster-popups...")
 
+# --- 1. STATISTIEKEN PER UNIEK CLUSTER VERZAMELEN ---
 if (terra::hasValues(cl_max) && terra::global(cl_max, "notNA")$notNA > 0) {
   
-  # Bepaal per cluster-ID welke ecologische functie het vervult
-  # RE-MAPPING: Gebruik de nieuwe beekrombout-specifieke lagen!
-  mode_vpt <- terra::zonal(beekrombout_waterbiotoop_max, cl_max, fun = "max", na.rm = TRUE)
-  mode_foe <- terra::zonal(beekrombout_landbiotoop_max, cl_max, fun = "max", na.rm = TRUE)
-  colnames(mode_vpt) <- c("ID", "Is_Vpt")
-  colnames(mode_foe) <- c("ID", "Is_Foe")
-
-  cluster_info <- data.frame(
-      ID = stats_max_raw$value, 
-      Pot_ha = stats_max_raw$count * 0.01 
-    ) %>%
-    left_join(stats_act_raw, by = "ID") %>%
-    left_join(zonal_zone, by = "ID") %>% 
-    left_join(mode_vpt, by = "ID") %>%
-    left_join(mode_foe, by = "ID") %>%
+  # Bereken Maximale Potentie per ID (pixels * 0.01 ha)
+  stats_pot_id <- terra::freq(cl_max)
+  stats_pot_id$Pot_ha <- round(stats_pot_id$count * 0.01, 2)
+  stats_pot_id <- stats_pot_id[, c("value", "Pot_ha")]
+  colnames(stats_pot_id)[1] <- "ID"
+  
+  # Bereken Werkelijke Oppervlakte per ID (som van fracties * 0.01 ha)
+  stats_werk_id <- terra::zonal(final_opp, cl_max, fun = "sum", na.rm = TRUE)
+  colnames(stats_werk_id) <- c("ID", "Werk_ha")
+  stats_werk_id$Werk_ha <- round(stats_werk_id$Werk_ha * 0.01, 2)
+  
+  # Voeg de statistieken samen in een handige dataframe
+  df_cluster_stats <- merge(stats_pot_id, stats_werk_id, by = "ID", all = TRUE)
+  
+  # --- 2. POLYGONEN MAKEN OP BASIS VAN DE GECOMBINEERDE CLUSTERKAART ---
+  # Door cl_max te polygoniseren, behouden we de exacte grenzen én de unieke ID's!
+  poly_finaal <- terra::as.polygons(cl_max, aggregate = TRUE) %>% 
+    terra::disagg() %>% 
+    sf::st_as_sf()
+  
+  colnames(poly_finaal)[1] <- "ID"
+  
+  # --- 3. INFORMATIE EN POPUPS KOPPELEN ---
+  smear_web <- if(has_observations && nrow(df_points_sf) > 0) sf::st_transform(waarneming_smear_sf, 4326) else sf::st_sf(sf::st_sfc(crs = 4326))
+  max_water_id_check <- if(exists("max_water_id")) max_water_id else 1000
+  
+  poly_finaal <- poly_finaal %>% 
+    left_join(df_cluster_stats, by = "ID") %>% 
+    sf::st_transform(4326) %>% 
     mutate(
-      Is_Vpt = coalesce(Is_Vpt, 0),
-      Is_Foe = coalesce(Is_Foe, 0),
-      # Bepaal het functionele type van het cluster
-      Functie = case_when(
-        Is_Vpt == 1 & Is_Foe == 1 ~ "Gecombineerd (Vpt + Foe)",
-        Is_Vpt == 1 & Is_Foe == 0 ~ "Zuiver Voortplantingsgebied",
-        Is_Vpt == 0 & Is_Foe == 1 ~ "Zuiver Foerageergebied",
-        TRUE ~ "Overig Habitat"
-      ),
-      Zone = ifelse(!is.na(In_TV) & In_TV > 0, "Binnen TV", "Buiten TV (Buffer)"),
-      ARPL = ID %in% ids_actueel_relevant,
-      Status_Type = ifelse(ID %in% ids_werkelijk_totaal, "Werkelijk Habitat", "Potentieel (Niet Werkelijk)"),
+      # Omdat bos-ID's zijn verhoogd, kunnen we hieruit herleiden wat water of bos is
+      Is_Water = ID <= max_water_id_check,
+      Label = ifelse(Is_Water, "Voortplantingsbiotoop (Waterloop)", "Kern-landbiotoop (Bos)"),
+      Weergave_ID = ifelse(Is_Water, ID, ID - (max_water_id_check + 500)), # Toon het originele, 'schone' ID
+      
+      ARPL_Status = if(nrow(smear_web) > 0) sf::st_intersects(geometry, smear_web, sparse = FALSE)[,1] else FALSE,
+      
       Popup = paste0(
-        "<div style='font-family: Arial; min-width: 180px;'>",
-        "<strong>Cluster ID:</strong> ", ID, "<br>",
-        "<strong>Zone:</strong> ", Zone, "<br><hr>",
-        "<strong>Ecologische Functie:</strong> <span style='color:#2c3e50; font-weight:bold;'>", Functie, "</span><br>",
-        "<strong>Status:</strong> ", Status_Type, "<br>",
+        "<div style='font-family: Arial; min-width: 200px;'>",
+        "<strong>Type habitat:</strong> ", Label, "<br>",
+        "<strong>Cluster ID:</strong> #", Weergave_ID, "<br><hr>",
+        "<strong>Max. Potentieel:</strong> ", Pot_ha, " ha<br>",
+        "<strong>Werkelijk Habitat:</strong> ", Werk_ha, " ha<br><hr>",
         "<strong>Actueel Relevant (ARPL):</strong> ", 
-        ifelse(ARPL, "<span style='color:green; font-weight:bold;'>JA</span>", 
-                     "<span style='color:red;'>NEE (Geen waarneming of onder drempel)</span>"), "<br><br>",
-        "<strong>Potentieel Oppervlak:</strong> ", round(Pot_ha, 2), " ha<br>",
-        "<strong>Werkelijk Habitat:</strong> ", round(coalesce(Werk_ha, 0), 2), " ha",
+        ifelse(ARPL_Status, "<span style='color:green; font-weight:bold;'>JA</span>", 
+                             "<span style='color:red;'>NEE</span>"), "<br>",
         "</div>"
       )
     )
-
-  cl_poly <- terra::as.polygons(cl_max, aggregate = TRUE) %>% 
-    st_as_sf() %>% 
-    st_transform(4326)
-
-  cl_poly_final <- cl_poly %>%
-    inner_join(cluster_info, by = setNames("ID", names(cl_poly)[1]))
 } else {
-  cl_poly_final <- st_sf(st_sfc(crs = 4326))
+  poly_finaal <- NULL
+  smear_web   <- sf::st_sf(sf::st_sfc(crs = 4326))
 }
 
-# RE-MAPPING: Genereer de status-pixelkaart op basis van het gefuseerde werkelijke leefgebied
-r_status <- terra::ifel(!is.na(final_opp) & final_opp > 0, 3, 1) # Simpel pallet (3 = werkelijk, 1 = template)
-r_web_status         <- terra::project(r_status, "EPSG:4326", method = "near")
-grens_web            <- st_transform(st_as_sf(area_shape_proj), 4326)
-bbox                 <- st_bbox(grens_web)
+# --- 4. PIXELKAART EN WAARNEMINGEN ---
+r_status_clean <- terra::ifel(!is.na(final_opp) & final_opp > 0, 3, 1)
+r_web_status   <- terra::project(r_status_clean, "EPSG:4326", method = "near")
+points_web     <- if(has_observations && nrow(df_points_sf) > 0) sf::st_transform(df_points_sf, 4326) else sf::st_sf(sf::st_sfc(crs = 4326))
 
-# Nieuw kleurenpalet gebaseerd op de ecologische functie
-pal_functie <- colorFactor(
-  palette = c("#9b59b6", "#e67e22", "#3498db", "#7f8c8d"), 
-  levels = c("Gecombineerd (Vpt + Foe)", "Zuiver Foerageergebied", "Zuiver Voortplantingsgebied", "Overig Habitat")
-)
-pal_4 <- colorFactor(palette = c("#FF00FF", "#FF8C00", "#4daf4a", "#377eb8"), levels = 1:4, na.color = "transparent")
+# Kleuren
+pal_biotoop <- colorFactor(palette = c("#2980b9", "#27ae60"), domain = c("Voortplantingsbiotoop (Waterloop)", "Kern-landbiotoop (Bos)"))
+pal_pixels  <- colorFactor(palette = c("#A9CCE3", "#FAD7A0", "#2E86C1", "#D35400"), levels = 1:4, na.color = "transparent")
 
+# --- 5. LEAFLET KAART BOUWEN ---
 map <- leaflet() %>%
   addTiles(group = "OSM (Kaart)") %>%
-  addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet") %>%
-  fitBounds(bbox[['xmin']], bbox[['ymin']], bbox[['xmax']], bbox[['ymax']])
+  addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet")
 
 if(!all(is.na(terra::values(r_web_status, mat=FALSE)))) {
-  map <- map %>% addRasterImage(terra::as.int(r_web_status), colors = pal_4, opacity = 0.4, group = "Habitat Status (Pixels)")
+  map <- map %>% addRasterImage(terra::as.int(r_web_status), colors = pal_pixels, opacity = 0.3, group = "Kwaliteit (Pixels)")
 }
 
-if(nrow(cl_poly_final) > 0) {
+if(!is.null(poly_finaal) && nrow(poly_finaal) > 0) {
   map <- map %>% addPolygons(
-    data = cl_poly_final,
-    fillColor = ~pal_functie(Functie),
-    fillOpacity = ~ifelse(ARPL, 0.65, 0.15), 
-    color = ~pal_functie(Functie), 
-    weight = ~ifelse(ARPL, 3, 0.5), 
-    opacity = 1,
+    data = poly_finaal, 
+    fillColor = ~pal_biotoop(Label), 
+    fillOpacity = 0.6, 
+    color = ~ifelse(ARPL_Status, "#DFFF00", "white"), 
+    weight = ~ifelse(ARPL_Status, 2, 0.5),                      
     popup = ~Popup,
-    group = "Leefgebieden (Gekleurd per Functie)"
+    label = ~paste0(Label, " (#", Weergave_ID, ")"),
+    group = "Gefilterd Leefgebied"
   )
 }
 
-if(has_observations && nrow(df_points_sf) > 0) {
-  map <- map %>%
-    addPolygons(
-      data = waarneming_smear_web,  
-      color = "#377eb8", 
-      weight = 2, 
-      fill = FALSE,       
-      dashArray = "10, 5", 
-      group = "Dispersiebereik (Smear)"
-    ) %>%
-    addCircles(
-      data = points_web,  
-      color = "black", weight = 1, fillColor = "yellow", fillOpacity = 1,
-      radius = 15, group = "Waarnemingen"
-    )
+if (nrow(smear_web) > 0) {
+  map <- map %>% addPolygons(data = smear_web, color = "#3498DB", weight = 2, fill = FALSE, dashArray = "10, 5", group = "Dispersiebereik (Smear)")
 }
-
-map %>%
+if (nrow(points_web) > 0) {
+  map <- map %>% addCircles(data = points_web, color = "black", weight = 1, fillColor = "yellow", fillOpacity = 1, radius = 25, group = "Waarnemingen")
+}
+  
+map <- map %>%
   addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens Studiegebied") %>%
+  addLegend(pal = pal_biotoop, values = c("Voortplantingsbiotoop (Waterloop)", "Kern-landbiotoop (Bos)"), title = "Legenda", position = "bottomright", group = "Gefilterd Leefgebied") %>%
   addLayersControl(
     baseGroups = c("OSM (Kaart)", "Satelliet"),
-    overlayGroups = c("Leefgebieden (Gekleurd per Functie)", "Habitat Status (Pixels)", 
-                      "Dispersiebereik (Smear)", "Waarnemingen", "Grens Studiegebied"),
+    overlayGroups = c("Gefilterd Leefgebied", "Dispersiebereik (Smear)", "Waarnemingen", "Kwaliteit (Pixels)", "Grens Studiegebied"),
     options = layersControlOptions(collapsed = FALSE)
-  )
+  ) %>%
+  hideGroup(c("Kwaliteit (Pixels)"))
+
+map
 ```
 
 ```{r export}

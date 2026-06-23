@@ -291,7 +291,7 @@ levels(r_status) <- status_labels
 
 # Resultaten en Statistiek
 ```{r Resultaten en statistiek}
-twaarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Blauwborst.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Blauwborst.csv")
 
 if (file.exists(waarnemingen_path)) {
   waarnemingen_raw <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)
