@@ -379,122 +379,120 @@ beschutting_clusters_opp <- cluster_filter_compleet(
 )
 ```
 
-```{r beschutting binnen het gebied}
+```{r leefgebied + zand + bosrand gecorrigeerd}
 # ==============================================================================
-# 1. WELKE BESCHUTTING LIGT BINNEN 500M VAN OPEN GEBIED?
+# 1. BASISHABITAT OPBOUWEN (HEIDE + CORRESPONDERENDE 50M BOSRAND)
 # ==============================================================================
-message("-> Stap 1: Beschutting filteren op max 500m dispersie...")
+message("-> Stap 1: Basis open biotoop en aangrenzende 50m bosranden combineren...")
 
-open_biotoop_max <- heivlinder_clusters_max$raster
+biotoop_max <- heivlinder_clusters_max$raster
+biotoop_opp <- heivlinder_clusters_opp$raster
+beschutting_ruw_max <- terra::ifel(beschutting_clusters_max$raster == 1, 1, NA)
+beschutting_ruw_opp <- beschutting_clusters_opp$raster
 
-# Maak de 500m dispersiebuffer rond het open gebied
-buffer_dispersie_500m <- terra::buffer(open_biotoop_max, width = 500)
+# Bereken de afstand tot de heideclusters om de directe bosrand te bepalen
+dist_tot_biotoop <- terra::distance(biotoop_max)
+bosrand_masker   <- terra::ifel(beschutting_ruw_max == 1 & dist_tot_biotoop > 0 & dist_tot_biotoop <= 50, 1, NA)
 
-# Filter alle beschikbare beschutting: alleen wat binnen 500m ligt telt mee
-beschutting_bereikbaar_max <- terra::mask(heivlinder_beschutting_max, buffer_dispersie_500m)
-beschutting_bereikbaar_opp <- terra::mask(heivlinder_beschutting_opp, buffer_dispersie_500m)
+bosrand_direct_max <- bosrand_masker
+bosrand_direct_opp <- terra::mask(beschutting_ruw_opp, bosrand_masker)
 
-
-# ==============================================================================
-# 2. VAN DIE BESCHUTTING ENKEL DE RAND (MAX 50M DIEP) GENEREREN
-# ==============================================================================
-message("-> Stap 2: Enkel de 50m diepe bosranden afsnijden...")
-
-# Om de rand van het bos te bepalen, kijken we naar de 'niet-beschutte' cellen (de open ruimte rond het bos).
-# We berekenen de afstand vanaf de rand van het bos naar binnen toe.
-# Een snelle en zuivere manier in terra is de afstand berekenen tot de NIET-beschutte cellen:
-open_ruimte_om_bos <- terra::ifel(is.na(beschutting_bereikbaar_max), 1, NA)
-afstand_tot_bosrand <- terra::distance(open_ruimte_om_bos)
-
-# Selecteer alleen de cellen in het bos die maximaal 50 meter van de buitenwereld liggen
-bosrand_masker <- terra::ifel(afstand_tot_bosrand <= 50 & !is.na(beschutting_bereikbaar_max), 1, NA)
-
-# Pas dit rand-masker toe op onze sporen
-heivlinder_leefgebied_beschutting_max <- terra::mask(beschutting_bereikbaar_max, bosrand_masker)
-heivlinder_leefgebied_beschutting_opp <- terra::mask(beschutting_bereikbaar_opp, bosrand_masker)
-
-
-# ==============================================================================
-# 3. COMBINEER TOT HET FINALE LEEFGEBIED (OPEN + 50M BOSRAND BINNEN 500M)
-# ==============================================================================
-message("-> Stap 3: Open gebieden en de afgesneden bosranden combineren...")
-
-# MAX-spoor: Logische OF
-heivlinder_leefgebied_max <- terra::ifel(!is.na(open_biotoop_max) | !is.na(heivlinder_leefgebied_beschutting_max), 1, NA)
-
-# OPP-spoor: Tel de fracties bij elkaar op (tot max 100% / 1 per cel)
-heivlinder_leefgebied_opp <- terra::app(
+# Combineer Heide + Bosrand tot één 'Foerageer/Rust-basis' (Basishabitat)
+foerageer_base_max <- terra::ifel(!is.na(biotoop_max) | !is.na(bosrand_direct_max), 1, NA)
+foerageer_base_opp <- terra::app(
   terra::sds(
-    terra::ifel(is.na(heivlinder_clusters_opp$raster), 0, heivlinder_clusters_opp$raster),
-    terra::ifel(is.na(heivlinder_leefgebied_beschutting_opp), 0, heivlinder_leefgebied_beschutting_opp)
+    terra::ifel(is.na(biotoop_opp), 0, biotoop_opp),
+    terra::ifel(is.na(bosrand_direct_opp), 0, bosrand_direct_opp)
   ),
   fun = function(x) pmin(sum(x, na.rm = TRUE), 1)
 )
+foerageer_base_opp <- terra::ifel(foerageer_base_opp == 0, NA, foerageer_base_opp)
 
-heivlinder_leefgebied_opp <- terra::ifel(heivlinder_leefgebied_opp == 0, NA, heivlinder_leefgebied_opp)
+# Open zand is het voortplantingsbiotoop
+voortplanting_base_max <- zand_clusters_max$raster
+voortplanting_base_opp <- zand_clusters_opp$raster
 
-# Opschonen van zware afstandskaarten en buffers
-rm(buffer_dispersie_500m, beschutting_bereikbaar_max, beschutting_bereikbaar_opp, open_ruimte_om_bos, afstand_tot_bosrand, bosrand_masker)
-gc()
-```
-
-```{r leefgebied + zand gecorrigeerd}
-# ==============================================================================
-# FINALE STAP: VOLLEDIGE CLUSTERS SELECTEREN DIE BINNEN 500M VAN ZAND LIGGEN
-# ==============================================================================
-message("-> Gecorrigeerde finale stap: Volledige biotoop-clusters filteren op basis van zand nabijheid...")
-
-# 1. Haal de originele biotoop-clusters op (dit bevat de unieke ID's per cluster)
-biotoop_clusters <- heivlinder_clusters_max$clusters
-
-# 2. Maak de buffer van 500 meter rondom het open zand
-zand_max <- zand_clusters_max$raster
-zand_buffer_500m <- terra::buffer(zand_max, width = 500)
-
-# 3. Ontdek welke Cluster-ID's (van de open biotoop) binnen de zandbuffer vallen.
-# terra::zonal of terra::extract met een mask is hier erg snel voor.
-biotoop_gebufferd_door_zand <- terra::mask(biotoop_clusters, zand_buffer_500m)
-geldige_cluster_ids <- unique(terra::values(biotoop_gebufferd_door_zand, mat = FALSE))
-geldige_cluster_ids <- geldige_cluster_ids[!is.na(geldige_cluster_ids)]
-
-# 4. Filter het OPEN biotoopraster: behoud enkel de clusters die aan de voorwaarde voldoen
-open_leefgebied_gefilterd_max <- terra::ifel(biotoop_clusters %in% geldige_cluster_ids, 1, NA)
-open_leefgebied_gefilterd_opp <- terra::mask(heivlinder_clusters_opp$raster, open_leefgebied_gefilterd_max)
 
 # ==============================================================================
-# DE BOSRAND-OPLOSSING:
-# Enkel bosranden behouden die grenzen aan een GOEDGEKEURD open biotoopcluster.
-# Omdat de bosranden maximaal 50m diep zijn, filteren we ze door te kijken of ze 
-# binnen een straal van 50m liggen van het zojuist GEFILTERDE open leefgebied.
+# 2. JOUW AFSTANDSFILTER VARIANT (BRUTO / _max)
 # ==============================================================================
-message("-> Bosranden filteren: Alleen bosranden behouden van goedgekeurde clusters...")
+message("-> Stap 2: Wederzijdse afstandsfilters berekenen voor Maximaal Potentie (max 500m)...")
 
-buffer_open_gefilterd_50m <- terra::buffer(open_leefgebied_gefilterd_max, width = 50)
+if (!all(is.na(terra::values(voortplanting_base_max, mat=FALSE))) && 
+    !all(is.na(terra::values(foerageer_base_max, mat=FALSE)))) {
+  
+  # Afstand tot voortplanting (zand)
+  dist_naar_voortplanting_max <- terra::distance(voortplanting_base_max)
+  zone_voortplanting_500m_max <- terra::ifel(dist_naar_voortplanting_max <= 500, 1, NA)
+  
+  # Afstand tot foerageergebied (heide + bosrand)
+  dist_naar_foerageer_max <- terra::distance(foerageer_base_max)
+  zone_foerageer_500m_max <- terra::ifel(dist_naar_foerageer_max <= 500, 1, NA)
+  
+  # Wederzijds maskeren
+  foerageer_finaal_max      <- terra::mask(foerageer_base_max, zone_voortplanting_500m_max)
+  voortplanting_finaal_max  <- terra::mask(voortplanting_base_max, zone_foerageer_500m_max)
+  
+  rm(dist_naar_voortplanting_max, zone_voortplanting_500m_max, dist_naar_foerageer_max, zone_foerageer_500m_max)
+} else {
+  foerageer_finaal_max     <- id_raster_TV * NA
+  voortplanting_finaal_max <- id_raster_TV * NA
+}
 
-bosrand_gefilterd_max <- terra::mask(heivlinder_leefgebied_beschutting_max, buffer_open_gefilterd_50m)
-bosrand_gefilterd_opp <- terra::mask(heivlinder_leefgebied_beschutting_opp, buffer_open_gefilterd_50m)
 
 # ==============================================================================
-# FINALE COMBINATIE (Gefilterd Open Gebied + Meeliftende Bosranden)
+# 3. JOUW AFSTANDSFILTER VARIANT (NETTO / _opp)
 # ==============================================================================
-message("-> Eindresultaat samenstellen...")
+message("-> Stap 3: Wederzijdse afstandsfilters berekenen voor Werkelijke Oppervlakte (max 500m)...")
 
-# MAX-spoor
-heivlinder_leefgebied_metzand_max <- terra::ifel(!is.na(open_leefgebied_gefilterd_max) | !is.na(bosrand_gefilterd_max), 1, NA)
+if (!all(is.na(terra::values(voortplanting_base_opp, mat=FALSE))) && 
+    !all(is.na(terra::values(foerageer_base_opp, mat=FALSE)))) {
+  
+  # Afstand op basis van werkelijke fracties
+  dist_naar_voortplanting_opp <- terra::distance(voortplanting_base_opp)
+  zone_voortplanting_500m_opp <- terra::ifel(dist_naar_voortplanting_opp <= 500, 1, NA)
+  
+  dist_naar_foerageer_opp <- terra::distance(foerageer_base_opp)
+  zone_foerageer_500m_opp <- terra::ifel(dist_naar_foerageer_opp <= 500, 1, NA)
+  
+  # Wederzijds maskeren
+  foerageer_finaal_opp      <- terra::mask(foerageer_base_opp, zone_voortplanting_500m_opp)
+  voortplanting_finaal_opp  <- terra::mask(voortplanting_base_opp, zone_foerageer_500m_opp)
+  
+  rm(dist_naar_voortplanting_opp, zone_voortplanting_500m_opp, dist_naar_foerageer_opp, zone_foerageer_500m_opp)
+} else {
+  foerageer_finaal_opp     <- id_raster_TV * NA
+  voortplanting_finaal_opp <- id_raster_TV * NA
+}
 
-# OPP-spoor
+
+# ==============================================================================
+# 4. FINALE COMBINATIE & SYNCHRONISATIE DEELLAGEN
+# ==============================================================================
+message("-> Stap 4: Eindresultaat samenstellen...")
+
+# Totale leefgebied kaarten bouwen
+heivlinder_leefgebied_metzand_max <- terra::ifel(!is.na(foerageer_finaal_max) | !is.na(voortplanting_finaal_max), 1, NA)
+
 heivlinder_leefgebied_metzand_opp <- terra::app(
   terra::sds(
-    terra::ifel(is.na(open_leefgebied_gefilterd_opp), 0, open_leefgebied_gefilterd_opp),
-    terra::ifel(is.na(bosrand_gefilterd_opp), 0, bosrand_gefilterd_opp)
+    terra::ifel(is.na(foerageer_finaal_opp), 0, foerageer_finaal_opp),
+    terra::ifel(is.na(voortplanting_finaal_opp), 0, voortplanting_finaal_opp)
   ),
   fun = function(x) pmin(sum(x, na.rm = TRUE), 1)
 )
 heivlinder_leefgebied_metzand_opp <- terra::ifel(heivlinder_leefgebied_metzand_opp == 0, NA, heivlinder_leefgebied_metzand_opp)
 
-# Opschonen van tijdelijke buffers
-rm(zand_buffer_500m, biotoop_gebufferd_door_zand, buffer_open_gefilterd_50m, 
-   open_leefgebied_gefilterd_max, open_leefgebied_gefilterd_opp, bosrand_gefilterd_max, bosrand_gefilterd_opp)
+# Update de deellagen voor de Leaflet-kaarten (zodat alles klopt in de debug modus)
+deellaag_heide_opp        <- terra::mask(biotoop_opp, foerageer_finaal_opp)
+deellaag_bosrand_opp      <- terra::mask(bosrand_direct_opp, foerageer_finaal_opp)
+deellaag_zand_opp         <- voortplanting_finaal_opp
+deellaag_beschutting_500m <- bosrand_direct_opp
+
+# Grote schoonmaak
+rm(dist_tot_biotoop, bosrand_masker, bosrand_direct_max, bosrand_direct_opp, 
+   foerageer_base_max, foerageer_base_opp, voortplanting_base_max, voortplanting_base_opp,
+   foerageer_finaal_max, voortplanting_finaal_max, foerageer_finaal_opp, voortplanting_finaal_opp)
 gc()
 ```
 
@@ -673,7 +671,7 @@ tabel_totaal %>%
 
 ```{r interactieve kaart heivlinder}
 # ==============================================================================
-# STAP 14: INTERACTIEVE KAART (LEAFLET - INCLUSIEF OPEN ZAND LAAG HEIVLINDER)
+# STAP 14: INTERACTIEVE KAART (LEAFLET - INCLUSIEF GEFILTERD OPEN ZAND)
 # ==============================================================================
 if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE)))) {
   
@@ -728,9 +726,9 @@ if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE))
 }
 
 r_web_status <- terra::project(r_status, "EPSG:4326", method = "near")
-bbox         <- st_bbox(grens_web)
+bbox          <- st_bbox(grens_web)
 
-# Projecteer het open zand (cruciaal voor voortplanting heivlinder)
+# CRUCIALE FIX: Projecteer specifiek de GOEDGEKEURDE zandclusters (>5000m2)
 if(exists("zand_clusters_max") && !is.null(zand_clusters_max$raster) &&
    !all(is.na(terra::values(zand_clusters_max$raster, mat=FALSE)))) {
   r_web_vpt <- terra::project(zand_clusters_max$raster, "EPSG:4326", method = "near")
@@ -749,6 +747,9 @@ if(has_observations && nrow(df_points_sf) > 0) {
 pal_status <- colorFactor(palette = c("#4daf4a", "#e41a1c"), levels = c("Werkelijk Habitat", "Potentieel (Niet Werkelijk)"))
 pal_4      <- colorFactor(palette = c("#FF00FF", "#FF8C00", "#4daf4a", "#377eb8"), levels = 1:4, na.color = "transparent")
 
+# Maak een specifieke kleurpalet aan voor het zand (Geel/Goudkleurig)
+pal_zand   <- colorFactor(palette = "#FFD700", levels = 1, na.color = "transparent")
+
 map <- leaflet() %>%
   addTiles(group = "OSM (Kaart)") %>%
   addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet") %>%
@@ -758,8 +759,9 @@ if(!all(is.na(terra::values(r_web_status, mat=FALSE)))) {
   map <- map %>% addRasterImage(terra::as.int(r_web_status), colors = pal_4, opacity = 0.4, group = "Habitat Status (Pixels)")
 }
 
+# Voeg de goedgekeurde zandlaag toe met de nieuwe gele kleurpalet en een stevige opacity
 if(!is.null(r_web_vpt)) {
-  map <- map %>% addRasterImage(terra::as.int(r_web_vpt), colors = "#e5c494", opacity = 0.8, group = "Voortplantingsbiotoop (Open Zand)")
+  map <- map %>% addRasterImage(terra::as.int(r_web_vpt), colors = pal_zand, opacity = 0.9, group = "Voortplantingsbiotoop (Goedgekeurd Zand)")
 }
 
 map <- map %>%
@@ -793,7 +795,7 @@ map %>%
   addLayersControl(
     baseGroups = c("OSM (Kaart)", "Satelliet"),
     overlayGroups = c("Leefgebieden (Clusters)", "Habitat Status (Pixels)", 
-                      "Voortplantingsbiotoop (Open Zand)", "Dispersiebereik (Smear)", 
+                      "Voortplantingsbiotoop (Goedgekeurd Zand)", "Dispersiebereik (Smear)", 
                       "Waarnemingen", "Grens Studiegebied"),
     options = layersControlOptions(collapsed = FALSE)
   )
