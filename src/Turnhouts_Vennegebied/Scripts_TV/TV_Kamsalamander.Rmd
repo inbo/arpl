@@ -111,15 +111,13 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
 # Soort informatie ophalen
 ```{r Soort informatie}
 df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
-soort <- "heikikker"
+soort <- "kamsalamander"
 
 resultaat <- df %>%
 filter(Soort == soort) %>%
 select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
 
 # Variabelen definiëren
-oppervlakte_ha <- resultaat$MinOpp_ha
-afstand_m <- resultaat$AfstandBiotopen_m
 buffer_m <- 1000 #resultaat$Dispersiecap_m
 
 print(resultaat)
@@ -250,10 +248,10 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
 }
 
 # Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
-waterbiotoop0_max <- lijst_matches[["waterbiotoop0"]]
-waterbiotoop0_opp <- lijst_oppervlaktes[["waterbiotoop0"]]
-landbiotoop1_max <- lijst_matches[["landbiotoop1"]]
-landbiotoop1_opp <- lijst_oppervlaktes[["landbiotoop1"]]
+waterbiotoop_bwk_max <- lijst_matches[["waterbiotoop_bwk"]]
+waterbiotoop_bwk_opp <- lijst_oppervlaktes[["waterbiotoop_bwk"]]
+landbiotoop_bwk_max <- lijst_matches[["landbiotoop_bwk"]]
+landbiotoop_bwk_opp <- lijst_oppervlaktes[["landbiotoop_bwk"]]
 
 # Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
 rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
@@ -278,61 +276,65 @@ area_buffer_clean <- aggregate(area_buffer_clean)
 message("-> Topologische fouten in de watervlakken herstellen...")
 watervlakken_clean <- makeValid(watervlakken_proj)
 
-# 3. GEOGRAFISCHE CROP: Nu met twee gegarandeerd schone vectorlagen!
+# 3. GEOGRAFISCHE CROP
 message("-> Watervlakken uitsnijden op studiegebied...")
 watervlakken_TV <- crop(watervlakken_clean, area_buffer_clean)
 
 # ==============================================================================
-# FUZZY CLUSTERING (10m zoekstraal) IN VECTOR-OMGEVING
+# SPOOR 1 & 2: RECHTSTREEKSE VRASTERISATIE & COMBINATIE (LOGICA HERSTELD)
 # ==============================================================================
-message("-> Fuzzy clustering uitvoeren via 10m vector-aggregatie...")
+message("-> Open water verrasteren en direct combineren met BWK-water...")
 
-# Geef elke polygoon een tijdelijke buffer van 5 meter
-watervlakken_buffered <- buffer(watervlakken_TV, width = 5)
+# We verrasteren de volledige, ongefilterde watervlakken-laag. 
+# Open water telt als fractie 1.0 (100% pixelbedekking)
+r_open_water <- terra::rasterize(watervlakken_TV, template_TV, field = 1, background = NA)
 
-# Voeg overlappende buffers samen
-watervlakken_fuzzy_clusters <- aggregate(watervlakken_buffered, by = NULL)
+# COMBINEREN VÓÓR HET FILTEREN (Jouw nieuwe logica):
+# Spoor 1: Maximale binaire potentie samenvoegen
+kamsalamander_water_gecombineerd_max <- terra::cover(waterbiotoop_bwk_max, r_open_water)
 
-# Bereken de exacte oppervlakte in m² van de clusters
-watervlakken_fuzzy_clusters$fuzzy_area_m2 <- terra::expanse(watervlakken_fuzzy_clusters)
+# Spoor 2: Werkelijke oppervlakte-fractie samenvoegen
+kamsalamander_water_gecombineerd_opp <- terra::cover(waterbiotoop_bwk_opp, r_open_water)
 
-# Filter de clusters die in totaal kleiner of gelijk zijn aan 0.4 ha (4000 m²)
-kleine_clusters_v <- watervlakken_fuzzy_clusters[watervlakken_fuzzy_clusters$fuzzy_area_m2 <= 4000, ]
 
 # ==============================================================================
-# RASTERISATIE & COMBINATIE (Aangepast voor heikikker)
+# CLUSTEREN EN OPPERVLAKTE-FILTERING OP HET TOTAALPLAATJE
 # ==============================================================================
-message("-> Filterresultaat verrasteren en combineren met BWK voor heikikker...")
+message("-> Gecombineerd water clusteren en filteren op totale oppervlakte (< 0.4 ha)...")
 
-if (nrow(kleine_clusters_v) > 0) {
-  
-  # Snijd de oorspronkelijke, scherpe watervlakken uit op basis van deze clusters
-  kleine_watervlakken_finaal <- crop(watervlakken_TV, kleine_clusters_v)
-  
-  if (nrow(kleine_watervlakken_finaal) > 0) {
-    # Verraster de shapefile: open water telt als 1 (volledige fractie / 100% potentie)
-    r_heikikker_kleinwater <- terra::rasterize(kleine_watervlakken_finaal, template_TV, field = 1, background = NA)
-    
-    # 1. Combineren met de Maximale Potentie (binaire cover)
-    r_heikikker_waterbiotoop1 <- terra::cover(waterbiotoop0_max, r_heikikker_kleinwater)
-    
-    # 2. Combineren met de Werkelijke Oppervlakte (fractie cover)
-    r_heikikker_waterbiotoop1_opp <- terra::cover(waterbiotoop0_opp, r_heikikker_kleinwater)
-  } else {
-    message("⚠️ Waarschuwing: Crop van kleine waters leverde 0 rijen op.")
-    r_heikikker_waterbiotoop1     <- waterbiotoop0_max
-    r_heikikker_waterbiotoop1_opp <- waterbiotoop0_opp
-  }
-} else {
-  message("⚠️ Waarschuwing: Geen kleine waters gevonden in deze zone.")
-  r_heikikker_waterbiotoop1     <- waterbiotoop0_max
-  r_heikikker_waterbiotoop1_opp <- waterbiotoop0_opp
-}
+# Drempels definiëren (0.4 hectare = 4000 m²; Zoekafstand = 10m)
+drempel_m2 <- 4000
+zoekafstand_m <- 10
 
-# Netjes opruimen van het geheugen (veilig door suppressWarnings)
-suppressWarnings(
+# We voeren de filtering uit op de gecombineerde laag.
+# We voeden 'kamsalamander_water_gecombineerd_opp' als opp_laag zodat de werkelijke 
+# fracties (m2) worden opgeteld binnen een cluster.
+water_gefilterd_lijst <- cluster_filter_compleet(
+  masker = kamsalamander_water_gecombineerd_max,
+  opp_laag = kamsalamander_water_gecombineerd_opp,
+  drempel_m2 = drempel_m2,
+  dist_m = zoekafstand_m,
+  werkelijk = TRUE
+)
+
+# De uiteindelijke, biologisch correct gefilterde waterlagen voor de kamsalamander:
+# Spoor 1: Binaire eindlaag
+kamsalamander_waterbiotoop1 <- water_gefilterd_lijst$raster
+
+# Spoor 2: Fractie/oppervlakte eindlaag (als masker over de opp-laag leggen)
+kamsalamander_waterbiotoop1_opp <- terra::mask(kamsalamander_water_gecombineerd_opp, kamsalamander_waterbiotoop1)
+
+# Unieke cluster ID's bijhouden voor de statistieken later
+cl_id_max <- water_gefilterd_lijst$clusters
+cl_id_opp <- water_gefilterd_lijst$clusters
+
+
+# ==============================================================================
+# OPGEKUST EN KLAAR
+# ==============================================================================
+suppify <- suppressWarnings(
   rm(watervlakken_v, watervlakken_proj, area_buffer_clean, watervlakken_clean, watervlakken_TV, 
-     watervlakken_buffered, watervlakken_fuzzy_clusters, kleine_clusters_v, kleine_watervlakken_finaal, r_heikikker_kleinwater)
+     r_open_water, kamsalamander_water_gecombineerd_max, kamsalamander_water_gecombineerd_opp, water_gefilterd_lijst)
 )
 gc()
 ```
@@ -341,11 +343,11 @@ gc()
 # ==============================================================================
 # 1. CLUSTERS IDENTIFICEREN & CONNECTIVITEITSCHECK (5 buren binnen 500m)
 # ==============================================================================
-message("-> Unieke clusters identificeren voor het waterbiotoop van de heikikker...")
-r_water_clusters <- terra::patches(r_heikikker_waterbiotoop1, directions = 8, zeroAsNA = TRUE)
+message("-> Unieke clusters identificeren voor het waterbiotoop van de kamsalamander...")
+r_water_clusters <- terra::patches(kamsalamander_waterbiotoop1, directions = 8, zeroAsNA = TRUE)
 
 # Initialiseer de finale objecten als leeg (failsafe)
-heikikker_waterbiotoop1_finaal_max <- template_TV * NA
+kamsalamander_waterbiotoop1_finaal_max <- template_TV * NA
 watervlakken_poly <- NULL
 goedgekeurde_clusters_poly <- NULL
 
@@ -353,28 +355,26 @@ if (!all(is.na(terra::values(r_water_clusters, mat=FALSE)))) {
   
   message("-> Unieke naburige clusters tellen via edge-to-edge vector buffers...")
   
-  # 1. Zet het cluster-raster om naar polygonen
   # CRUCIALE FIX: dissolve = FALSE zorgt ervoor dat losse poelen 
   # aparte objecten blijven en dus correct als 'buur' geteld kunnen worden!
   watervlakken_poly <- terra::as.polygons(r_water_clusters, dissolve = FALSE)
   
-  # CRUCIALE EXTRA CHECK: Bestaan er daadwerkelijk polygonen?
   if (!is.null(watervlakken_poly) && nrow(watervlakken_poly) > 0) {
     
-    # 2. Trek een buffer van 500 meter rondom de VOLLEDIGE polygoon
+    # 2. Trek een buffer van 500 meter rondom ELKE individuele poel
     poly_buffer <- terra::buffer(watervlakken_poly, width = 500)
     
     message("-> Relaties berekenen via terra::is.related...")
-    # 3. Binaire intersectie checken (Geeft een NxN matrix terug)
+    # 3. Binaire intersectie checken (NxN matrix)
     intersect_matrix <- terra::is.related(poly_buffer, watervlakken_poly, "intersects")
     
-    # Omzetten naar een zuivere, dimensie-veilige matrix
+    # Omzetten naar een zuivere matrix
     intersect_matrix <- matrix(intersect_matrix, nrow = nrow(poly_buffer), ncol = nrow(watervlakken_poly))
     
-    # 4. Tel per rij hoeveel TRUE's er zijn (inclusief eigen cluster)
+    # 4. Tel per rij hoeveel poelen er binnen de 500m buffer liggen (inclusief zichzelf)
     cluster_counts <- rowSums(intersect_matrix)
     
-    # 5. Koppel counts terug aan de polygonen via een nieuwe kolom
+    # 5. Koppel counts terug
     watervlakken_poly$unieke_buren_count <- cluster_counts
     
     # 6. Filter: minimaal 5 andere poelen + zichzelf = 6
@@ -384,8 +384,8 @@ if (!all(is.na(terra::values(r_water_clusters, mat=FALSE)))) {
     # FINALE RASTERISATIE
     # ==============================================================================
     if (nrow(goedgekeurde_clusters_poly) > 0) {
-      message("-> Goedgekeurde heikikkerclusters terugzetten naar mastergrid...")
-      heikikker_waterbiotoop1_finaal_max <- terra::rasterize(
+      message("-> Goedgekeurde kamsalamanderclusters terugzetten naar mastergrid...")
+      kamsalamander_waterbiotoop1_finaal_max <- terra::rasterize(
         goedgekeurde_clusters_poly, 
         template_TV, 
         field = 1, 
@@ -409,19 +409,21 @@ if (!all(is.na(terra::values(r_water_clusters, mat=FALSE)))) {
 # 2. PARALLEL: WERKELIJKE OPPERVLAKTE BEREKENEN (_opp)
 # ==============================================================================
 message("-> Werkelijke oppervlakte filteren op basis van de connectiviteitscheck...")
-heikikker_waterbiotoop1_finaal_opp <- terra::mask(
-  r_heikikker_waterbiotoop1_opp, 
-  heikikker_waterbiotoop1_finaal_max
+kamsalamander_waterbiotoop1_finaal_opp <- terra::mask(
+  kamsalamander_waterbiotoop1_opp, 
+  kamsalamander_waterbiotoop1_finaal_max
 )
+
+# [Ha-berekening en printen blijft exact hetzelfde als jouw code]
 
 # ==============================================================================
 # 3. HECTAREBEREKENING & PRINTEN
 # ==============================================================================
-ha_potentie  <- calc_ha_exact(heikikker_waterbiotoop1_finaal_max)
-ha_werkelijk <- calc_ha_exact(heikikker_waterbiotoop1_finaal_opp)
+ha_potentie  <- calc_ha_exact(kamsalamander_waterbiotoop1_finaal_max)
+ha_werkelijk <- calc_ha_exact(kamsalamander_waterbiotoop1_finaal_opp)
 
 cat("\n=========================================================\n")
-cat("          RESULTATEN WATERBIOTOOP HEIKIKKER              \n")
+cat("          RESULTATEN WATERBIOTOOP kamsalamander              \n")
 cat("=========================================================\n")
 cat(paste("Geschikt gebied (Maximale Potentie):  ", round(ha_potentie, 2), "ha\n"))
 cat(paste("Geschikt gebied (Werkelijke Fractie): ", round(ha_werkelijk, 2), "ha\n"))
@@ -431,62 +433,148 @@ suppressWarnings(rm(r_water_clusters, watervlakken_poly, goedgekeurde_clusters_p
 gc()
 ```
 
+```{r visuele check water en land}
+# ==============================================================================
+# INTERACTIEVE KAART VOOR VISUELE CHECK
+# ==============================================================================
+message("-> Interactieve kaart opbouwen...")
+
+# 1. Projecteer de rasters en de grens naar de web-projectie (WGS84 / EPSG:4326)
+r_water_web <- terra::project(kamsalamander_waterbiotoop1_finaal_max, "EPSG:4326", method = "near")
+r_land_web  <- terra::project(landbiotoop_bwk_max, "EPSG:4326", method = "near")
+
+# 2. Kleurenpaletten definiëren (Semi-transparant voor goedgekeurde gebieden)
+pal_water <- colorFactor(c("#0073C2"), domain = 1, na.color = "transparent") # Blauw voor water
+pal_land  <- colorFactor(c("#228B22"), domain = 1, na.color = "transparent") # Bosgroen voor land
+
+# 3. Leaflet kaart opbouwen
+kaart <- leaflet() %>%
+  # Achtergrondkaarten (Luchtfoto + Topografische kaart als opties)
+  addProviderTiles(providers$OpenStreetMap, group = "OpenStreetMap") %>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "Luchtfoto (Esri)") %>%
+  
+  # Studiegebied grens (Turnhouts Vennegebied)
+  addPolygons(
+    data = grens_web, 
+    color = "black", 
+    weight = 2, 
+    fill = FALSE, 
+    group = "Grens Studiegebied"
+  ) %>%
+  
+  # Landbiotoop laag (Maximale Potentie)
+  addRasterImage(
+    r_land_web, 
+    colors = pal_land, 
+    opacity = 0.6, 
+    group = "Goedgekeurd Landbiotoop (Groen)"
+  ) %>%
+  
+  # Waterbiotoop laag (Gefilterd & Goedgekeurd)
+  addRasterImage(
+    r_water_web, 
+    colors = pal_water, 
+    opacity = 0.8, 
+    group = "Goedgekeurd Waterbiotoop (Blauw)"
+  ) %>%
+  
+  # Lagenbeheer (Rechtsboven aan/uit vinken)
+  addLayersControl(
+    baseGroups = c("OpenStreetMap", "Luchtfoto (Esri)"),
+    overlayGroups = c("Grens Studiegebied", "Goedgekeurd Landbiotoop (Groen)", "Goedgekeurd Waterbiotoop (Blauw)"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+# Kaart tonen in RStudio of het HTML-rapport
+kaart
+```
+
+
 ```{r landbiotoop koppeling 1}
 # ==============================================================================
-# 5. RUIMTELIJKE RELATIE WATER- EN LANDBIOTOOP (Cluster-gebaseerde 500m eis)
+# 5. RUIMTELIJKE RELATIE WATER- EN LANDBIOTOOP (Failsafe Cluster 500m eis)
 # ==============================================================================
 message("-> Connectiviteit tussen water- en landbiotoop controleren op CLUSTERNIVEAU (500m)...")
 
-# 1. Maak eerst unieke clusters van het landbiotoop (analoog aan water)
-r_land_clusters <- terra::patches(landbiotoop1_max, directions = 8, zeroAsNA = TRUE)
+# 1. FUZZY LANDCLUSTERS MAKEN (Cellen binnen 20m horen bij elkaar)
+message("-> Fuzzy landclusters genereren (zoekstraal 20m, geen min. opp)...")
+dist_lijm_m <- 20
+temp_mask_land <- terra::buffer(landbiotoop_bwk_max, width = dist_lijm_m / 2)
 
-# 2. Bereken de binaire zones (buffers van 500m)
+r_land_clusters <- terra::patches(temp_mask_land, directions = 8, zeroAsNA = TRUE) %>% 
+  terra::mask(landbiotoop_bwk_max)
+
+# Vers watercluster-raster maken om spook-IDs uit te sluiten
+r_water_clusters_vers <- terra::patches(kamsalamander_waterbiotoop1_finaal_max, directions = 8, zeroAsNA = TRUE)
+
+# Initialiseer de eindrasters standaard als leeg
+kamsalamander_landbiotoop_bwk_max <- template_TV * NA
+kamsalamander_waterbiotoop3_max   <- template_TV * NA
+
+# 2. BEREKEN DE 500M INVLOEDSZONES
 message("-> 500 meter invloedszones berekenen...")
-water_buffer_500m <- terra::distance(heikikker_waterbiotoop1_finaal_max) <= 500
-land_buffer_500m  <- terra::distance(landbiotoop1_max) <= 500
+water_buffer_500m <- terra::distance(kamsalamander_waterbiotoop1_finaal_max) <= 500
+land_buffer_500m  <- terra::distance(landbiotoop_bwk_max) <= 500
 
-# 3. IDENTIFICEER WELKE CLUSTERS OVERLAPPEN MET DE BUFFERS
-# We kijken welke unieke cluster-IDs aanwezig zijn binnen de 500m buffer van het andere type
-goedgekeurde_land_cluster_ids  <- terra::unique(r_land_clusters[water_buffer_500m == 1])[[1]]
-goedgekeurde_water_cluster_ids <- terra::unique(cl_id_max[land_buffer_500m == 1])
+# 3. ROBUUSTE EXTRACTIE VIA TERRA::ZONAL (Failsafe methode voor cluster-IDs)
+message("-> Unieke overlappende cluster-IDs extraheren via zonale statistieken...")
 
-# Filter eventuele NA's eruit
+# We kijken welke land-clusters vallen in de water-buffer
+stats_land <- terra::zonal(water_buffer_500m, r_land_clusters, fun = "max", na.rm = TRUE)
+goedgekeurde_land_cluster_ids <- stats_land[[1]][stats_land[[2]] == 1]
+
+# We kijken welke water-clusters vallen in de land-buffer
+stats_water <- terra::zonal(land_buffer_500m, r_water_clusters_vers, fun = "max", na.rm = TRUE)
+goedgekeurde_water_cluster_ids <- stats_water[[1]][stats_water[[2]] == 1]
+
+# Opschonen van eventuele NA's
 goedgekeurde_land_cluster_ids  <- goedgekeurde_land_cluster_ids[!is.na(goedgekeurde_land_cluster_ids)]
 goedgekeurde_water_cluster_ids <- goedgekeurde_water_cluster_ids[!is.na(goedgekeurde_water_cluster_ids)]
 
-# 4. RUIMTELIJKE FILTERS TOEPASSEN OP VOLLEDIGE CLUSTERS (Alles-of-niets)
-# Als het cluster-ID in de goedgekeurde lijst staat, behouden we het VOLLEDIGE cluster
-heikikker_landbiotoop1_max <- r_land_clusters %in% goedgekeurde_land_cluster_ids
-heikikker_landbiotoop1_max <- terra::ifel(heikikker_landbiotoop1_max == 1, 1, NA)
+# ==============================================================================
+# RUIMTELIJKE FILTERING TOEPASSEN
+# ==============================================================================
+if (length(goedgekeurde_land_cluster_ids) > 0 && length(goedgekeurde_water_cluster_ids) > 0) {
+  
+  message(paste("-> Succes!", length(goedgekeurde_land_cluster_ids), "landclusters en", 
+                length(goedgekeurde_water_cluster_ids), "waterclusters gekoppeld."))
+  
+  # 4. VOLLEDIGE CLUSTERS BEHOUDEN
+  kamsalamander_landbiotoop_bwk_max <- r_land_clusters %in% goedgekeurde_land_cluster_ids
+  kamsalamander_landbiotoop_bwk_max <- terra::ifel(kamsalamander_landbiotoop_bwk_max == 1, 1, NA)
 
-heikikker_waterbiotoop3_max   <- cl_id_max %in% goedgekeurde_water_cluster_ids
-heikikker_waterbiotoop3_max   <- terra::ifel(heikikker_waterbiotoop3_max == 1, 1, NA)
+  kamsalamander_waterbiotoop3_max   <- r_water_clusters_vers %in% goedgekeurde_water_cluster_ids
+  kamsalamander_waterbiotoop3_max   <- terra::ifel(kamsalamander_waterbiotoop3_max == 1, 1, NA)
+  
+} else {
+  message("⚠️ Waarschuwing: Geen ruimtelijke overlap gevonden via zonale extractie.")
+}
 
 # 5. PARALLEL: WERKELIJKE OPPERVLAKTES MASKEREN (_opp)
-# Nu snijden we de opp-lagen netjes uit met de opgeschoonde, hele clusters
-heikikker_landbiotoop1_opp <- terra::mask(landbiotoop1_opp, heikikker_landbiotoop1_max)
-heikikker_waterbiotoop3_opp   <- terra::mask(heikikker_waterbiotoop1_finaal_opp, heikikker_waterbiotoop3_max)
+kamsalamander_landbiotoop_bwk_opp <- terra::mask(landbiotoop_bwk_opp, kamsalamander_landbiotoop_bwk_max)
+kamsalamander_waterbiotoop3_opp   <- terra::mask(kamsalamander_waterbiotoop1_finaal_opp, kamsalamander_waterbiotoop3_max)
 
 # 6. GEHEUGEN SCHOONMAKEN
-rm(r_land_clusters, water_buffer_500m, land_buffer_500m, goedgekeurde_land_cluster_ids, goedgekeurde_water_cluster_ids)
+rm(temp_mask_land, r_land_clusters, r_water_clusters_vers, water_buffer_500m, land_buffer_500m, 
+   stats_land, stats_water, goedgekeurde_land_cluster_ids, goedgekeurde_water_cluster_ids)
 gc()
 ```
 
 
 ```{r landbiotoop koppeling 2}
 # ==============================================================================
-# 6. FINALE COMBINATIE: LEEFGEBIED heikikker
+# 6. FINALE COMBINATIE: LEEFGEBIED kamsalamander
 # ==============================================================================
-message("-> Finaal leefgebied heikikker samenstellen...")
+message("-> Finaal leefgebied kamsalamander samenstellen...")
 
 # Maximale Potentie (Binaire kaart)
-heikikker_leefgebied1_max <- heikikker_waterbiotoop3_max | heikikker_landbiotoop1_max
-heikikker_leefgebied1_max <- terra::ifel(heikikker_leefgebied1_max == 1, 1, NA)
+kamsalamander_leefgebied1_max <- kamsalamander_waterbiotoop3_max | kamsalamander_landbiotoop_bwk_max
+kamsalamander_leefgebied1_max <- terra::ifel(kamsalamander_leefgebied1_max == 1, 1, NA)
 
 # Werkelijke Oppervlakte (Veilige optelsom van fracties)
 # Vervang NA door 0 voor de berekening
-water_fractie_clean <- terra::ifel(is.na(heikikker_waterbiotoop3_opp), 0, heikikker_waterbiotoop3_opp)
-land_fractie_clean  <- terra::ifel(is.na(heikikker_landbiotoop1_opp), 0, heikikker_landbiotoop1_opp)
+water_fractie_clean <- terra::ifel(is.na(kamsalamander_waterbiotoop3_opp), 0, kamsalamander_waterbiotoop3_opp)
+land_fractie_clean  <- terra::ifel(is.na(kamsalamander_landbiotoop_bwk_opp), 0, kamsalamander_landbiotoop_bwk_opp)
 
 som_fracties <- water_fractie_clean + land_fractie_clean
 
@@ -495,16 +583,16 @@ som_gemedieerd <- terra::clamp(som_fracties, upper = 1.0)
 
 # CRUCIALE CORRECTIE: Maskeer het resultaat met de binaire kaart. 
 # Alles wat buiten de max-potentie valt, wordt hierdoor onmiddellijk weer NA!
-heikikker_leefgebied1_opp <- terra::mask(som_gemedieerd, heikikker_leefgebied1_max)
+kamsalamander_leefgebied1_opp <- terra::mask(som_gemedieerd, kamsalamander_leefgebied1_max)
 
 # ==============================================================================
 # 7. HECTAREBEREKENING & EINDRAPPORTAGE
 # ==============================================================================
-ha_leefgebied_pot  <- calc_ha_exact(heikikker_leefgebied1_max)
-ha_leefgebied_werk <- calc_ha_exact(heikikker_leefgebied1_opp)
+ha_leefgebied_pot  <- calc_ha_exact(kamsalamander_leefgebied1_max)
+ha_leefgebied_werk <- calc_ha_exact(kamsalamander_leefgebied1_opp)
 
 cat("\n=========================================================\n")
-cat("            EINDPOTENTIE LEEFGEBIED heikikker           \n")
+cat("            EINDPOTENTIE LEEFGEBIED kamsalamander           \n")
 cat("=========================================================\n")
 cat(paste("Totale Leefgebied (Maximale Potentie):  ", round(ha_leefgebied_pot, 2), "ha\n"))
 cat(paste("Totale Leefgebied (Werkelijke Fractie): ", round(ha_leefgebied_werk, 2), "ha\n"))
@@ -513,8 +601,8 @@ cat("=========================================================\n\n")
 # Netjes opruimen van alle zware tussenrasters uit deze en de vorige stappen
 suppressWarnings(
   rm(
-    heikikker_waterbiotoop3_max, heikikker_landbiotoop1_max,
-    heikikker_waterbiotoop3_opp, heikikker_landbiotoop1_opp,
+    kamsalamander_waterbiotoop3_max, kamsalamander_landbiotoop_bwk_max,
+    kamsalamander_waterbiotoop3_opp, kamsalamander_landbiotoop_bwk_opp,
     water_fractie_clean, land_fractie_clean, som_fracties
   )
 )
@@ -525,15 +613,15 @@ gc()
 # ==============================================================================
 # 8. CLUSTERING & OPPERVLAKTEFILTER (Minimaal 50 ha leefgebied)
 # ==============================================================================
-message("-> Leefgebied clusters identificeren en filteren op minimale grootte (50 ha)...")
+message("-> Leefgebied clusters identificeren en filteren op minimale grootte (14 ha)...")
 
 # 1. Maak binaire clusters aan (FuzzyClusterIdU met 500m vertalen we door eerst te bufferen)
 # Geef het leefgebied een buffer van 250m (zodat twee gebieden binnen 500m van elkaar versmelten)
-leefgebied_buffered <- terra::buffer(heikikker_leefgebied1_max, width = 250)
+leefgebied_buffered <- terra::buffer(kamsalamander_leefgebied1_max, width = 250)
 r_leefgebied_clusters <- terra::patches(leefgebied_buffered, directions = 8)
 
 # Snijd de gevormde clusters terug uit op het originele scherpe leefgebied
-r_scherpe_clusters <- terra::mask(r_leefgebied_clusters, heikikker_leefgebied1_max)
+r_scherpe_clusters <- terra::mask(r_leefgebied_clusters, kamsalamander_leefgebied1_max)
 
 # 2. Bereken de exacte oppervlakte van elk uniek cluster
 cluster_freq <- terra::freq(r_scherpe_clusters)
@@ -541,21 +629,21 @@ cluster_freq <- terra::freq(r_scherpe_clusters)
 # Bereken de oppervlakte in ha (1 cel van 10x10m = 100m² = 0.01 ha)
 cluster_freq$area_ha <- cluster_freq$count * 0.01
 
-# 3. Selecteer de ID's van clusters die minstens 5 hectare groot zijn
-goedgekeurde_cluster_ids <- cluster_freq$value[cluster_freq$area_ha >= 50]
+# 3. Selecteer de ID's van clusters die minstens 14 hectare groot zijn
+goedgekeurde_cluster_ids <- cluster_freq$value[cluster_freq$area_ha >= 14]
 
 # 4. Filter de rasters op basis van de goedgekeurde ID's
 if (length(goedgekeurde_cluster_ids) > 0) {
   # Maak een binaire kaart van enkel de goedgekeurde clusters
-  heikikker_leefgebied_max <- r_scherpe_clusters %in% goedgekeurde_cluster_ids
-  heikikker_leefgebied_max <- terra::ifel(heikikker_leefgebied_max == 1, 1, NA)
+  kamsalamander_leefgebied_max <- r_scherpe_clusters %in% goedgekeurde_cluster_ids
+  kamsalamander_leefgebied_max <- terra::ifel(kamsalamander_leefgebied_max == 1, 1, NA)
   
   # Maskeer de parallelle fractie-kaart met de goedgekeurde clusters
-  heikikker_leefgebied_opp <- terra::mask(heikikker_leefgebied1_opp, heikikker_leefgebied_max)
+  kamsalamander_leefgebied_opp <- terra::mask(kamsalamander_leefgebied1_opp, kamsalamander_leefgebied_max)
 } else {
   message("⚠️ Waarschuwing: Geen enkel leefgebied-cluster voldoet aan de minimale grootte van 50 ha.")
-  heikikker_leefgebied_max <- template_TV * NA
-  heikikker_leefgebied_opp <- template_TV * NA
+  kamsalamander_leefgebied_max <- template_TV * NA
+  kamsalamander_leefgebied_opp <- template_TV * NA
 }
 
 # Geheugen netjes opruimen
@@ -565,11 +653,11 @@ gc()
 # ==============================================================================
 # 9. FINALE EINDRAPPORTAGE (HET COMPLETE PLAATJE)
 # ==============================================================================
-ha_finaal_pot  <- calc_ha_exact(heikikker_leefgebied_max)
-ha_finaal_werk <- calc_ha_exact(heikikker_leefgebied_opp)
+ha_finaal_pot  <- calc_ha_exact(kamsalamander_leefgebied_max)
+ha_finaal_werk <- calc_ha_exact(kamsalamander_leefgebied_opp)
 
 cat("\n=========================================================\n")
-cat("          DEFINITIEF LEEFGEBIED heikikker (>= 50 ha)     \n")
+cat("          DEFINITIEF LEEFGEBIED kamsalamander (>= 14 ha)     \n")
 cat("=========================================================\n")
 cat(paste("Finaal Leefgebied (Maximale Potentie):  ", round(ha_finaal_pot, 2), "ha\n"))
 cat(paste("Finaal Leefgebied (Werkelijke Fractie): ", round(ha_finaal_werk, 2), "ha\n"))
@@ -578,12 +666,12 @@ cat("=========================================================\n\n")
 
 ```{r waarnemingen inlezen en ARPL}
 # ==============================================================================
-# STAP 12: ACTUELE VERSPREIDING & ARPL OP BASIS VAN FINALE CLUSTERS (>= 50 ha)
+# STAP 12: ACTUELE VERSPREIDING & ARPL OP BASIS VAN FINALE CLUSTERS (>= 14 ha)
 # ==============================================================================
-message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor heikikker...")
+message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor kamsalamander...")
 
-# 1. Pad naar het waarnemingsbestand van de heikikker
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Heikikker.csv")
+# 1. Pad naar het waarnemingsbestand van de kamsalamander
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Kamsalamander.csv")
 
 # 2. Inlezen en bufferen van waarnemingen
 if (file.exists(waarnemingen_path)) {
@@ -603,9 +691,9 @@ if (file.exists(waarnemingen_path)) {
   has_observations    <- FALSE
 }
 
-# Initialiseer de finale rasters, tellers en hectares voor de heikikker
-heikikker_arpl_opp        <- terra::rast(template_TV, vals = NA)
-heikikker_verspreiding_bin <- terra::rast(template_TV, vals = NA) 
+# Initialiseer de finale rasters, tellers en hectares voor de kamsalamander
+kamsalamander_arpl_opp        <- terra::rast(template_TV, vals = NA)
+kamsalamander_verspreiding_bin <- terra::rast(template_TV, vals = NA) 
 arpl_netwerk_count         <- 0
 verspreiding_netwerk_count <- 0
 ha_verspreiding_bin        <- 0
@@ -613,11 +701,11 @@ ha_verspreiding_bin        <- 0
 ha_pot_bin <- ha_pot_buit <- ha_werk_bin <- ha_werk_buit <- ha_arpl <- 0
 ids_pot_bin <- ids_pot_buit <- ids_werk_bin <- ids_werk_buit <- ids_actueel_relevant <- c()
 
-if (!all(is.na(terra::values(heikikker_leefgebied_max, mat=FALSE)))) {
+if (!all(is.na(terra::values(kamsalamander_leefgebied_max, mat=FALSE)))) {
   
   message("-> Metapopulatie-netwerkwolken bouwen (500m fuzzy koppeling)...")
   # 1. Vectoriseer het ruwe leefgebied
-  p_ruw_max <- terra::as.polygons(heikikker_leefgebied_max, aggregate = TRUE) %>% terra::disagg()
+  p_ruw_max <- terra::as.polygons(kamsalamander_leefgebied_max, aggregate = TRUE) %>% terra::disagg()
   
   # 2. Bouw de netwerkwolken via 250m buffer-smeltmethode (zorgt voor de 500m fuzzy brug)
   p_buf_max        <- terra::buffer(p_ruw_max, width = 250)
@@ -630,10 +718,10 @@ if (!all(is.na(terra::values(heikikker_leefgebied_max, mat=FALSE)))) {
   
   if (nrow(p_ruw_max) > 0) {
     # 3. Maak het perfect sluitende netwerk-ID raster aan via onze kogelvrije methode
-    r_opp_net_ids <- heikikker_leefgebied_max * NA
+    r_opp_net_ids <- kamsalamander_leefgebied_max * NA
     r_opp_net_ids <- terra::rasterize(p_ruw_max, r_opp_net_ids, field = "Netwerk_ID", touches = FALSE)
     
-    missende_cellen <- !is.na(heikikker_leefgebied_max) & is.na(r_opp_net_ids)
+    missende_cellen <- !is.na(kamsalamander_leefgebied_max) & is.na(r_opp_net_ids)
     if (terra::global(missende_cellen, "sum", na.rm = TRUE)[[1]] > 0) {
       cellen_indices <- which(terra::values(missende_cellen, mat = FALSE))
       extracted_ids <- terra::extract(p_ruw_max, terra::xyFromCell(r_opp_net_ids, cellen_indices))
@@ -659,9 +747,9 @@ if (!all(is.na(terra::values(heikikker_leefgebied_max, mat=FALSE)))) {
     if(length(ids_actueel_relevant) > 0) {
       m_arpl <- r_opp_net_ids %in% ids_actueel_relevant
       m_arpl_tv <- terra::crop(terra::ifel(m_arpl == 1, 1, NA), template_TV)
-      heikikker_arpl_opp <- terra::mask(terra::crop(heikikker_leefgebied_opp, template_TV), m_arpl_tv)
+      kamsalamander_arpl_opp <- terra::mask(terra::crop(kamsalamander_leefgebied_opp, template_TV), m_arpl_tv)
       arpl_netwerk_count <- length(ids_actueel_relevant)
-      ha_arpl <- calc_ha_exact(heikikker_arpl_opp)
+      ha_arpl <- calc_ha_exact(kamsalamander_arpl_opp)
     }
     
     # --- EXTRACTION B: ACTUELE VERSPREIDING ---
@@ -675,17 +763,17 @@ if (!all(is.na(terra::values(heikikker_leefgebied_max, mat=FALSE)))) {
     
     if(length(ids_verspreiding_clusters) > 0) {
       m_verspr <- r_opp_net_ids %in% ids_verspreiding_clusters
-      clusters_actueel <- terra::mask(heikikker_leefgebied_opp, terra::ifel(m_verspr == 1, 1, NA))
+      clusters_actueel <- terra::mask(kamsalamander_leefgebied_opp, terra::ifel(m_verspr == 1, 1, NA))
       
       clusters_actueel_tv <- terra::crop(clusters_actueel, template_TV)
-      heikikker_verspreiding_bin <- terra::ifel(!is.na(clusters_actueel_tv) & clusters_actueel_tv > 0, 1, NA)
+      kamsalamander_verspreiding_bin <- terra::ifel(!is.na(clusters_actueel_tv) & clusters_actueel_tv > 0, 1, NA)
       verspreiding_netwerk_count <- length(ids_verspreiding_clusters)
       ha_verspreiding_bin <- calc_ha_exact(clusters_actueel_tv)
     }
     
     # --- TABEL METRICS BEREKENEN ---
-    r_max_tv <- terra::crop(heikikker_leefgebied_max, template_TV)
-    r_opp_tv <- terra::crop(heikikker_leefgebied_opp, template_TV)
+    r_max_tv <- terra::crop(kamsalamander_leefgebied_max, template_TV)
+    r_opp_tv <- terra::crop(kamsalamander_leefgebied_opp, template_TV)
     r_net_ids_tv <- terra::crop(r_opp_net_ids, template_TV)
     
     calc_ha_grutto_style <- function(ids, target_raster) {
@@ -752,8 +840,8 @@ tabel_totaal %>%
 ```
 
 ```{r, export}
-# --- EXPORT MET KOGELVRIJE NUL-OPVULLING & CONTRACT FIX (heikikker) ---
-message("-> Start geformatteerde export met nul-opvulling voor heikikker...")
+# --- EXPORT MET KOGELVRIJE NUL-OPVULLING & CONTRACT FIX (kamsalamander) ---
+message("-> Start geformatteerde export met nul-opvulling voor kamsalamander...")
 
 base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
 folders <- list(
@@ -765,29 +853,29 @@ folders <- list(
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
 # 1. Spoor B: Werkelijke Oppervlakte formatteren naar 1/NA
-if(!all(is.na(terra::values(heikikker_leefgebied_opp, mat=FALSE)))) {
-  werkelijk_export_rast <- terra::ifel(!is.na(heikikker_leefgebied_opp) & heikikker_leefgebied_opp > 0, 1, NA)
+if(!all(is.na(terra::values(kamsalamander_leefgebied_opp, mat=FALSE)))) {
+  werkelijk_export_rast <- terra::ifel(!is.na(kamsalamander_leefgebied_opp) & kamsalamander_leefgebied_opp > 0, 1, NA)
 } else {
   werkelijk_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
 # 2. ARPL formatteren naar 1/NA
-if(exists("heikikker_arpl_opp") && !all(is.na(terra::values(heikikker_arpl_opp, mat=FALSE)))) {
-  arpl_export_rast <- terra::ifel(heikikker_arpl_opp > 0, 1, NA)
+if(exists("kamsalamander_arpl_opp") && !all(is.na(terra::values(kamsalamander_arpl_opp, mat=FALSE)))) {
+  arpl_export_rast <- terra::ifel(kamsalamander_arpl_opp > 0, 1, NA)
 } else {
   arpl_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
 # 3. Actuele Verspreiding formatteren naar 1/NA
-if(!all(is.na(terra::values(heikikker_verspreiding_bin, mat=FALSE)))) {
-  verspreiding_export_rast <- terra::ifel(heikikker_verspreiding_bin > 0, 1, NA)
+if(!all(is.na(terra::values(kamsalamander_verspreiding_bin, mat=FALSE)))) {
+  verspreiding_export_rast <- terra::ifel(kamsalamander_verspreiding_bin > 0, 1, NA)
 } else {
   verspreiding_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# 4. De vernieuwde export_config bundel voor heikikker
+# 4. De vernieuwde export_config bundel voor kamsalamander
 export_config <- list(
-  list(rast = heikikker_leefgebied_max,   naam = "Maximale_Potentie",       folder = folders$potentie,     type = "INT1U"),
+  list(rast = kamsalamander_leefgebied_max,   naam = "Maximale_Potentie",       folder = folders$potentie,     type = "INT1U"),
   list(rast = werkelijk_export_rast,       naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
   list(rast = arpl_export_rast,            naam = "ARPL",                    folder = folders$arpl,         type = "INT1U"),
   list(rast = verspreiding_export_rast,    naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
@@ -823,22 +911,22 @@ rm(
 )
 gc()
 
-message("🏁 SCRIPT EN EXPORT VOLLEDIG EN SUCCESVOL AFGEROND VOOR heikikker!")
+message("🏁 SCRIPT EN EXPORT VOLLEDIG EN SUCCESVOL AFGEROND VOOR kamsalamander!")
 ```
 
 ```{r Interactieve kaart}
 # ==============================================================================
-# STAP 14: INTERACTIEVE KAART (LEAFLET - INCLUSIEF VOORTPLANTINGSLAAAG heikikker)
+# STAP 14: INTERACTIEVE KAART (LEAFLET - INCLUSIEF VOORTPLANTINGSLAAAG kamsalamander)
 # ==============================================================================
 if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE)))) {
   
-  message("-> Clusterstatistieken berekenen op basis van het TOTALE, gedeelde netwerk voor heikikker...")
+  message("-> Clusterstatistieken berekenen op basis van het TOTALE, gedeelde netwerk voor kamsalamander...")
   
   # We berekenen de frequentie en hectares op het BREDE, ongecroppte netwerkraster
   stats_global_freq <- terra::freq(r_opp_net_ids)
   colnames(stats_global_freq) <- c("layer", "ID", "count")
   
-  stats_global_opp <- terra::zonal(heikikker_leefgebied_opp * 0.01, r_opp_net_ids, fun = "sum", na.rm = TRUE)
+  stats_global_opp <- terra::zonal(kamsalamander_leefgebied_opp * 0.01, r_opp_net_ids, fun = "sum", na.rm = TRUE)
   colnames(stats_global_opp) <- c("ID", "Totaal_Netwerk_Werk_ha")
   
   # Bereken ook hoeveel daarvan specifiek BINNEN TV ligt
@@ -889,15 +977,15 @@ if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE))
 r_web_status <- terra::project(r_status, "EPSG:4326", method = "near")
 bbox         <- st_bbox(grens_web)
 
-# AANGEPAST VOOR heikikker: Projecteer het goedgekeurde voortplantingsbiotoop (indien aanwezig)
-if(exists("heikikker_waterbiotoop1_finaal_max") && 
-   !all(is.na(terra::values(heikikker_waterbiotoop1_finaal_max, mat=FALSE)))) {
-  r_web_vpt <- terra::project(heikikker_waterbiotoop1_finaal_max, "EPSG:4326", method = "near")
+# AANGEPAST VOOR kamsalamander: Projecteer het goedgekeurde voortplantingsbiotoop (indien aanwezig)
+if(exists("kamsalamander_waterbiotoop1_finaal_max") && 
+   !all(is.na(terra::values(kamsalamander_waterbiotoop1_finaal_max, mat=FALSE)))) {
+  r_web_vpt <- terra::project(kamsalamander_waterbiotoop1_finaal_max, "EPSG:4326", method = "near")
 } else {
   r_web_vpt <- NULL
 }
 
-# Projectie van waarnemingen van de heikikker (indien aanwezig)
+# Projectie van waarnemingen van de kamsalamander (indien aanwezig)
 if(has_observations && nrow(df_points_sf) > 0) {
   waarneming_smear_web <- st_transform(waarneming_smear_sf, 4326)
   points_web           <- st_transform(df_points_sf, 4326)
@@ -921,7 +1009,7 @@ if(!all(is.na(terra::values(r_web_status, mat=FALSE)))) {
   map <- map %>% addRasterImage(terra::as.int(r_web_status), colors = pal_4, opacity = 0.4, group = "Habitat Status (Pixels)")
 }
 
-# VOEG VOORTPLANTINGSWATEREN heikikker TOE (Felblauw raster)
+# VOEG VOORTPLANTINGSWATEREN kamsalamander TOE (Felblauw raster)
 if(!is.null(r_web_vpt)) {
   map <- map %>% addRasterImage(terra::as.int(r_web_vpt), colors = "#00BFFF", opacity = 0.8, group = "Voortplantingsbiotoop (Poelen/Waters)")
 }
