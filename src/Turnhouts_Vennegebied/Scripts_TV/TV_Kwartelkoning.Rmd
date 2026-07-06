@@ -250,140 +250,114 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
 }
 
 # Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
-grasland_max <- lijst_matches[["bwk"]]
-grasland_opp <- lijst_oppervlaktes[["bwk"]]
-moeras_max <- lijst_matches[["ku"]]
-moeras_opp <- lijst_oppervlaktes[["ku"]]
-zeergeschikt_max <- lijst_matches[["ku"]]
-zeergeschikt_opp <- lijst_oppervlaktes[["ku"]]
+grasland_max <- lijst_matches[["grasland"]]
+grasland_opp <- lijst_oppervlaktes[["grasland"]]
+moeras_max <- lijst_matches[["moeras"]]
+moeras_opp <- lijst_oppervlaktes[["moeras"]]
+zeergeschikt_max <- lijst_matches[["zeergeschikt1"]]
+zeergeschikt_opp <- lijst_oppervlaktes[["zeergeschikt1"]]
 
 # Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
 rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
-```{r ku koppeling 50m celniveau}
-# ==============================================================================
-# 4. KOPPELING KU EN BWK VOOR KOMMAVLINDER (50 meter eis op celniveau)
-# ==============================================================================
-message("-> Ku-cellen filteren op basis van afstand tot BWK-cellen (50m)...")
+```{r filter ongeschikte elementen uit}
+# Stap 1
+# --- 1. HOOGGROEN SYNCHRONISEREN ---
+hooggroen_raw         <- rast(here("data/input/ASCI Files/Groenkaart_2021.tif"))
+area_buffer_groen_crs <- project(area_buffer_fix, crs(hooggroen_raw))
+hooggroen_local_raw   <- crop(hooggroen_raw, area_buffer_groen_crs)
 
-# 1. Bereken de 50 meter invloedszone rondom de BWK-cellen
-bwk_buffer_50m <- terra::distance(bwk_max) <= 50
+# Omzetten naar binair (1 = hooggroen, 0 = open)
+hooggroen_binair  <- terra::classify(hooggroen_local_raw, matrix(c(0.5, 1.5, 1), ncol = 3, byrow = TRUE), others = 0)
+hooggroen_10m_raw <- terra::aggregate(hooggroen_binair, fact = 10, fun = "max")
 
-# 2. FILTER OP CELNIVEAU: KU-cel blijft alleen behouden als deze in de buffer ligt
-ku_gefilterd_max <- ku_max == 1 & bwk_buffer_50m == 1
-ku_gefilterd_max <- terra::ifel(ku_gefilterd_max == 1, 1, NA)
+# Matchen met jouw specifieke template_TV
+hooggroen_sync    <- project(hooggroen_10m_raw, crs(template_TV)) %>% 
+                     terra::resample(template_TV, method = "near")
 
-# Sla ook direct de werkelijke oppervlakte-fractie op voor de gefilterde cellen
-ku_gefilterd_opp <- terra::mask(ku_opp, ku_gefilterd_max)
+# --- 2. TERRILS ISOLEREN (kg%) ---
+# We zoeken in de regionale tabel naar codes die beginnen met 'kg'
+tabel_terril <- tabel_vlaanderen[CODE %like% "^kg"]
+tabel_terril_TV <- tabel_terril[cel_id %in% studiegebied_globale_ids]
 
+# Aggregeren per cel
+tabel_terril_som <- tabel_terril_TV[, .(Oppervlakte = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
 
-# ==============================================================================
-# COMBINEREN TOT HET TOTAALPLAATJE (Kommavlinder Biotoop)
-# ==============================================================================
-message("-> Gefilterde KU-cellen samenvoegen met BWK tot totale biotooplaag...")
+r_terril <- template_TV * NA
 
-# Spoor 1: Maximale binaire potentie samenvoegen via bitwise OR
-kommavlinder_biotoop_gecombineerd_max <- bwk_max | ku_gefilterd_max
-kommavlinder_biotoop_gecombineerd_max <- terra::ifel(kommavlinder_biotoop_gecombineerd_max == 1, 1, NA)
+if(nrow(tabel_terril_som) > 0) {
+  setnames(tabel_terril_som, "cel_id", "globale_id")
+  tabel_terril_mapping <- merge(tabel_terril_som, vertaal_df, by = "globale_id", all.x = TRUE)
+  tabel_terril_mapping <- tabel_terril_mapping[!is.na(lokale_id) & Oppervlakte >= 0.01]
+  
+  if(nrow(tril_clean <- tabel_terril_mapping) > 0) {
+    r_terril[tril_clean$lokale_id] <- 1
+  }
+}
 
-# Spoor 2: Werkelijke oppervlakte-fracties veilig optellen (NA naar 0)
-bwk_fractie_clean <- terra::ifel(is.na(bwk_opp), 0, bwk_opp)
-ku_fractie_clean  <- terra::ifel(is.na(ku_gefilterd_opp), 0, ku_gefilterd_opp)
+# --- 3. COMBINEREN EN FILTEREN ---
+# Basisbiotoop: Overal waar grasland óf moeras aanwezig is (waarde 1)
+biotoop_initieel <- (grasland_max == 1) | (moeras_max == 1)
+biotoop_initieel <- terra::ifel(biotoop_initieel == 1, 1, NA)
 
-som_fracties <- bwk_fractie_clean + ku_fractie_clean
-som_gemedieerd <- terra::clamp(som_fracties, upper = 1.0) # Nooit meer dan 100% per cel
+# Masker maken van alles wat NIET mag: hooggroen == 1 OF terril == 1
+ongeschikt_masker <- (hooggroen_sync == 1) | (!is.na(r_terril) & r_terril == 1)
 
-# Resultaat maskeren met de binaire kaart
-kommavlinder_biotoop_gecombineerd_opp <- terra::mask(som_gemedieerd, kommavlinder_biotoop_gecombineerd_max)
+# Pas het masker toe: overal waar ongeschikt_masker TRUE is, wordt de cel NA
+biotoop_fase1 <- terra::mask(biotoop_initieel, terra::ifel(ongeschikt_masker, 1, NA), maskvalues = 1)
 
+# --- SNELLE CHECK STAP 1 ---
+# Bereken het aantal geschikte pixels
+pixels_initieel <- terra::global(biotoop_initieel, "sum", na.rm = TRUE)[[1]]
+pixels_fase1    <- terra::global(biotoop_fase1, "sum", na.rm = TRUE)[[1]]
 
-# ==============================================================================
-# TUSSENRESULTAAT RAPPORTEREN
-# ==============================================================================
-ha_totaal_pot  <- calc_ha_exact(kommavlinder_biotoop_gecombineerd_max)
-ha_totaal_werk <- calc_ha_exact(kommavlinder_biotoop_gecombineerd_opp)
+# Omrekenen naar hectares (aantal pixels * 100m2 / 10000m2 per ha)
+ha_initieel <- (pixels_initieel * 100) / 10000
+ha_fase1    <- (pixels_fase1 * 100) / 10000
 
-cat("\n=========================================================\n")
-cat("          TUSSENRESULTAAT BIOTOOP kommavlinder           \n")
-cat("=========================================================\n")
-cat(paste("Gecombineerd biotoop (Maximale Potentie):  ", round(ha_totaal_pot, 2), "ha\n"))
-cat(paste("Gecombineerd biotoop (Werkelijke Fractie): ", round(ha_totaal_werk, 2), "ha\n"))
-cat("=========================================================\n\n")
-
-# Opschonen van zware tussenbestanden
-suppressWarnings(
-  rm(bwk_buffer_50m, ku_gefilterd_max, ku_gefilterd_opp, 
-     bwk_fractie_clean, ku_fractie_clean, som_fracties, som_gemedieerd, ku_max, ku_opp)
-)
-gc()
+# Print de resultaten netjes in de console
+cat("--- TUSSENTIJDSE CHECK KWARTELKONING ---\n")
+cat("Oppervlakte bruto biotoop (grasland + moeras): ", round(ha_initieel, 2), " ha\n")
+cat("Oppervlakte na aftrek bos en terrils (Fase 1): ", round(ha_fase1, 2), " ha\n")
+cat("Verlies door hooggroen/terrils:                ", round(ha_initieel - ha_fase1, 2), " ha\n")
+cat("----------------------------------------\n")
 ```
 
-```{r cluster filtering parallel}
-# ==============================================================================
-# 5. CLUSTEREN EN PARALLELLE MINIMUM OPPERVLAKTE FILTERING (1 ha / 10m)
-# ==============================================================================
-message("-> Gecombineerd biotoop parallel filteren op minimumoppervlakte (1 ha)...")
+```{r verdere filter}
+# --- STAP 2: VALLEIGRONDEN EN OVERSTROMINGSGEVOELIGHEID (VIA 10M TIFFS) ---
 
-# Drempels definiëren (1 ha = 10000 m²)
-drempel_m2 <- oppervlakte_ha * 10000 
-zoekafstand_m <- 10
+# 1. Inlezen van de Tiff-bestanden (al op 10m grid of vergelijkbaar)
+raw_profiel      <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_profiel_10m.tif"))
+raw_drainage     <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_drainage_10m.tif"))
+raw_overstroming <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_ovstrg_10m.tif")) 
 
-# ------------------------------------------------------------------------------
-# SPOOR 1: MAXIMALE POTENTIE (Puur op basis van binaire pixelruimte)
-# ------------------------------------------------------------------------------
-message("-> Spoor 1: Filteren op maximale ruimtelijke potentie (werkelijk = FALSE)...")
-biotoop_max_lijst <- cluster_filter_compleet(
-  masker = kommavlinder_biotoop_gecombineerd_max,
-  opp_laag = kommavlinder_biotoop_gecombineerd_opp, # Wordt genegeerd bij FALSE, maar moet worden meegegeven
-  drempel_m2 = drempel_m2,
-  dist_m = zoekafstand_m,
-  werkelijk = FALSE
-)
+profiel_sync      <- terra::crop(raw_profiel, template_TV) %>% terra::resample(template_TV, method = "near")
+drainage_sync     <- terra::crop(raw_drainage, template_TV) %>% terra::resample(template_TV, method = "near")
+overstroming_sync <- terra::crop(raw_overstroming, template_TV) %>% terra::resample(template_TV, method = "near")
 
-# De binaire eindlaag en bijbehorende clusters
-kommavlinder_biotoop1_finaal_max <- biotoop_max_lijst$raster
-cl_id_max                         <- biotoop_max_lijst$clusters
+# 2. Maskers toepassen met de gevalideerde numerieke codes
+mask_profiel      <- profiel_sync %in% c(1, 6) 
+mask_drainage     <- drainage_sync %in% c(1, 2, 3, 7, 10, 11, 12, 14, 15)
+mask_overstroming <- overstroming_sync %in% c(1, 2)
 
+# 3. Combineren (OR-relatie: een cel is geschikt als hij aan minstens één eis voldoet)
+vallei_geschikt        <- (mask_profiel == 1) | (mask_drainage == 1) | (mask_overstroming == 1)
+vallei_geschikt_binair <- terra::ifel(vallei_geschikt == 1, 1, NA)
 
-# ------------------------------------------------------------------------------
-# SPOOR 2: WERKELIJKE FRACTIE (Op basis van de echte som van de habitat-kwaliteit)
-# ------------------------------------------------------------------------------
-message("-> Spoor 2: Filteren op werkelijke habitat-oppervlakte (werkelijk = TRUE)...")
-biotoop_opp_lijst <- cluster_filter_compleet(
-  masker = kommavlinder_biotoop_gecombineerd_max,
-  opp_laag = kommavlinder_biotoop_gecombineerd_opp,
-  drempel_m2 = drempel_m2,
-  dist_m = zoekafstand_m,
-  werkelijk = TRUE
-)
+# 4. Masker toepassen op Fase 1 resultaat (de 1205.03 ha)
+biotoop_fase2 <- terra::mask(biotoop_fase1, vallei_geschikt_binair)
 
-# De fractie-eindlaag en bijbehorende clusters
-# We maskeren de oorspronkelijke opp-laag met het resultaat van de TRUE-filter
-kommavlinder_biotoop1_finaal_opp <- terra::mask(kommavlinder_biotoop_gecombineerd_opp, biotoop_opp_lijst$raster)
-cl_id_opp                         <- biotoop_opp_lijst$clusters
+# --- SNELLE CHECK STAP 2 ---
+pixels_fase2 <- terra::global(biotoop_fase2, "sum", na.rm = TRUE)[[1]]
+ha_fase2    <- (pixels_fase2 * 100) / 10000
 
-
-# ==============================================================================
-# EINDRAPPORTAGE HECTARES
-# ==============================================================================
-ha_finaal_pot  <- calc_ha_exact(kommavlinder_biotoop1_finaal_max)
-ha_finaal_werk <- calc_ha_exact(kommavlinder_biotoop1_finaal_opp)
-
-cat("\n=========================================================\n")
-cat("          FINAAL BIOTOOP GEFILTERD kommavlinder          \n")
-cat("=========================================================\n")
-cat(paste("Geschikt gebied (Maximale Potentie):  ", round(ha_finaal_pot, 2), "ha\n"))
-cat(paste("Geschikt gebied (Werkelijke Fractie): ", round(ha_finaal_werk, 2), "ha\n"))
-cat("=========================================================\n\n")
-
-# Netjes opruimen van het geheugen
-suppressWarnings(
-  rm(kommavlinder_biotoop_gecombineerd_max, kommavlinder_biotoop_gecombineerd_opp, 
-     biotoop_max_lijst, biotoop_opp_lijst)
-)
-gc()
+cat("--- TUSSENTIJDSE CHECK STAP 2 ---\n")
+cat("Oppervlakte na Fase 1 (Aftrek bos):     ", round(ha_fase1, 2), " ha\n")
+cat("Oppervlakte na Fase 2 (Enkel vallei):   ", round(ha_fase2, 2), " ha\n")
+cat("Verlies door vallei/bodemrestrictie:    ", round(ha_fase1 - ha_fase2, 2), " ha\n")
+cat("----------------------------------------\n")
 ```
 
 ```{r waarnemingen inlezen en ARPL kommavlinder}
