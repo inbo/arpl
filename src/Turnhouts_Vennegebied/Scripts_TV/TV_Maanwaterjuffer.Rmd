@@ -112,16 +112,14 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
 # Soort informatie ophalen
 ```{r Soort informatie}
 df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
-soort <- "kwartelkoning"
+soort <- "maanwaterjuffer"
 
 resultaat <- df %>%
 filter(Soort == soort) %>%
 select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
 
 # Variabelen definiëren
-oppervlakte_ha <- resultaat$MinOpp_ha[1]
-afstand_m <- resultaat$AfstandBiotopen_m[1]
-buffer_m <- 5000 #resultaat$Dispersiecap_m[1]
+buffer_m <- resultaat$Dispersiecap_m[1]
 
 print(resultaat)
 rm(df, resultaat)
@@ -257,368 +255,180 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
 }
 
 # Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
-grasland_max <- lijst_matches[["grasland"]]
-grasland_opp <- lijst_oppervlaktes[["grasland"]]
-moeras_max <- lijst_matches[["moeras"]]
-moeras_opp <- lijst_oppervlaktes[["moeras"]]
-zeergeschikt_max <- lijst_matches[["zeergeschikt1"]]
-zeergeschikt_opp <- lijst_oppervlaktes[["zeergeschikt1"]]
+waterbiotoop_bwk1_max <- lijst_matches[["waterbiotoop_bwk1"]]
+waterbiotoop_bwk1_opp <- lijst_oppervlaktes[["waterbiotoop_bwk1"]]
+waterbiotoop_notbwk_max <- lijst_matches[["waterbiotoop_notbwk"]]
+waterbiotoop_notbwk_opp <- lijst_oppervlaktes[["waterbiotoop_notbwk"]]
+landbiotoop_bwk1_max <- lijst_matches[["landbiotoop_bwk1"]]
+landbiotoop_bwk1_opp <- lijst_oppervlaktes[["landbiotoop_bwk1"]]
+landbiotoop_notbwk_max <- lijst_matches[["landbiotoop_notbwk"]]
+landbiotoop_notbwk_opp <- lijst_oppervlaktes[["landbiotoop_notbwk"]]
+landbiotoop_bos_max <- lijst_matches[["landbiotoop_bos"]]
+landbiotoop_bos_opp <- lijst_oppervlaktes[["landbiotoop_bos"]]
+landbiotoop_bwk_ruim_max <- lijst_matches[["landbiotoop_bwk_ruim"]]
+landbiotoop_bwk_ruim_opp <- lijst_oppervlaktes[["landbiotoop_bwk_ruim"]]
+
+# [1] "waterbiotoop_bwk1"    "waterbiotoop_notbwk"  "landbiotoop_bwk1"    
+# [4] "landbiotoop_notbwk"   "landbiotoop_bos"      "landbiotoop_bwk_ruim"
 
 # Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
 rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
-```{r filter ongeschikte elementen uit}
-# ==============================================================================
-# PREPARATIE: AANMAAK HOOGGROEN EN TERRILS (ONBRUIKBARE ELEMENTEN)
-# ==============================================================================
+```{r waterbiotoop bepalen}
+message("-> Waterbiotoop berekenen (Spoor Max & Opp)...")
 
-# 1. HOOGGROEN SYNCHRONISEREN
-hooggroen_raw         <- rast(here("data/input/ASCI Files/Groenkaart_2021.tif"))
-area_buffer_groen_crs <- project(area_buffer_fix, crs(hooggroen_raw))
-hooggroen_local_raw   <- crop(hooggroen_raw, area_buffer_groen_crs)
+# Basisbepaling (Geschikte minus ongeschikte cellen)
+waterbiotoop_bwk_basis <- terra::ifel(!is.na(waterbiotoop_bwk1_max) & is.na(waterbiotoop_notbwk_max), 1, NA)
 
-# Omzetten naar binair (1 = hooggroen, 0 = open)
-hooggroen_binair  <- terra::classify(hooggroen_local_raw, matrix(c(0.5, 1.5, 1), ncol = 3, byrow = TRUE), others = 0)
-hooggroen_10m_raw <- terra::aggregate(hooggroen_binair, fact = 10, fun = "max")
-
-# Matchen met jouw specifieke template_TV
-hooggroen_sync    <- project(hooggroen_10m_raw, crs(template_TV)) %>% 
-                     terra::resample(template_TV, method = "near")
-
-# 2. TERRILS ISOLEREN (kg%)
-tabel_terril <- tabel_vlaanderen[CODE %like% "^kg"]
-tabel_terril_TV <- tabel_terril[cel_id %in% studiegebied_globale_ids]
-
-# Aggregeren per cel
-tabel_terril_som <- tabel_terril_TV[, .(Oppervlakte = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
-
-r_terril <- template_TV * NA
-
-if(nrow(tabel_terril_som) > 0) {
-  setnames(tabel_terril_som, "cel_id", "globale_id")
-  tabel_terril_mapping <- merge(tabel_terril_som, vertaal_df, by = "globale_id", all.x = TRUE)
-  tabel_terril_mapping <- tabel_terril_mapping[!is.na(lokale_id) & Oppervlakte >= 0.01]
-  
-  if(nrow(tril_clean <- tabel_terril_mapping) > 0) {
-    r_terril[tril_clean$lokale_id] <- 1
-  }
-}
-
-# ==============================================================================
-# STAP 1: PARALLELLE START (BINAAIR VS FRACTIE)
-# ==============================================================================
-
-# Basisbiotoop Spoor A: Binair (Overal waar grasland óf moeras aanwezig is)
-biotoop_initieel_bin <- (grasland_max == 1) | (moeras_max == 1)
-biotoop_initieel_bin <- terra::ifel(biotoop_initieel_bin == 1, 1, NA)
-
-# Basisbiotoop Spoor B: Fracties (We tellen de werkelijke fracties op)
-biotoop_initieel_frac <- terra::cover(grasland_opp, moeras_opp)
-
-# Masker voor ongeschikte elementen (hooggroen OF terril)
-ongeschikt_masker <- (hooggroen_sync == 1) | (!is.na(r_terril) & r_terril == 1)
-ongeschikt_masker_bin <- terra::ifel(ongeschikt_masker, 1, NA)
-
-# Toepassen van het masker op beide sporen
-biotoop_fase1_bin     <- terra::mask(biotoop_initieel_bin, ongeschikt_masker_bin, maskvalues = 1)
-biotoop_fase1_frac    <- terra::mask(biotoop_initieel_frac, ongeschikt_masker_bin, maskvalues = 1)
-
-# --- SNELLE PARALLELLE CHECK STAP 1 ---
-ha_fase1_bin  <- (terra::global(biotoop_fase1_bin, "sum", na.rm = TRUE)[[1]]) * 100 / 10000
-ha_fase1_frac <- (terra::global(biotoop_fase1_frac, "sum", na.rm = TRUE)[[1]]) * 100 / 10000
-
-cat("--- TUSSENTIJDSE CHECK KWARTELKONING (STAP 1) ---\n")
-cat("Spoor A (Maximale Potentie - Binair): ", round(ha_fase1_bin, 2), " ha\n")
-cat("Spoor B (Werkelijke Kwaliteit - Frac): ", round(ha_fase1_frac, 2), " ha\n")
-cat("-------------------------------------------------\n")
-```
-
-```{r verdere filter}
-# --- STAP 2: DYNAMISCHE VALLEIGRONDEN & HYDROGRAFIE (PARALLEL & KOGELVRIJ) ---
-
-# 1. Inlezen van de hydrografische Tiff-bestanden
-raw_profiel      <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_profiel_10m.tif"))
-raw_drainage     <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_drainage_10m.tif"))
-raw_overstroming <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_ovstrg_10m.tif")) 
-
-# 2. Synchroniseren met de template van het Turnhouts Vennegebied
-profiel_sync      <- terra::crop(raw_profiel, template_TV) %>% terra::resample(template_TV, method = "near")
-drainage_sync     <- terra::crop(raw_drainage, template_TV) %>% terra::resample(template_TV, method = "near")
-overstroming_sync <- terra::crop(raw_overstroming, template_TV) %>% terra::resample(template_TV, method = "near")
-
-
-# ==============================================================================
-# DYNAMISCHE INDEX-MAPPING (Letters omzetten naar Rastergetallen)
-# ==============================================================================
-
-# --- A. PROFIEL MAPPING ---
-# Definieer de letters die je wilt selecteren
-gewenste_profielen <- c("p", "p+x")
-legenda_profiel    <- terra::cats(profiel_sync)[[1]]
-# Zoek dynamisch de getallen (values) die bij deze letters horen
-profiel_nummers    <- legenda_profiel$value[tolower(trimws(legenda_profiel$Label)) %in% tolower(gewenste_profielen)]
-
-# --- B. DRAINAGE MAPPING ---
-# PAS DIT LIJSTJE AAN MET DE EXACTE LETTERS DIE JIJ WILT (bijv. c("b", "c", "d", "e", "f", "g", "h", "Ih"))
-gewenste_drainages <- c("d", "e", "f", "g", "h", "i", "e-f", "h-i", "e-i") 
-legenda_drainage   <- terra::cats(drainage_sync)[[1]]
-drainage_nummers   <- legenda_drainage$value[tolower(trimws(legenda_drainage$Label)) %in% tolower(gewenste_drainages)]
-
-# --- C. OVERSTROMING MAPPING (alles dat mogelijks overstroomd) ---
-overstroming_nummers <- c(1, 2)
-
-
-# --- DIAGNOSTISCHE LOGS VOOR DE ZEKERHEID ---
-message("--- DYNAMISCHE RASTER MATCHING LOG ---")
-message("-> Gekoppelde nummers voor Profiel:    ", paste(profiel_nummers, collapse = ", "))
-message("-> Gekoppelde nummers voor Drainage:   ", paste(drainage_nummers, collapse = ", "))
-message("-> Gekoppelde nummers voor Overstrg:   ", paste(overstroming_nummers, collapse = ", "))
-message("---------------------------------------")
-
-
-# ==============================================================================
-# MASKERS TOEPASSEN (Nu veilig op basis van de dynamische nummers)
-# ==============================================================================
-mask_profiel      <- profiel_sync %in% profiel_nummers
-mask_drainage     <- drainage_sync %in% drainage_nummers
-mask_overstroming <- overstroming_sync %in% overstroming_nummers
-
-# Combineren (OR-relatie: geschikt als de cel aan minstens één van de drie eisen voldoet)
-vallei_geschikt        <- (mask_profiel == 1) | (mask_drainage == 1) | (mask_overstroming == 1)
-vallei_geschikt_binair <- terra::ifel(vallei_geschikt == 1, 1, NA)
-
-# Toepassen op beide sporen (Spoor A en Spoor B)
-biotoop_fase2_bin  <- terra::mask(biotoop_fase1_bin, vallei_geschikt_binair)
-biotoop_fase2_frac <- terra::mask(biotoop_fase1_frac, vallei_geschikt_binair)
-
-# --- PARALLELLE LOG OUTPUT (ALTIJD DELEN DOOR 100 VOOR FRAC) ---
-ha_fase2_bin  <- (terra::global(biotoop_fase2_bin, "sum", na.rm = TRUE)[[1]]) * 100 / 10000
-ha_fase2_frac <- (terra::global(biotoop_fase2_frac, "sum", na.rm = TRUE)[[1]]) * 100 / 10000
-
-cat("--- TUSSENTIJDSE CHECK STAP 2 (DYNAMISCH) ---\n")
-cat("Spoor A (Potentie - Binair): ", round(ha_fase2_bin, 2), " ha\n")
-cat("Spoor B (Kwaliteit - Frac):  ", round(ha_fase2_frac, 2), " ha\n")
-cat("--------------------------------------------\n")
-```
-
-```{r wegfilteren lijnvormige elementen}
-# --- STAP 3: MAJORITY FILTER (PARALLEL GECORRIGEERD) ---
-
-f_matrix <- terra::focalMat(template_TV, d = 20, type = "circle")
-f_matrix[f_matrix > 0] <- 1
-drempel <- ceiling(sum(f_matrix) / 2)
-
-# Spoor A (Binair): Buurtberekening en masker toepassen
-binaire_kaart_bin <- terra::ifel(!is.na(biotoop_fase2_bin), 1, 0)
-buurt_som_bin     <- terra::focal(binaire_kaart_bin, w = f_matrix, fun = "sum", na.rm = TRUE)
-vorm_fase3_bin    <- terra::ifel(buurt_som_bin >= drempel, 1, NA)
-biotoop_fase3_bin <- terra::mask(biotoop_fase2_bin, vorm_fase3_bin)
-
-# Spoor B (Fractie): Buurtberekening op binaire aanwezigheid
-binaire_kaart_frac <- terra::ifel(!is.na(biotoop_fase2_frac) & biotoop_fase2_frac > 0, 1, 0)
-buurt_som_frac     <- terra::focal(binaire_kaart_frac, w = f_matrix, fun = "sum", na.rm = TRUE)
-vorm_fase3_frac    <- terra::ifel(buurt_som_frac >= drempel, 1, NA)
-biotoop_fase3_frac <- terra::mask(biotoop_fase2_frac, vorm_fase3_frac)
-
-# --- PARALLELLE LOG OUTPUT ---
-ha_fase3_bin  <- (terra::global(biotoop_fase3_bin, "sum", na.rm = TRUE)[[1]]) * 100 / 10000
-ha_fase3_frac <- (terra::global(biotoop_fase3_frac, "sum", na.rm = TRUE)[[1]]) * 100 / 10000
-
-cat("--- TUSSENTIJDSE CHECK STAP 3 (GEFIXED) ---\n")
-cat("Spoor A (Potentie - Binair): ", round(ha_fase3_bin, 2), " ha\n")
-cat("Spoor B (Kwaliteit - Frac):  ", round(ha_fase3_frac, 2), " ha\n")
-cat("-------------------------------------------\n")
-```
-
-```{r kleine cluster wegfilteren}
-# --- STAP 4: MINIMAAL 3 HA FILTER (PARALLEL) ---
-
-# SPOOR A: Werkt binair (werkelijk = FALSE)
-fase4_lijst_bin <- cluster_filter_compleet(
-  masker     = biotoop_fase3_bin, 
-  opp_laag   = NULL, 
-  drempel_m2 = 30000, 
-  dist_m     = 50, 
-  werkelijk  = FALSE
+# --- SPOOR 1: MAXIMALE POTENTIE ---
+waterbiotoop1_max_list <- cluster_filter_compleet(
+  masker = waterbiotoop_bwk_basis, 
+  opp_laag = waterbiotoop_bwk1_max, # Gebruikt binaire pixelcounts
+  drempel_m2 = 400,                 # 0.04 ha = 400 m²
+  dist_m = 50, 
+  werkelijk = FALSE
 )
-biotoop_fase4_bin <- fase4_lijst_bin$raster
+waterbiotoop1_max <- waterbiotoop1_max_list$raster
 
-# SPOOR B: Werkt met fracties (werkelijk = TRUE)
-fase4_lijst_frac <- cluster_filter_compleet(
-  masker     = biotoop_fase3_frac, 
-  opp_laag   = biotoop_fase3_frac, 
-  drempel_m2 = 30000, 
-  dist_m     = 50, 
-  werkelijk  = TRUE
+# --- SPOOR 2: WERKELIJKE OPPERVLAKTE ---
+waterbiotoop1_opp_list <- cluster_filter_compleet(
+  masker = waterbiotoop_bwk_basis, 
+  opp_laag = waterbiotoop_bwk1_opp, # Gebruikt de werkelijke fracties
+  drempel_m2 = 400, 
+  dist_m = 50, 
+  werkelijk = TRUE
 )
-biotoop_fase4_frac <- fase4_lijst_frac$raster
+waterbiotoop1_opp <- waterbiotoop1_opp_list$raster
 
-# Check
-ha_fase4_bin  <- (terra::global(biotoop_fase4_bin, "sum", na.rm = TRUE)[[1]]) * 100 / 10000
-ha_fase4_frac <- (terra::global(biotoop_fase4_frac, "sum", na.rm = TRUE)[[1]]) * 100 / 10000
-
-cat("--- TUSSENTIJDSE CHECK STAP 4 ---\n")
-cat("Spoor A (Potentie - Binair): ", round(ha_fase4_bin, 2), " ha\n")
-cat("Spoor B (Kwaliteit - Frac):  ", round(ha_fase4_frac, 2), " ha\n")
-cat("----------------------------------\n")
+cl_id_max <- waterbiotoop1_max_list$clusters
+cl_id_opp <- waterbiotoop1_opp_list$clusters
 ```
 
-```{r afstand bosclusters}
-# --- STAP 5: OPEN-ZICHT EN HER-EVALUATIE (PARALLEL GEFIXT) ---
+```{r landbiotoop nabije omgeving}
+message("-> Landbiotoop nabije omgeving berekenen (Spoor Max & Opp)...")
 
-# 1. Maak het raster binair (1 = groen, NA = de rest)
-r_groen_bin <- terra::ifel(hooggroen_sync > 0, 1, NA)
+# Basisbepaling totaal landbiotoop
+landbiotoop_bwk_basis <- terra::ifel(!is.na(landbiotoop_bwk1_max) & is.na(landbiotoop_notbwk_max), 1, NA)
 
-# 2. DE SNELHEIDSTRICK: Focal count om kleine plukjes direct te elimineren
-w_matrix <- matrix(1, nrow = 3, ncol = 3)
-groen_buren <- terra::focal(r_groen_bin, w = w_matrix, fun = "sum", na.rm = TRUE)
-
-# Behoud alleen pixels die in een actieve 'groene buurt' liggen
-r_groen_clean <- terra::ifel(groen_buren >= 3 & r_groen_bin == 1, 1, NA)
-
-# 3. CLUSTER-ANALYSE
-groen_patches <- terra::patches(r_groen_clean, directions = 8, zeroAsNA = TRUE)
-groen_freq    <- terra::freq(groen_patches)
-
-# 4. Selecteer clusters >= 20 pixels (20 pixels * 100m² = 2000m² = 20 are)
-clusters_20are_ids <- groen_freq$value[groen_freq$count >= 20]
-
-# Initialiseer de uiteindelijke objecten vooraf als leeg
-biotoop_fase5_bin  <- template_TV * NA
-biotoop_fase5_frac <- template_TV * NA
-
-if(length(clusters_20are_ids) > 0) {
-  # Isoleer de grote boscomplexen
-  bos_groot <- groen_patches %in% clusters_20are_ids
-  bos_groot <- terra::ifel(bos_groot == 1, 1, NA)
-  
-  # 5. Bereken afstand tot deze 20-are clusters
-  dist_groen_clusters <- terra::distance(bos_groot)
-  
-  # 6. Maak het masker: 100m uitsluitingszone rond de clusters
-  masker_groen_100m_cluster <- dist_groen_clusters <= 100
-  masker_groen_100m_cluster <- terra::ifel(masker_groen_100m_cluster == 1, 1, NA)
-  
-  # 7. Toepassen op beide sporen via inverse mask
-  biotoop_fase5_kaal_bin  <- terra::mask(biotoop_fase4_bin, masker_groen_100m_cluster, inverse = TRUE)
-  biotoop_fase5_kaal_frac <- terra::mask(biotoop_fase4_frac, masker_groen_100m_cluster, inverse = TRUE)
-  
-  # 8. CRUCIALE RE-EVALUATIE VAN DE 3 HA GRENS
-  biotoop_fase5_bin  <- cluster_filter_compleet(biotoop_fase5_kaal_bin, NULL, 30000, 50, FALSE)$raster
-  biotoop_fase5_frac <- cluster_filter_compleet(biotoop_fase5_kaal_frac, opp_laag = biotoop_fase5_kaal_frac, 30000, 50, TRUE)$raster
-
-} else {
-  cat("Opmerking: Geen bosclusters van >= 20 are gevonden na filtering. Open zicht gegarandeerd!\n")
-  biotoop_fase5_bin  <- biotoop_fase4_bin
-  biotoop_fase5_frac <- biotoop_fase4_frac
-}
-
-# --- BEREKENING EN PARALLELLE LOG OUTPUT ---
-ha_fase5_bin  <- (terra::global(biotoop_fase5_bin, "sum", na.rm = TRUE)[[1]]) * 100 / 10000
-ha_fase5_frac <- (terra::global(biotoop_fase5_frac, "sum", na.rm = TRUE)[[1]]) * 100 / 10000
-
-cat("--- RESULTAAT STAP 5 ---\n")
-cat("Spoor A (Potentie - Binair): ", round(ha_fase5_bin, 2), " ha\n")
-cat("Spoor B (Kwaliteit - Frac):  ", round(ha_fase5_frac, 2), " ha\n")
-cat("------------------------\n")
-```
-
-```{r clusters > 10 ha}
-# --- STAP 6: FUNCTIONEEL LEEFGEBIED 10 HA (PARALLEL) ---
-
-# SPOOR A: Binair
-fase6_lijst_bin <- cluster_filter_compleet(
-  masker     = biotoop_fase5_bin, 
-  opp_laag   = NULL, 
-  drempel_m2 = 100000, 
-  dist_m     = 50, 
-  werkelijk  = FALSE
+# --- SPOOR 1: MAXIMALE POTENTIE ---
+landbiotoop1_max_list <- cluster_filter_compleet(
+  masker = landbiotoop_bwk_basis, opp_laag = landbiotoop_bwk1_max, 
+  drempel_m2 = 100000, dist_m = 50, werkelijk = FALSE
 )
-biotoop_fase6_bin <- fase6_lijst_bin$raster
-cl_id_fase6_bin   <- fase6_lijst_bin$clusters
+landbiotoop1_max <- landbiotoop1_max_list$raster
 
-# SPOOR B: Fractie
-fase6_lijst_frac <- cluster_filter_compleet(
-  masker     = biotoop_fase5_frac, 
-  opp_laag   = biotoop_fase5_frac, 
-  drempel_m2 = 100000, 
-  dist_m     = 50, 
-  werkelijk  = TRUE
+landbiotoop_bos1_max_list <- cluster_filter_compleet(
+  masker = landbiotoop_bos_max, opp_laag = landbiotoop_bos_max, 
+  drempel_m2 = 50000, dist_m = 50, werkelijk = FALSE
 )
-biotoop_fase6_frac <- fase6_lijst_frac$raster
-cl_id_fase6_frac   <- fase6_lijst_frac$clusters
+landbiotoop_bos1_max <- landbiotoop_bos1_max_list$raster
 
-# Check
-ha_fase6_bin  <- (terra::global(biotoop_fase6_bin, "sum", na.rm = TRUE)[[1]]) * 100 / 10000
-ha_fase6_frac <- (terra::global(biotoop_fase6_frac, "sum", na.rm = TRUE)[[1]]) * 100 / 10000
+# Bos-voorwaarde koppelen (binnen 10m)
+bos_buffer10_max <- terra::buffer(landbiotoop_bos1_max, width = 10)
+landbiotoop_nabij_max <- terra::mask(landbiotoop1_max, bos_buffer10_max)
 
-cat("--- TUSSENTIJDSE CHECK STAP 6 ---\n")
-cat("Spoor A (Potentie - Binair): ", round(ha_fase6_bin, 2), " ha\n")
-cat("Spoor B (Kwaliteit - Frac):  ", round(ha_fase6_frac, 2), " ha\n")
-cat("----------------------------------\n")
+
+# --- SPOOR 2: WERKELIJKE OPPERVLAKTE ---
+landbiotoop1_opp_list <- cluster_filter_compleet(
+  masker = landbiotoop_bwk_basis, opp_laag = landbiotoop_bwk1_opp, 
+  drempel_m2 = 100000, dist_m = 50, werkelijk = TRUE
+)
+landbiotoop1_opp <- landbiotoop1_opp_list$raster
+
+landbiotoop_bos1_opp_list <- cluster_filter_compleet(
+  masker = landbiotoop_bos_max, opp_laag = landbiotoop_bos_opp, 
+  drempel_m2 = 50000, dist_m = 50, werkelijk = TRUE
+)
+landbiotoop_bos1_opp <- landbiotoop_bos1_opp_list$raster
+
+# Bos-voorwaarde koppelen (binnen 10m)
+bos_buffer10_opp <- terra::buffer(landbiotoop_bos1_opp, width = 10)
+landbiotoop_nabij_opp <- terra::mask(landbiotoop1_opp, bos_buffer10_opp)
 ```
 
-```{r 75% zeer geschikt}
-# --- STAP 7: GRASLANDFRACTIE-CONTROLE (PARALLEL) ---
+```{r landbiotoop ruime omgeving}
+message("-> Landbiotoop ruimere omgeving berekenen (Spoor Max & Opp)...")
 
-# ==========================================
-# SPOOR A: BINAIR FILTER
-# ==========================================
-cl_id_fase6_bin_gefilterd <- terra::mask(cl_id_fase6_bin, biotoop_fase6_bin)
+# --- SPOOR 1: MAXIMALE POTENTIE ---
+landbiotoop_ruim_max_list <- cluster_filter_compleet(
+  masker = landbiotoop_bwk_ruim_max, opp_laag = landbiotoop_bwk_ruim_max, 
+  drempel_m2 = 250000, dist_m = 50, werkelijk = FALSE
+)
+landbiotoop_ruim_max <- landbiotoop_ruim_max_list$raster
 
-tot_biotoop_bin  <- terra::zonal(biotoop_fase5_bin, cl_id_fase6_bin_gefilterd, fun = "sum", na.rm = TRUE)
-tot_grasland_bin <- terra::zonal(grasland_max, cl_id_fase6_bin_gefilterd, fun = "sum", na.rm = TRUE)
-colnames(tot_biotoop_bin)  <- c("ID", "Tot_Biotoop")
-colnames(tot_grasland_bin) <- c("ID", "Tot_Grasland")
-
-df_bin <- merge(tot_biotoop_bin, tot_grasland_bin, by = "ID", all.x = TRUE)
-df_bin$Tot_Grasland[is.na(df_bin$Tot_Grasland)] <- 0
-df_bin$Grasland_Pct <- (df_bin$Tot_Grasland / df_bin$Tot_Biotoop) * 100
-
-ids_ok_bin <- df_bin$ID[df_bin$Grasland_Pct >= 75]
-biotoop_fase7_bin <- if(length(ids_ok_bin) > 0) terra::ifel(cl_id_fase6_bin_gefilterd %in% ids_ok_bin, biotoop_fase6_bin, NA) else template_TV * NA
-
-# ==========================================
-# SPOOR B: FRACTIE FILTER
-# ==========================================
-cl_id_fase6_frac_gefilterd <- terra::mask(cl_id_fase6_frac, biotoop_fase6_frac)
-
-tot_biotoop_frac  <- terra::zonal(biotoop_fase5_frac, cl_id_fase6_frac_gefilterd, fun = "sum", na.rm = TRUE)
-tot_grasland_frac <- terra::zonal(grasland_opp, cl_id_fase6_frac_gefilterd, fun = "sum", na.rm = TRUE)
-colnames(tot_biotoop_frac)  <- c("ID", "Tot_Biotoop")
-colnames(tot_grasland_frac) <- c("ID", "Tot_Grasland")
-
-df_frac <- merge(tot_biotoop_frac, tot_grasland_frac, by = "ID", all.x = TRUE)
-df_frac$Tot_Grasland[is.na(df_frac$Tot_Grasland)] <- 0
-df_frac$Grasland_Pct <- (df_frac$Tot_Grasland / df_frac$Tot_Biotoop) * 100
-
-ids_ok_frac <- df_frac$ID[df_frac$Grasland_Pct >= 75]
-biotoop_fase7_frac <- if(length(ids_ok_frac) > 0) terra::ifel(cl_id_fase6_frac_gefilterd %in% ids_ok_frac, biotoop_fase6_frac, NA) else template_TV * NA
-
-# ==========================================
-# EINDBALANS PARALLEL
-# ==========================================
-ha_fase7_bin  <- (terra::global(biotoop_fase7_bin, "sum", na.rm = TRUE)[[1]]) * 100 / 10000
-ha_fase7_frac <- (terra::global(biotoop_fase7_frac, "sum", na.rm = TRUE)[[1]]) * 100 / 10000
-
-cat("==================================================\n")
-cat("           FINALE BALANS KWARTELKONING            \n")
-cat("==================================================\n")
-cat("Spoor A: Uiteindelijk Potentieel Leefgebied: ", round(ha_fase7_bin, 2), " ha\n")
-cat("Spoor B: Uiteindelijk Werkelijk Leefgebied:  ", round(ha_fase7_frac, 2), " ha\n")
-cat("==================================================\n")
+# --- SPOOR 2: WERKELIJKE OPPERVLAKTE ---
+landbiotoop_ruim_opp_list <- cluster_filter_compleet(
+  masker = landbiotoop_bwk_ruim_max, opp_laag = landbiotoop_bwk_ruim_opp, 
+  drempel_m2 = 250000, dist_m = 50, werkelijk = TRUE
+)
+landbiotoop_ruim_opp <- landbiotoop_ruim_opp_list$raster
 ```
 
-```{r waarnemingen inlezen en ARPL kwartelkoning}
+```{r interactie water en land}
+message("-> Ruimtelijke interacties en eindsynthese per spoor uitvoeren...")
+
 # ==============================================================================
-# STAP 6: ACTUELE VERSPREIDING & ARPL OP BASIS VAN FINALE CLUSTERS (SPOOR B FIX)
+# VERWERKING SPOOR 1: MAXIMALE POTENTIE
 # ==============================================================================
-message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor kwartelkoning...")
+water_buffer100_max <- terra::buffer(waterbiotoop1_max, width = 100)
+land_buffer100_max  <- terra::buffer(landbiotoop_nabij_max, width = 100)
 
-# 1. Pad naar het waarnemingsbestand van de kwartelkoning
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Kwartelkoning.csv")
+waterbiotoop2_max <- terra::mask(waterbiotoop1_max, land_buffer100_max)
+landbiotoop2_max  <- terra::mask(landbiotoop_nabij_max, water_buffer100_max)
+
+ruim_buffer500_max        <- terra::buffer(landbiotoop_ruim_max, width = 500)
+waterbiotoop2_buffer500_max <- terra::buffer(waterbiotoop2_max, width = 500)
+
+waterbiotoop_finaal_max <- terra::mask(waterbiotoop2_max, ruim_buffer500_max)
+landbiotoop_finaal_max  <- terra::mask(landbiotoop_ruim_max, waterbiotoop2_buffer500_max)
+
+leefgebied_max <- terra::cover(waterbiotoop_finaal_max, landbiotoop_finaal_max)
+finaal_max_binair <- terra::ifel(!is.na(leefgebied_max), 1, NA)
+
+# ==============================================================================
+# VERWERKING SPOOR 2: WERKELIJKE OPPERVLAKTE
+# ==============================================================================
+water_buffer100_opp <- terra::buffer(waterbiotoop1_opp, width = 100)
+land_buffer100_opp  <- terra::buffer(landbiotoop_nabij_opp, width = 100)
+
+waterbiotoop2_opp <- terra::mask(waterbiotoop1_opp, land_buffer100_opp)
+landbiotoop2_opp  <- terra::mask(landbiotoop_nabij_opp, water_buffer100_opp)
+
+ruim_buffer500_opp        <- terra::buffer(landbiotoop_ruim_opp, width = 500)
+waterbiotoop2_buffer500_opp <- terra::buffer(waterbiotoop2_opp, width = 500)
+
+waterbiotoop_finaal_opp <- terra::mask(waterbiotoop2_opp, ruim_buffer500_opp)
+landbiotoop_finaal_opp  <- terra::mask(landbiotoop_ruim_opp, water_buffer100_opp) # Let op: behoudt de opp-locaties
+
+leefgebied_opp <- terra::cover(waterbiotoop_finaal_opp, landbiotoop_finaal_opp)
+finaal_opp_binair <- terra::ifel(!is.na(leefgebied_opp), 1, NA)
+
+# ==============================================================================
+# AANGEPASTE EINDSCHOONMAAK (Behoud de lagen nodig voor de Leaflet kaart!)
+# ==============================================================================
+rm(waterbiotoop1_max, landbiotoop_nabij_max, water_buffer100_max, land_buffer100_max, 
+   waterbiotoop2_max, landbiotoop2_max, ruim_buffer500_max, waterbiotoop2_buffer500_max,
+   waterbiotoop_finaal_max, landbiotoop_finaal_max, leefgebied_max,
+   landbiotoop_nabij_opp, water_buffer100_opp, 
+   waterbiotoop2_opp, landbiotoop2_opp, waterbiotoop2_buffer500_opp,
+   waterbiotoop_finaal_opp, landbiotoop_finaal_opp, leefgebied_opp)
+gc()
+
+message("-> Parallelle modellering succesvol voltooid! Bestanden opgeslagen in data/output/.")
+
+message("-> Parallelle modellering succesvol voltooid! Bestanden opgeslagen in data/output/.")
+```
+
+```{r waarnemingen inlezen en ARPL maanwaterjuffer}
+# ==============================================================================
+# STAP 6: ACTUELE VERSPREIDING & ARPL OP BASIS VAN WERKLIJKE OPPERVLAKTES (OPP)
+# ==============================================================================
+message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor maanwaterjuffer...")
+
+# 1. Pad naar het waarnemingsbestand van de maanwaterjuffer
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Maanwaterjuffer.csv")
 
 # 2. Inlezen van waarnemingen
 if (file.exists(waarnemingen_path)) {
@@ -638,182 +448,137 @@ if (file.exists(waarnemingen_path)) {
   has_observations    <- FALSE
 }
 
-# Initialiseer de finale lagen
-kwartelkoning_arpl_opp         <- terra::rast(template_TV, vals = NA)
-kwartelkoning_verspreiding_bin <- terra::rast(template_TV, vals = NA) 
-arpl_netwerk_count         <- 0
-verspreiding_netwerk_count <- 0
-ha_verspreiding_bin        <- 0
+# Initialiseer finale rasters
+maanwaterjuffer_arpl_opp        <- terra::rast(template_TV, vals = NA)
+maanwaterjuffer_verspr_opp      <- terra::rast(template_TV, vals = NA)
 
-ha_pot_bin <- ha_pot_buit <- ha_werk_bin <- ha_werk_buit <- ha_arpl <- 0
-ids_pot_bin <- ids_pot_buit <- ids_werk_bin <- ids_werk_buit <- ids_actueel_relevant <- c()
+# Metrics initialisatie
+n_frag_max_bin <- n_frag_max_buit <- n_frag_opp_bin <- n_frag_opp_buit <- 0
+ha_max_bin <- ha_max_buit <- ha_opp_bin <- ha_opp_buit <- 0
+n_frag_arpl_opp <- n_frag_vers_opp <- ha_arpl_opp <- ha_vers_opp <- 0
 
-# HARD CORRECTION: We baseren de netwerkwolken NU op Spoor B (biotoop_fase7_frac)
-# We filteren het raster zodat we enkel de cellen met een werkelijke oppervlakte meenemen
-biotoop_voor_netwerk <- terra::ifel(!is.na(biotoop_fase7_frac) & biotoop_fase7_frac > 0, 1, NA)
+# Netwerkwolken bouwen STRICT op basis van WERKLIJKE OPPERVLAKTE (Spoor OPP)
+biotoop_voor_netwerk <- terra::ifel(!is.na(finaal_opp_binair) & finaal_opp_binair > 0, 1, NA)
 
 if (!all(is.na(terra::values(biotoop_voor_netwerk, mat=FALSE)))) {
   
-  message("-> Metapopulatie-netwerkwolken bouwen op basis van WERKLIJKE OPPERVLAKTE (Spoor B)...")
-  # 1. Vectoriseer de scherpe fragmenten uit Spoor B
-  p_ruw_max <- terra::as.polygons(biotoop_voor_netwerk, aggregate = TRUE) %>% terra::disagg()
+  message("-> Metapopulatie-netwerkwolken bouwen op basis van WERKLIJKE OPPERVLAKTE...")
+  p_ruw_opp <- terra::as.polygons(biotoop_voor_netwerk, aggregate = TRUE) %>% terra::disagg()
   
-  # 2. Bouw de netwerkwolken via buffer-smeltmethode (halve dispersiecapaciteit)
-  p_buf_max        <- terra::buffer(p_ruw_max, width = buffer_m / 2)
-  p_net_max_wolken <- terra::aggregate(p_buf_max) %>% terra::disagg()
-  p_net_max_wolken$Netwerk_ID <- 1:nrow(p_net_max_wolken)
+  p_buf_opp        <- terra::buffer(p_ruw_opp, width = buffer_m / 2)
+  p_net_opp_wolken <- terra::aggregate(p_buf_opp) %>% terra::disagg()
+  p_net_opp_wolken$Netwerk_ID <- 1:nrow(p_net_opp_wolken)
   
-  # Koppel de Netwerk-IDs terug aan de originele deelelementen
-  p_ruw_max$Netwerk_ID <- terra::relate(p_ruw_max, p_net_max_wolken, "within") %>% 
+  p_ruw_opp$Netwerk_ID <- terra::relate(p_ruw_opp, p_net_opp_wolken, "within") %>% 
     apply(1, function(x) { if(any(x)) which(x)[1] else NA })
   
-  if (nrow(p_ruw_max) > 0) {
-    # 3. Maak het netwerk-ID raster aan
-    r_opp_net_ids <- biotoop_voor_netwerk * NA
-    r_opp_net_ids <- terra::rasterize(p_ruw_max, r_opp_net_ids, field = "Netwerk_ID", touches = FALSE)
+  r_opp_net_ids <- biotoop_voor_netwerk * NA
+  r_opp_net_ids <- terra::rasterize(p_ruw_opp, r_opp_net_ids, field = "Netwerk_ID", touches = FALSE)
+  
+  # Check binnen/buiten studiegebied via de netwerkwolken
+  relatie_matrix <- terra::relate(p_net_opp_wolken, area_shape_proj, "intersects")
+  ids_binnen <- p_net_opp_wolken$Netwerk_ID[apply(relatie_matrix, 1, any)]
+  ids_buiten <- setdiff(p_net_opp_wolken$Netwerk_ID, ids_binnen)
+  
+  # Synchroniseer de scherpe fragmentenkaarten met de finale parallelle maskers
+  cl_id_scherp_max <- terra::mask(cl_id_max, finaal_max_binair)
+  cl_id_scherp_opp <- terra::mask(cl_id_opp, finaal_opp_binair)
+  
+  # --- EXTRACTION A: ARPL (Strict op OPP) ---
+  if (has_observations && nrow(df_points_sf) > 0) {
+    extract_ids_arpl <- terra::extract(r_opp_net_ids, waarneming_blobs_vect)
+    ids_netwerken_raken_arpl <- unique(na.omit(extract_ids_arpl[[2]]))
+  } else { ids_netwerken_raken_arpl <- c() }
+  ids_actueel_relevant <- intersect(ids_binnen, ids_netwerken_raken_arpl)
+  
+  if(length(ids_actueel_relevant) > 0) {
+    m_arpl <- r_opp_net_ids %in% ids_actueel_relevant
+    m_arpl_tv <- terra::crop(terra::ifel(m_arpl == 1, 1, NA), template_TV)
+    maanwaterjuffer_arpl_opp <- terra::mask(terra::crop(finaal_opp_binair, template_TV), m_arpl_tv)
+    ha_arpl_opp <- calc_ha_exact(maanwaterjuffer_arpl_opp)
     
-    missende_cellen <- !is.na(biotoop_voor_netwerk) & is.na(r_opp_net_ids)
-    if (terra::global(missende_cellen, "sum", na.rm = TRUE)[[1]] > 0) {
-      cellen_indices <- which(terra::values(missende_cellen, mat = FALSE))
-      extracted_ids <- terra::extract(p_ruw_max, terra::xyFromCell(r_opp_net_ids, cellen_indices))
-      if (nrow(extracted_ids) > 0 && "Netwerk_ID" %in% colnames(extracted_ids)) {
-        r_opp_net_ids[cellen_indices] <- extracted_ids$Netwerk_ID
-      }
-    }
-    
-    # --- VECTOR-CHECK VOOR BINNEN/BUITEN STUDIEGEBIED ---
-    relatie_matrix <- terra::relate(p_net_max_wolken, area_shape_proj, "intersects")
-    ids_binnen <- p_net_max_wolken$Netwerk_ID[apply(relatie_matrix, 1, any)]
-    ids_buiten <- setdiff(p_net_max_wolken$Netwerk_ID, ids_binnen)
-    
-    # --- EXTRACTION A: ARPL ---
-    if (has_observations && nrow(df_points_sf) > 0) {
-      extract_ids_arpl <- terra::extract(r_opp_net_ids, waarneming_blobs_vect)
-      ids_netwerken_raken_arpl <- unique(na.omit(extract_ids_arpl[[2]]))
-    } else {
-      ids_netwerken_raken_arpl <- c()
-    }
-    ids_actueel_relevant <- intersect(ids_binnen, ids_netwerken_raken_arpl)
-    
-    if(length(ids_actueel_relevant) > 0) {
-      m_arpl <- r_opp_net_ids %in% ids_actueel_relevant
-      m_arpl_tv <- terra::crop(terra::ifel(m_arpl == 1, 1, NA), template_TV)
-      # Maskeer direct de echte fractiewaarden (Spoor B)
-      kwartelkoning_arpl_opp <- terra::mask(terra::crop(biotoop_fase7_frac, template_TV), m_arpl_tv)
-      arpl_netwerk_count <- length(ids_actueel_relevant)
-      ha_arpl <- calc_ha_exact(kwartelkoning_arpl_opp)
-    }
-    
-    # --- EXTRACTION B: ACTUELE VERSPREIDING ---
-    if (has_observations && nrow(df_points_sf) > 0) {
-      extract_ids_verspr <- terra::extract(r_opp_net_ids, waarneming_punten_vect)
-      ids_netwerken_raken_punten <- unique(na.omit(extract_ids_verspr[[2]]))
-    } else {
-      ids_netwerken_raken_punten <- c()
-    }
-    ids_verspreiding_clusters <- intersect(ids_binnen, ids_netwerken_raken_punten)
-    
-    if(length(ids_verspreiding_clusters) > 0) {
-      m_verspr <- r_opp_net_ids %in% ids_verspreiding_clusters
-      clusters_actueel <- terra::mask(biotoop_fase7_frac, terra::ifel(m_verspr == 1, 1, NA))
-      
-      clusters_actueel_tv <- terra::crop(clusters_actueel, template_TV)
-      kwartelkoning_verspreiding_bin <- terra::ifel(!is.na(clusters_actueel_tv) & clusters_actueel_tv > 0, 1, NA)
-      verspreiding_netwerk_count <- length(ids_verspreiding_clusters)
-      ha_verspreiding_bin <- calc_ha_exact(clusters_actueel_tv)
-    }
-    
-    # --- TABEL METRICS BEREKENEN (MET BINNEN/BUITEN VERDELING - KOGELVRIJ) ---
-    r_max_tv     <- terra::crop(biotoop_fase7_bin, template_TV)
-    r_opp_tv     <- terra::crop(biotoop_fase7_frac, template_TV)
-    r_net_ids_tv <- terra::crop(r_opp_net_ids, template_TV)
-    
-    # We pakken de scherpe 50m-fragment kaarten
-    cl_id_scherp_bin  <- terra::mask(cl_id_fase6_bin, biotoop_fase7_bin)
-    cl_id_scherp_frac <- terra::mask(cl_id_fase6_frac, biotoop_fase7_frac)
-    
-    # Initialiseer tellers op 0
-    n_frag_bin_bin <- n_frag_bin_buit <- n_frag_frac_bin <- n_frag_frac_buit <- 0
-    ha_pot_bin <- ha_pot_buit <- ha_werk_bin <- ha_werk_buit <- 0
-
-    # Hulpfunctie voor exacte hectares per netwerk-ID selectie
-    calc_ha_zone_style <- function(ids, target_raster) {
-      if(length(ids) == 0) return(0)
-      masker <- r_net_ids_tv %in% ids
-      r_gefilterd <- terra::mask(target_raster, terra::ifel(masker == 1, 1, NA))
-      return(round(calc_ha_exact(r_gefilterd), 2))
-    }
-
-    # --- VERWERK BINNEN ZONE (Als er binnen-ids zijn) ---
-    if(length(ids_binnen) > 0) {
-      m_binnen         <- r_net_ids_tv %in% ids_binnen
-      frag_bin_binnen  <- unique(na.omit(terra::values(terra::mask(cl_id_scherp_bin, m_binnen, maskvalues=FALSE), mat=FALSE)))
-      frag_frac_binnen <- unique(na.omit(terra::values(terra::mask(cl_id_scherp_frac, m_binnen, maskvalues=FALSE), mat=FALSE)))
-      
-      n_frag_bin_bin   <- length(frag_bin_binnen)
-      n_frag_frac_bin  <- length(frag_frac_binnen)
-      
-      ha_pot_bin       <- calc_ha_zone_style(ids_binnen, biotoop_fase7_bin)
-      ha_werk_bin      <- calc_ha_zone_style(ids_binnen, biotoop_fase7_frac)
-    }
-    
-    # --- VERWERK BUITEN ZONE (Veilige check tegen leegte/integer(0) crashes) ---
-    if(length(ids_buiten) > 0) {
-      m_buiten         <- r_net_ids_tv %in% ids_buiten
-      frag_bin_buiten  <- unique(na.omit(terra::values(terra::mask(cl_id_scherp_bin, m_buiten, maskvalues=FALSE), mat=FALSE)))
-      frag_frac_buiten <- unique(na.omit(terra::values(terra::mask(cl_id_scherp_frac, m_buiten, maskvalues=FALSE), mat=FALSE)))
-      
-      n_frag_bin_buit  <- length(frag_bin_buiten)
-      n_frag_frac_buit <- length(frag_frac_buiten)
-      
-      ha_pot_buit      <- calc_ha_zone_style(ids_buiten, biotoop_fase7_bin)
-      ha_werk_buit     <- calc_ha_zone_style(ids_buiten, biotoop_fase7_frac)
-    }
-    
-    # ARPL en Verspreiding tellen
-    n_frag_arpl <- length(na.omit(terra::unique(terra::mask(cl_id_scherp_frac, kwartelkoning_arpl_opp))[[1]]))
-    n_frag_vers <- length(na.omit(terra::unique(terra::mask(cl_id_scherp_frac, kwartelkoning_verspreiding_bin))[[1]]))
-
-    ha_arpl      <- calc_ha_exact(kwartelkoning_arpl_opp)
-    ha_verspreiding_bin <- calc_ha_exact(kwartelkoning_verspreiding_bin)
-    
-    rm(p_ruw_max, p_buf_max, p_net_max_wolken, relatie_matrix)
+    # Fragmenten tellen binnen ARPL
+    n_frag_arpl_opp <- length(na.omit(terra::unique(terra::mask(cl_id_scherp_opp, m_arpl_tv))[[1]]))
   }
+  
+  # --- EXTRACTION B: ACTUELE VERSPREIDING (Strict op OPP) ---
+  if (has_observations && nrow(df_points_sf) > 0) {
+    extract_ids_verspr <- terra::extract(r_opp_net_ids, waarneming_punten_vect)
+    ids_netwerken_raken_punten <- unique(na.omit(extract_ids_verspr[[2]]))
+  } else { ids_netwerken_raken_punten <- c() }
+  ids_verspreiding_clusters <- intersect(ids_binnen, ids_netwerken_raken_punten)
+  
+  if(length(ids_verspreiding_clusters) > 0) {
+    m_verspr <- r_opp_net_ids %in% ids_verspreiding_clusters
+    m_verspr_tv <- terra::crop(terra::ifel(m_verspr == 1, 1, NA), template_TV)
+    clusters_actueel_tv <- terra::crop(terra::mask(finaal_opp_binair, m_verspr_tv), template_TV)
+    maanwaterjuffer_verspr_opp <- terra::ifel(!is.na(clusters_actueel_tv) & clusters_actueel_tv > 0, 1, NA)
+    ha_vers_opp <- calc_ha_exact(clusters_actueel_tv)
+    
+    # Fragmenten tellen binnen Verspreiding
+    n_frag_vers_opp <- length(na.omit(terra::unique(terra::mask(cl_id_scherp_opp, m_verspr_tv))[[1]]))
+  }
+  
+  # --- METRICS EN OPPERVLAKTES REKENEN PER NETWERK ZONE ---
+  r_net_ids_tv <- terra::crop(r_opp_net_ids, template_TV)
+  
+  calc_ha_zone_style <- function(ids, target_raster) {
+    if(length(ids) == 0) return(0)
+    masker <- r_net_ids_tv %in% ids
+    r_gefilterd <- terra::mask(target_raster, terra::ifel(masker == 1, 1, NA))
+    return(round(calc_ha_exact(r_gefilterd), 2))
+  }
+  
+  count_frags_zone_style <- function(ids, cl_raster) {
+    if(length(ids) == 0) return(0)
+    masker <- r_net_ids_tv %in% ids
+    frags  <- terra::mask(cl_raster, terra::ifel(masker == 1, 1, NA))
+    return(length(na.omit(terra::unique(frags)[[1]])))
+  }
+
+  if(length(ids_binnen) > 0) {
+    n_frag_max_bin <- count_frags_zone_style(ids_binnen, cl_id_scherp_max)
+    n_frag_opp_bin <- count_frags_zone_style(ids_binnen, cl_id_scherp_opp)
+    ha_max_bin     <- calc_ha_zone_style(ids_binnen, finaal_max_binair)
+    ha_opp_bin     <- calc_ha_zone_style(ids_binnen, finaal_opp_binair)
+  }
+  if(length(ids_buiten) > 0) {
+    n_frag_max_buit <- count_frags_zone_style(ids_buiten, cl_id_scherp_max)
+    n_frag_opp_buit <- count_frags_zone_style(ids_buiten, cl_id_scherp_opp)
+    ha_max_buit     <- calc_ha_zone_style(ids_buiten, finaal_max_binair)
+    ha_opp_buit     <- calc_ha_zone_style(ids_buiten, finaal_opp_binair)
+  }
+  
+  rm(p_ruw_opp, p_buf_opp, p_net_opp_wolken, relatie_matrix)
 }
 
 # ==============================================================================
 # PIXEL STATUSKAART OPBOUWEN
 # ==============================================================================
-message("-> Statuskaart opbouwen via stabiele raster-resampling...")
 r_status <- terra::rast(template_TV, vals = NA)
-
 if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE)))) {
   r_net_ids_tv_sync <- terra::resample(r_net_ids_tv, template_TV, method = "near")
-  r_opp_tv_sync     <- terra::resample(r_opp_tv, template_TV, method = "near")
+  r_opp_tv_sync     <- terra::resample(finaal_opp_binair, template_TV, method = "near")
   
-  if(length(ids_pot_bin) > 0 || length(ids_pot_buit) > 0) {
-    m_pot_bin   <- !is.na(terra::match(r_net_ids_tv_sync, ids_pot_bin))
-    m_pot_buit  <- !is.na(terra::match(r_net_ids_tv_sync, ids_pot_buit))
-    
-    r_status <- terra::ifel(m_pot_buit, 2, r_status)
-    r_status <- terra::ifel(m_pot_bin, 1, r_status)
-    r_status <- terra::ifel(m_pot_buit & r_opp_tv_sync > 0, 4, r_status)
-    r_status <- terra::ifel(m_pot_bin & r_opp_tv_sync > 0, 3, r_status)
+  if(exists("ids_binnen") && length(ids_binnen) > 0) {
+    m_pot_bin   <- !is.na(terra::match(r_net_ids_tv_sync, ids_binnen))
+    r_status <- terra::ifel(m_pot_bin, 1, r_status) 
+    r_status <- terra::ifel(m_pot_bin & r_opp_tv_sync > 0, 3, r_status) 
   }
   rm(r_net_ids_tv_sync, r_opp_tv_sync)
 }
 
 # ==============================================================================
-# PRINT DE INTEGRALE CRITERIA TABEL (MET VOLLEDIGE BINNEN/BUITEN MATRIX)
+# PRINT DE INTEGRALE CRITERIA TABEL (NÚ MET PARALLELLE FRAGMENT-TELLINGEN)
 # ==============================================================================
-totaal_caption <- if(exists("soort")) paste("Totaaloverzicht habitat & verspreiding:", soort) else "Totaaloverzicht habitat & verspreiding"
+totaal_caption <- paste("Totaaloverzicht habitat & verspreiding:", soort)
 tabel_totaal <- data.frame(
-  Type = c("Maximaal Potentieel (Binnen)", "Maximaal Potentieel (Buiten)",
-           "Werkelijk Habitat (Binnen)", "Werkelijk Habitat (Buiten)",
+  Type = c("Maximaal Potentieel (Binnen TV)", "Maximaal Potentieel (Buiten TV)",
+           "Werkelijk Habitat (Binnen TV)", "Werkelijk Habitat (Buiten TV)",
            "Actueel Relevant (ARPL - Reële ha)", 
            "Actuele Verspreiding (Werkelijke ha)"),
-  Clusters_Fragmenten = c(n_frag_bin_bin, n_frag_bin_buit, n_frag_frac_bin, n_frag_frac_buit, n_frag_arpl, n_frag_vers),
-  Oppervlakte_ha = c(ha_pot_bin, ha_pot_buit, ha_werk_bin, ha_werk_buit, round(ha_arpl, 2), round(ha_verspreiding_bin, 2))
+  Clusters_Fragmenten = c(n_frag_max_bin, n_frag_max_buit, n_frag_opp_bin, n_frag_opp_buit, n_frag_arpl_opp, n_frag_vers_opp),
+  Oppervlakte_ha = c(ha_max_bin, ha_max_buit, ha_opp_bin, ha_opp_buit, round(ha_arpl_opp, 2), round(ha_vers_opp, 2))
 )
 
 tabel_totaal %>% 
@@ -821,77 +586,65 @@ tabel_totaal %>%
   kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
-```{r Interactieve kaart kwartelkoning}
+```{r Interactieve kaart maanwaterjuffer}
 # ==============================================================================
-# STAP 8: INTERACTIEVE KAART (LEAFLET - GEOPTIMALISEERD VOOR INDIVIDUELE FRAGMENTEN)
+# STAP 8: INTERACTIEVE KAART (LEAFLET) - MET APARTE BLAUWE WATERBIOTOOPLAAG
 # ==============================================================================
 if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE)))) {
   
-  message("-> Clusterstatistieken berekenen op basis van scherpe fragmenten en netwerken...")
+  message("-> Clusterstatistieken en polygonen genereren voor maanwaterjuffer...")
   
-  # 1. Scherpe, gefilterde fragmenten als basis voor de kaartgeometrie
-  cl_id_scherp <- terra::mask(cl_id_fase6_frac, biotoop_fase6_frac)
+  # 1. Netwerkwolken polygonen (Basis leefgebied)
+  cl_poly <- terra::as.polygons(r_net_ids_tv, aggregate = TRUE) %>% 
+    st_as_sf() %>% 
+    st_transform(4326)
   
-  # 2. Bereken de binaire pixel-count per individueel fragment
-  stats_fragment_freq <- terra::freq(cl_id_scherp)
-  colnames(stats_fragment_freq) <- c("layer", "ID", "count")
+  colnames(cl_poly)[1] <- "Netwerk_ID"
   
-  # 3. Bereken de werkelijke sub-pixel fractie-oppervlakte per INDIVIDUEEL fragment
-  stats_fragment_opp <- terra::zonal(biotoop_fase7_frac, cl_id_scherp, fun = "sum", na.rm = TRUE)
-  colnames(stats_fragment_opp) <- c("ID", "Fragment_Frac_Sum")
-  
-  # 4. Haal per fragment het overkoepelende Netwerk-ID op (Kogelvrije inline variant)
-  # FIX: De anonieme functie accepteert nu na.rm en filtert NA's correct uit voor x[1] wordt gegrepen
-  stats_netwerk_mapping <- terra::zonal(r_opp_net_ids, cl_id_scherp, fun = function(x, na.rm = TRUE) {
-    if(na.rm) x <- x[!is.na(x)]
-    if(length(x) > 0) return(x[1]) else return(NA)
-  })
-  colnames(stats_netwerk_mapping) <- c("ID", "Netwerk_ID")
-
-  # 5. Combineer alles in de info-tabel
-  cluster_info <- data.frame(
-      ID = stats_fragment_freq$ID, 
-      Frag_Pot_ha = (stats_fragment_freq$count * 100) / 10000
-    ) %>%
-    left_join(stats_fragment_opp, by = "ID") %>%
-    left_join(stats_netwerk_mapping, by = "ID") %>%
+  cl_poly_final <- cl_poly %>%
     mutate(
-      Frag_Werk_ha = (Fragment_Frac_Sum * 100) / 10000,
-      Zone = "Binnen TV",
-      # Check of het overkoepelende netwerk-ID in de ARPL-lijst zat
-      ARPL_Status = Netwerk_ID %in% ids_actueel_relevant,
-      Type = ifelse(ARPL_Status, "Werkelijk Habitat (ARPL)", "Potentieel (Geen ARPL)"),
+      Type = ifelse(Netwerk_ID %in% ids_actueel_relevant, "Werkelijk Habitat (ARPL)", "Potentieel (Geen ARPL)"),
       Popup = paste0(
         "<div style='font-family: Arial; min-width: 220px;'>",
-        "<strong>Fragment ID (Scherp):</strong> ", ID, "<br>",
-        "<strong>Behoort tot Netwerk Complex:</strong> ", coalesce(as.character(Netwerk_ID), "Geen"), "<br>",
-        "<strong>Soort:</strong> ", tools::toTitleCase(soort), "<br><hr>",
-        "<strong>Status:</strong> ", Type, "<br><br>",
-        "<strong>Fragment Oppervlakte (Binair):</strong> ", round(Frag_Pot_ha, 2), " ha<br>",
-        "<strong>Fragment Oppervlakte (Fractie):</strong> ", round(coalesce(Frag_Werk_ha, 0), 2), " ha<br><hr>",
-        "<span style='font-size:11px; color:#555;'><strong>Netwerk Info:</strong> Dit fragment ligt binnen een groter functioneel netwerk van minimaal 10 ha.</span>",
+        "<strong>Netwerk Complex ID:</strong> ", Netwerk_ID, "<br>",
+        "<strong>Soort:</strong> Maanwaterjuffer<br><hr>",
+        "<strong>Status:</strong> ", Type, "<br>",
         "</div>"
       )
     )
-
-  # Vectoriseren naar Polygonen op basis van de SCHERPE fragmenten
-  cl_poly <- terra::as.polygons(cl_id_scherp, aggregate = TRUE) %>% 
-    st_as_sf() %>% 
-    st_transform(4326)
-
-  colnames(cl_poly)[1] <- "ID" 
-  cl_poly_final <- cl_poly %>%
-    inner_join(cluster_info, by = "ID")
     
-} else {
-  cl_poly_final <- st_sf(st_sfc(crs = 4326))
-}
-
-# Projecteer status naar WGS84 voor Leaflet
+# 2. DEFINITIEVE FIX: Vectoriseer de 580ha aan water rechtstreeks (gefilterd op de buffers)
+  if (exists("waterbiotoop1_opp") && exists("ruim_buffer500_opp") && exists("land_buffer100_opp")) {
+    
+    # Filter het water analoog aan de ecologische regels: moet binnen 100m land én 500m ruim bos liggen
+    water_finaal_kaart <- terra::mask(waterbiotoop1_opp, land_buffer100_opp)
+    water_finaal_kaart <- terra::mask(water_finaal_kaart, ruim_buffer500_opp)
+    
+    # Maak er een zuivere, binaire integer mal van (verijdelt alle terra/sf pixel-crashes)
+    water_binair_int <- terra::as.int(terra::ifel(!is.na(water_finaal_kaart) & water_finaal_kaart > 0, 1, NA))
+    
+    if (!all(is.na(terra::values(water_binair_int, mat=FALSE)))) {
+      # Vectoriseer en herstel eventuele corrupte raster-grids via sf
+      water_poly <- terra::as.polygons(water_binair_int, aggregate = TRUE) %>% 
+        st_as_sf() %>% 
+        st_transform(4326) %>% 
+        st_make_valid()
+      
+      has_water_layer <- TRUE
+      message(paste("-> [LEAFLET SUCCESS] Er worden nu", nrow(water_poly), "blauwe vennen getekend op de kaart!"))
+    } else {
+      has_water_layer <- FALSE
+      message("⚠️ [LEAFLET WARN] Geen van de waterpixels overleefde de combinatie met de land-buffers.")
+    }
+  } else {
+    has_water_layer <- FALSE
+    message("⚠️ [LEAFLET WARN] Een van de vereiste biotooplasten of buffers ontbreekt in het geheugen.")
+  }
+}  
+# Projecties naar WGS84 voor overige lagen
 r_web_status <- terra::project(r_status, "EPSG:4326", method = "near")
 bbox         <- st_bbox(grens_web)
 
-# Projectie van waarnemingen van de kwartelkoning
 if(has_observations && nrow(df_points_sf) > 0) {
   waarneming_smear_web <- st_transform(waarneming_smear_sf, 4326)
   points_web           <- st_transform(df_points_sf, 4326)
@@ -900,8 +653,7 @@ if(has_observations && nrow(df_points_sf) > 0) {
   points_web           <- st_sf(st_sfc(crs = 4326))
 }
 
-# Geharmoniseerde kleurenpaletten
-# Groen voor actueel leefgebied, paars/magenta voor potentieel leefgebied zonder waarnemingen
+# Kleurenpaletten
 pal_status <- colorFactor(palette = c("#4daf4a", "#984ea3"), levels = c("Werkelijk Habitat (ARPL)", "Potentieel (Geen ARPL)"))
 pal_4      = colorFactor(palette = c("#984ea3", "#FF8C00", "#4daf4a", "#377eb8"), levels = 1:4, na.color = "transparent")
 
@@ -911,24 +663,38 @@ map <- leaflet() %>%
   addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet") %>%
   fitBounds(bbox[['xmin']], bbox[['ymin']], bbox[['xmax']], bbox[['ymax']])
 
-# Voeg status pixels toe
+# 1. Voeg status pixels toe
 if(!all(is.na(terra::values(r_web_status, mat=FALSE)))) {
   map <- map %>% addRasterImage(terra::as.int(r_web_status), colors = pal_4, opacity = 0.4, group = "Habitat Status (Pixels)")
 }
 
-# Voeg Polygonen en Waarnemingen toe
+# 2. Voeg de algemene Leefgebied-netwerkwolken toe
 map <- map %>%
   addPolygons(
     data = cl_poly_final,
     fillColor = ~pal_status(Type),
-    fillOpacity = ~ifelse(ARPL_Status, 0.6, 0.3), 
+    fillOpacity = 0.4, 
     color = ~pal_status(Type), 
-    weight = ~ifelse(ARPL_Status, 2.5, 1), 
-    opacity = 1,
+    weight = 2, 
     popup = ~Popup,
     group = "Leefgebieden (Clusters)"
   )
 
+# 3. EXTRA: Voeg de geschikte waterbiotopen toe (wordt als LAATSTE getekend, dus ligt BOVENOP)
+if (has_water_layer && nrow(water_poly) > 0) {
+  map <- map %>%
+    addPolygons(
+      data = water_poly,
+      fillColor = "#007fff",  # Helder blauw (Azure/Water kleur)
+      fillOpacity = 0.8,       # Iets minder transparant zodat het goed opvalt
+      color = "#0056b3",       # Donkerblauwe rand
+      weight = 1.5, 
+      popup = "<strong>Biotoop type:</strong> Geschikt Waterbiotoop (Voortplanting)",
+      group = "Geschikte Waterbiotopen"
+    )
+}
+
+# 4. Voeg dispersiebereik en waarnemingen toe
 if(has_observations && nrow(df_points_sf) > 0) {
   map <- map %>%
     addPolygons(
@@ -943,22 +709,22 @@ if(has_observations && nrow(df_points_sf) > 0) {
     )
 }
 
-# Grens en Controls toevoegen
+# 5. Grens en Controls toevoegen (Inclusief de nieuwe overlay groep)
 map %>%
   addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens Studiegebied") %>%
   addLayersControl(
     baseGroups = c("OSM (Kaart)", "Satelliet"),
-    overlayGroups = c("Leefgebieden (Clusters)", "Habitat Status (Pixels)", 
+    overlayGroups = c("Leefgebieden (Clusters)", "Geschikte Waterbiotopen", "Habitat Status (Pixels)", 
                       "Dispersiebereik (Smear)", "Waarnemingen", "Grens Studiegebied"),
     options = layersControlOptions(collapsed = FALSE)
   )
 ```
 
-```{r export kwartelkoning}
+```{r export maanwaterjuffer}
 # ==============================================================================
-# STAP 7: EXPORT MET KOGELVRIJE NUL-OPVULLING & CONTRACT FIX
+# STAP 7: EXPORT MET KOGELVRIJE NUL-OPVULLING EN SCHRIJFACTIE VOOR MAANWATERJUFFER
 # ==============================================================================
-message("-> Start geformatteerde export met nul-opvulling voor kwartelkoning...")
+message("-> Start geformatteerde export met nul-opvulling voor maanwaterjuffer...")
 
 base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
 folders <- list(
@@ -969,37 +735,43 @@ folders <- list(
 )
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-# 1. Spoor B: Werkelijke Oppervlakte formatteren naar 1/NA op basis van Spoor B (biotoop_fase7_frac)
-if(!all(is.na(terra::values(biotoop_fase7_frac, mat=FALSE)))) {
-  werkelijk_export_rast <- terra::ifel(!is.na(biotoop_fase7_frac) & biotoop_fase7_frac > 0, 1, NA)
+# 1. Spoor MAX: Maximale Potentie formatteren naar 1/NA
+if(!all(is.na(terra::values(finaal_max_binair, mat=FALSE)))) {
+  potentie_export_rast <- terra::ifel(!is.na(finaal_max_binair) & finaal_max_binair > 0, 1, NA)
+} else {
+  potentie_export_rast <- terra::rast(template_TV, vals = NA)
+}
+
+# 2. Spoor OPP: Werkelijke Oppervlakte formatteren naar 1/NA
+if(!all(is.na(terra::values(finaal_opp_binair, mat=FALSE)))) {
+  werkelijk_export_rast <- terra::ifel(!is.na(finaal_opp_binair) & finaal_opp_binair > 0, 1, NA)
 } else {
   werkelijk_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# 2. ARPL formatteren naar 1/NA
-if(exists("kwartelkoning_arpl_opp") && !all(is.na(terra::values(kwartelkoning_arpl_opp, mat=FALSE)))) {
-  arpl_export_rast <- terra::ifel(kwartelkoning_arpl_opp > 0, 1, NA)
+# 3. ARPL (Gebaseerd op OPP) formatteren naar 1/NA
+if(exists("maanwaterjuffer_arpl_opp") && !all(is.na(terra::values(maanwaterjuffer_arpl_opp, mat=FALSE)))) {
+  arpl_export_rast <- terra::ifel(maanwaterjuffer_arpl_opp > 0, 1, NA)
 } else {
   arpl_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# 3. Actuele Verspreiding formatteren naar 1/NA
-if(!all(is.na(terra::values(kwartelkoning_verspreiding_bin, mat=FALSE)))) {
-  verspreiding_export_rast <- terra::ifel(kwartelkoning_verspreiding_bin > 0, 1, NA)
+# 4. Actuele Verspreiding (Gebaseerd op OPP) formatteren naar 1/NA
+if(exists("maanwaterjuffer_verspr_opp") && !all(is.na(terra::values(maanwaterjuffer_verspr_opp, mat=FALSE)))) {
+  verspreiding_export_rast <- terra::ifel(maanwaterjuffer_verspr_opp > 0, 1, NA)
 } else {
   verspreiding_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# 4. De vernieuwde export_config bundel voor kwartelkoning
-# FIX: Gekoppeld aan biotoop_fase7_bin voor de pure potentiekaart
+# Bundeling in de export_config structuur
 export_config <- list(
-  list(rast = biotoop_fase7_bin,      naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast,       naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,                  naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
-  list(rast = verspreiding_export_rast,          naam = "Actuele_Verspreiding",     folder = folders$verspreiding, type = "INT1U")
+  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",       folder = folders$potentie,     type = "INT1U"),
+  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
+  list(rast = arpl_export_rast,         naam = "ARPL",                    folder = folders$arpl,         type = "INT1U"),
+  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 
-# De export-loop voegt netjes een nullen-omranding toe op de 50km buffer
+# De export-loop brengt de nul-omranding aan binnen area_buffer_fix en schrijft de .tif-bestanden weg
 for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
@@ -1013,17 +785,18 @@ for(item in export_config) {
     export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
   }
   
-  writeRaster(export_rast, 
-              filename = file_path, 
-              overwrite = TRUE, 
-              gdal = c("COMPRESS=LZW"), 
-              datatype = item$type)
+  terra::writeRaster(export_rast, 
+                     filename = file_path, 
+                     overwrite = TRUE, 
+                     gdal = c("COMPRESS=LZW"), 
+                     datatype = item$type)
               
-  message(paste("   [OK] Geëxporteerd:", basename(file_path)))
+  message(paste("   [OK] Geëxporteerd naar schijf:", basename(file_path)))
 }
 
-# Geheugen opschonen
-rm(werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
+# Grote eindschoonmaak van de export-gerelateerde objecten
+rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast,
+   waterbiotoop1_opp, land_buffer100_opp, ruim_buffer500_opp) # <- HIER DEFINITIEF OPGERUIMD
 gc()
 ```
 
