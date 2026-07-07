@@ -85,7 +85,8 @@ vertaal_df <- vertaal_df[!is.na(globale_id)]
 studiegebied_globale_ids <- unique(vertaal_df$globale_id)
 
 values(id_raster_TV) <- NA
-template_TV          <- id_raster_TV * NA
+# Reparatie in de Gebied-chunk:
+template_TV <- terra::rasterize(area_buffer_fix, id_raster_TV, field = 1, background = 0)
 
 rm(globale_id_raster, id_raster_TV_globale_values)
 gc()
@@ -294,7 +295,8 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
 
   # 3. Filter nu pas op basis van de gekoppelde ID's
   ids_potentieel_totaal <- stats_gecombineerd$ID[stats_gecombineerd$Pot_ha >= oppervlakte_ha]
-  ids_werkelijk_totaal  <- stats_gecombineerd$ID[stats_gecombineerd$Werk_ha >= oppervlakte_ha]
+  # Vervang in de statistiek chunk de filterregel door:
+ids_werkelijk_totaal <- stats_gecombineerd$ID[(stats_gecombineerd$Werk_ha * 10000) >= drempel_m2]
   
   # 4. Bepaal welke clusters het Turnhouts Vennegebied (binnen) raken
   zonal_zone <- terra::zonal(binnen_masker, cl_max, fun = "max", na.rm = TRUE)
@@ -347,14 +349,17 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
     }
   }
 
-  # Bereken de hectares op basis van de intacte clusters
-  ha_pot_bin      <- calc_ha(ids_pot_bin, "pot")
-  ha_pot_buit     <- calc_ha(ids_pot_buit, "pot")
-  ha_werk_bin     <- calc_ha(ids_werk_bin, "werk")
-  ha_werk_buit    <- calc_ha(ids_werk_buit, "werk")
-  ha_arpl         <- calc_ha(ids_actueel_relevant, "werk")
-  ha_verspreiding <- calc_ha(ids_verspreiding_clusters, "werk")
+  # --- GEFIXT VOOR PUNT 5: GEBRUIK DE DIRECTE EN INTACTE TABEL-OPPERVLAKTES ---
+  # We berekenen de hectares nu door simpelweg de vooraf berekende totale 
+  # cluster-hectares uit stats_gecombineerd te sommeren op basis van de gefilterde ID's.
+  ha_pot_bin      <- round(sum(stats_gecombineerd$Pot_ha[stats_gecombineerd$ID %in% ids_pot_bin]), 2)
+  ha_pot_buit     <- round(sum(stats_gecombineerd$Pot_ha[stats_gecombineerd$ID %in% ids_pot_buit]), 2)
+  ha_werk_bin     <- round(sum(stats_gecombineerd$Werk_ha[stats_gecombineerd$ID %in% ids_werk_bin]), 2)
+  ha_werk_buit    <- round(sum(stats_gecombineerd$Werk_ha[stats_gecombineerd$ID %in% ids_werk_buit]), 2)
+  ha_arpl         <- round(sum(stats_gecombineerd$Werk_ha[stats_gecombineerd$ID %in% ids_actueel_relevant]), 2)
+  ha_verspreiding <- round(sum(stats_gecombineerd$Werk_ha[stats_gecombineerd$ID %in% ids_verspreiding_clusters]), 2)
 
+  # De opbouw van het arpl_raster blijft functioneel hetzelfde
   if(length(ids_actueel_relevant) > 0) {
     arpl_raster <- terra::match(cl_max, ids_actueel_relevant)
     arpl_raster <- (!is.na(arpl_raster)) * 1
@@ -363,8 +368,9 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   }
 
 } else {
+  # Dit is de 'else' opvangbak voor als er helemaal geen clusters zijn
   ids_pot_bin <- ids_pot_buit <- ids_werk_bin <- ids_werk_buit <- ids_actueel_relevant <- c()
-  ha_pot_bin <- ha_pot_buit <- ha_werk_bin <- ha_werk_buit <- ha_arpl <- 0
+  ha_pot_bin <- ha_pot_buit <- ha_werk_bin <- ha_werk_buit <- ha_arpl <- ha_verspreiding <- 0
   arpl_raster <- terra::rast(template_TV, vals = NA)
 }
 
@@ -431,7 +437,12 @@ grens_web            <- st_transform(st_as_sf(area_shape_proj), 4326)
 bbox                 <- st_bbox(grens_web)
 
 pal_status <- colorFactor(palette = c("#4daf4a", "#e41a1c"), levels = c("Werkelijk Habitat", "Potentieel (Niet Werkelijk)"))
-pal_4 <- colorFactor(palette = c("#FF00FF", "#FF8C00", "#4daf4a", "#377eb8"), levels = 1:4, na.color = "transparent")
+pal_4 <- colorFactor(
+  palette = c("#FF00FF", "#FF8C00", "#4daf4a", "#377eb8"), 
+  levels = c("Maximale Potentie (Binnen)", "Maximale Potentie (Buiten)", 
+             "Werkelijk Habitat (Binnen)", "Werkelijk Habitat (Buiten)"), 
+  na.color = "transparent"
+)
 
 map <- leaflet() %>%
   addTiles(group = "OSM (Kaart)") %>%
