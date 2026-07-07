@@ -7,13 +7,21 @@ output:
     self_contained: true
     toc: true
     theme: flatly
-params:
-  soort_invoer: "gentiaanblauwtje" # Dit is de standaardwaarde als je handmatig test
 ---
 
 ```{r setup, include = FALSE}
-library(knitr)
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE
+)
+
 library(here)
+# CRUCIALE FIX: Dwing R Markdown om te werken vanaf de hoofdmap (arpl/)
+# Hierdoor werken relatieve paden met hier() overal hetzelfde.
+knitr::opts_knit$set(root.dir = here())
+
+library(knitr)
 library(tidyverse)
 library(sf)
 library(terra)
@@ -25,14 +33,11 @@ library(data.table)
 
 conflicted::conflicts_prefer(dplyr::filter)
 conflicted::conflicts_prefer(dplyr::select)
+conflicted::conflicts_prefer(dplyr::first)
 conflicted::conflicts_prefer(terra::intersect)
+conflicted::conflicts_prefer(terra::any)
 
-knitr::opts_chunk$set(
-  echo =F,
-  message = F,
-  warning = F
-)
-
+# Exacte hectare-berekening behouden (cellSize voor 100% precisie)
 calc_ha_exact <- function(r) {
   if(is.null(r)) return(0)
   if(all(is.na(terra::values(r, mat=FALSE)))) return(0)
@@ -40,61 +45,132 @@ calc_ha_exact <- function(r) {
   val <- terra::global(area_raster, "sum", na.rm = TRUE)[[1]]
   return(as.numeric(val))
 }
+
+maak_kaart_laag <- function(res_list) {
+  if(is.null(res_list)) return(NULL)
+  kernen <- terra::ifel(!is.na(res_list$kern), 1, NA)
+  if(!is.null(res_list$bouw)) {
+    bouw <- terra::ifel(!is.na(res_list$bouw), 2, NA)
+    finaal <- terra::cover(kernen, bouw)
+  } else {
+    finaal = kernen
+  }
+  return(finaal)
+}
+
+cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
+  if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
+    return(list(raster = masker * NA, clusters = masker * NA))
+  }
+  
+  temp_mask <- masker
+  if(dist_m > 0) temp_mask <- terra::buffer(masker, width = dist_m / 2)
+  
+  cl <- terra::patches(temp_mask, directions = 8, zeroAsNA = TRUE) %>% terra::mask(masker)
+  
+  if(werkelijk) {
+    stats_df <- terra::zonal(opp_laag, cl, fun = "sum", na.rm = TRUE)
+    colnames(stats_df) <- c("ID", "Waarde")
+    # CORRECTIE: Waarde is de som van fracties (1 pixel = 1.0). 
+    # Vermenigvuldigen met 100 geeft de juiste Area in m2!
+    stats_df$Area_m2 <- stats_df$Waarde * 100 
+  } else {
+    f <- terra::freq(cl)
+    stats_df <- data.frame(ID = f$value, Waarde = f$count)
+    stats_df$Area_m2 <- stats_df$Waarde * 100 # 1 binaire pixel = 100m2
+  }
+  
+  stats_df <- stats_df[!is.na(stats_df$ID), ]
+  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = cl * NA))
+  
+  voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
+  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = cl * NA))
+  
+  masker_binair <- cl %in% voldoet_ids
+  final_mask <- terra::ifel(masker_binair == 1, 1, NA)
+  
+  return(list(raster = terra::mask(masker, final_mask), clusters = cl))
+}
 ```
 
 # Soort informatie ophalen
-```{r Info ophalen}
+```{r Soort informatie}
 df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
-soort <- tolower(trimws(params$soort_invoer))
+soort <- "nachtzwaluw"
 
 resultaat <- df %>%
-  mutate(Soort_clean = tolower(trimws(Soort))) %>% 
-  filter(Soort_clean == soort) %>%
-  select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
+filter(Soort == soort) %>%
+select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
 
-type           <- resultaat$Type
-oppervlakte_ha <- resultaat$MinOpp_ha
-afstand_m      <- resultaat$AfstandBiotopen_m
-buffer_m       <- resultaat$Dispersiecap_m
+# Variabelen definiëren
+oppervlakte_ha <- resultaat$MinOpp_ha[1]
+afstand_m <- resultaat$AfstandBiotopen_m[1]
+buffer_m <- 10000 #resultaat$Dispersiecap_m[1]
 
 print(resultaat)
+rm(df, resultaat)
 ```
 
 # Gebied voorbereiden (Turnhouts Vennegebied)
-```{r Gebied voorbereiden}
-area_shape   <- vect(here("data/input/Turnhouts_Vennegebied.shp"))
-master_grid  <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
+```{r Gebied Voorbereiden}
+area_shape  <- vect(here("data/input/Turnhouts_Vennegebied.shp"))
+master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
+
+# Inlezen van de CSV-sleutel (gebruikt om tabel-indices te mappen naar codes)
+df_namen_sleutel <- read_csv(here("data/input/Excel_files/BWK_Laag_Namen_2025.csv"), show_col_types = FALSE)
+gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
 
 area_shape_proj <- project(area_shape, crs(master_grid))
 area_buffer_fix <- buffer(area_shape_proj, width = buffer_m)
 
-message("-> Vertaalraster voor globale/lokale cellen opbouwen...")
-
+message("-> Vertaalraster voor globale/lokale cellen opbouwen via snelle MASK methode...")
 id_raster_TV <- crop(master_grid, area_buffer_fix, snap = "near")
 
 globale_id_raster <- master_grid
 values(globale_id_raster) <- 1:ncell(globale_id_raster)
+
+# ==============================================================================
+# ULTRA-SNELLE METHODE: Direct naar data.frame met celnummers in C++
+# ==============================================================================
 id_raster_TV_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
+id_raster_TV_masked <- mask(id_raster_TV_globale_values, area_buffer_fix)
 
-extractie_ids <- terra::extract(id_raster_TV_globale_values, area_buffer_fix, cells = TRUE)
+message("-> Vertaaltabel bliksemsnel opbouwen via C++ dataframe extractie...")
 
-vertaal_df <- as.data.table(extractie_ids)
-setnames(vertaal_df, c("cell", names(id_raster_TV_globale_values)), c("lokale_id", "globale_id"))
+# 'cells = TRUE' zorgt ervoor dat terra direct een kolom 'cell' (lokale id) 
+# en een kolom met de waarde (globale id) genereert voor alle niet-NA cellen.
+df_extractie <- as.data.frame(id_raster_TV_masked, cells = TRUE)
+
+# Direct omzetten naar data.table en de kolommen juist benoemen
+vertaal_df <- as.data.table(df_extractie)
+
+# De kolommen heten nu standaard 'cell' en de naam van je raster (lyr.1 of gelijkaardig)
+# We hernoemen ze direct naar jouw vertrouwde structuur:
+setnames(vertaal_df, c(1, 2), c("lokale_id", "globale_id"))
+
+# Filter eventuele resterende NA's eruit
 vertaal_df <- vertaal_df[!is.na(globale_id)]
 
 studiegebied_globale_ids <- unique(vertaal_df$globale_id)
 
 values(id_raster_TV) <- NA
-template_TV          <- id_raster_TV * NA
+# --- DE CRUCIALE TEMPLATE REPARATIE ---
+# In plaats van alles op NA te zetten, maken we een binaire 'mal' van het studiegebied.
+# We rasteriseren de shapefile van het Turnhouts Vennegebied (area_buffer_fix) op het uitgesneden raster.
+template_TV <- terra::rasterize(area_buffer_fix, id_raster_TV, field = 1, background = 0)
 
-rm(globale_id_raster, id_raster_TV_globale_values)
+# Controleer of het nu wél cellen bevat:
+cat("Gecorrigeerd aantal pixels in template_TV: ", sum(terra::values(template_TV) == 1, na.rm=TRUE), "\n")
+
+grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
+
+rm(globale_id_raster, id_raster_TV_globale_values, id_raster_TV_masked)
 gc()
 ```
 
 # Biotoopfiltering (BWK-codes)
 ```{r Biotoopfiltering}
-# Biotoopfiltering (BWK-codes)
-# 1. LAAD DE BRON-CROSSWALK IN
+# 1. LAAD DE BRON-CROSSWALK/DICTIONARY IN
 df_nieuw <- read_csv(here("data/input/Excel_files/Resultaten_Totaal_Samengevoegd.csv"), show_col_types = FALSE)
 
 resultaten_gegroepeerd <- df_nieuw %>%
@@ -108,10 +184,11 @@ tabel_vlaanderen <- readRDS(here("data/input/Raster_Vlaanderen/BWK_Tabel_Turnhou
 setDT(tabel_vlaanderen)
 tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
 
+# Initialiseer de lijsten voor de verschillende habitat-bouwstenen
 lijst_matches      <- list()
 lijst_oppervlaktes <- list()
 
-# 3. VERWERK ELK HABITAT-TYPE
+# 3. VERWERK ELK HABITAT-TYPE DYNAMISCH VIA DATA.TABLE
 for(i in 1:nrow(resultaten_gegroepeerd)) {
   h_type <- resultaten_gegroepeerd$Type[i]
   h_data <- resultaten_gegroepeerd$Data[[i]]
@@ -163,17 +240,12 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   }
 }
 
-# Opschonen van de lijsten
-lijst_matches      <- purrr::compact(lijst_matches)
-lijst_oppervlaktes <- purrr::compact(lijst_oppervlaktes)
+# Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
+bwk_max <- lijst_matches[["bwk"]]
+bwk_opp <- lijst_oppervlaktes[["bwk"]]
 
-masker_bron <- lijst_matches[[1]]
-opp_bron    <- lijst_oppervlaktes[[1]]
-
-names(masker_bron) <- "Match"
-names(opp_bron)    <- "Oppervlakte"
-
-rm(tabel_vlaanderen, vertaal_df, lijst_matches, lijst_oppervlaktes)
+# Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
+rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
@@ -181,7 +253,9 @@ gc()
 ```{r Cluster}
 drempel_m2 <- oppervlakte_ha * 10000
 
+masker_bron <- bwk_max
 masker_bron[masker_bron == 0] <- NA
+opp_bron <- bwk_opp
 
 # 1. Bereken de clusters op basis van de maximale binaire potentie
 res_max <- cluster_filter_compleet(masker_bron, opp_bron, drempel_m2, afstand_m, werkelijk = FALSE)
@@ -245,7 +319,7 @@ levels(r_status) <- status_labels
 soort_format <- paste0(toupper(substr(soort, 1, 1)), tolower(substr(soort, 2, nchar(soort))))
 soort_format <- gsub(" ", "_", soort_format)
 
-waarnemingen_path <- paste0(here("data/input/Waarnemingen_Soorten"), "/Waarnemingen_", soort_format, ".csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_MiddelsteBonteSpecht.csv")
 
 if (file.exists(waarnemingen_path)) {
   waarnemingen_raw <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)
