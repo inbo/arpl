@@ -324,11 +324,6 @@ kamsalamander_waterbiotoop1 <- water_gefilterd_lijst$raster
 # Spoor 2: Fractie/oppervlakte eindlaag (als masker over de opp-laag leggen)
 kamsalamander_waterbiotoop1_opp <- terra::mask(kamsalamander_water_gecombineerd_opp, kamsalamander_waterbiotoop1)
 
-# Unieke cluster ID's bijhouden voor de statistieken later
-cl_id_max <- water_gefilterd_lijst$clusters
-cl_id_opp <- water_gefilterd_lijst$clusters
-
-
 # ==============================================================================
 # OPGEKUST EN KLAAR
 # ==============================================================================
@@ -413,6 +408,8 @@ kamsalamander_waterbiotoop1_finaal_opp <- terra::mask(
   kamsalamander_waterbiotoop1_opp, 
   kamsalamander_waterbiotoop1_finaal_max
 )
+
+cl_id_max <- terra::mask(r_water_clusters, kamsalamander_waterbiotoop1_finaal_max)
 
 # [Ha-berekening en printen blijft exact hetzelfde als jouw code]
 

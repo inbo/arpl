@@ -169,7 +169,7 @@ vertaal_df <- vertaal_df[!is.na(globale_id)]
 studiegebied_globale_ids <- unique(vertaal_df$globale_id)
 
 values(id_raster_TV) <- NA
-template_TV          <- id_raster_TV * NA
+template_TV <- terra::rasterize(area_buffer_fix, id_raster_TV, field = 1, background = 0)
 
 grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
 
@@ -414,6 +414,8 @@ heikikker_waterbiotoop1_finaal_opp <- terra::mask(
   heikikker_waterbiotoop1_finaal_max
 )
 
+cl_id_max <- terra::mask(r_water_clusters, heikikker_waterbiotoop1_finaal_max)
+
 # ==============================================================================
 # 3. HECTAREBEREKENING & PRINTEN
 # ==============================================================================
@@ -541,7 +543,7 @@ cluster_freq <- terra::freq(r_scherpe_clusters)
 # Bereken de oppervlakte in ha (1 cel van 10x10m = 100m² = 0.01 ha)
 cluster_freq$area_ha <- cluster_freq$count * 0.01
 
-# 3. Selecteer de ID's van clusters die minstens 5 hectare groot zijn
+# 3. Selecteer de ID's van clusters die minstens 50 hectare groot zijn
 goedgekeurde_cluster_ids <- cluster_freq$value[cluster_freq$area_ha >= 50]
 
 # 4. Filter de rasters op basis van de goedgekeurde ID's

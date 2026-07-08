@@ -372,6 +372,8 @@ boomkikker_waterbiotoop1_finaal_opp <- terra::mask(
   boomkikker_waterbiotoop1_finaal_max
 )
 
+cl_id_max <- terra::mask(r_water_clusters, boomkikker_waterbiotoop1_finaal_max)
+
 # ==============================================================================
 # 3. HECTAREBEREKENING & PRINTEN
 # ==============================================================================
