@@ -96,7 +96,7 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
 # Soort informatie ophalen
 ```{r Soort informatie}
 df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
-soort <- "watersnip"
+soort <- "wespendief"
 
 resultaat <- df %>%
 filter(Soort == soort) %>%
@@ -105,7 +105,7 @@ select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
 # Variabelen definiëren
 oppervlakte_ha <- resultaat$MinOpp_ha[1]
 afstand_m <- resultaat$AfstandBiotopen_m[1]
-buffer_m <- 10000 #resultaat$Dispersiecap_m[1]
+buffer_m <- 20000 #resultaat$Dispersiecap_m[1]
 
 print(resultaat)
 rm(df, resultaat)
@@ -241,8 +241,10 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
 }
 
 # Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
-biotopen_max <- lijst_matches[["biotopen"]]
-biotopen_opp <- lijst_oppervlaktes[["biotopen"]]
+voortplanting_bwk_max <- lijst_matches[["voortplanting_bwk"]]
+voortplanting_bwk_opp <- lijst_oppervlaktes[["voortplanting_bwk"]]
+foerageer_open_max <- lijst_matches[["foerageer_open"]]
+foerageer_open_opp <- lijst_oppervlaktes[["foerageer_open"]]
 
 # Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
 rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
