@@ -96,7 +96,7 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
 # Soort informatie ophalen
 ```{r Soort informatie}
 df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
-soort <- "wulp"
+soort <- "zwartespecht"
 
 resultaat <- df %>%
 filter(Soort == soort) %>%
@@ -241,177 +241,162 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
 }
 
 # Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
-biotoop_grasland_nat_max <- lijst_matches[["biotoop_grasland_nat"]]
-biotoop_grasland_nat_opp <- lijst_oppervlaktes[["biotoop_grasland_nat"]]
-biotoop_overig_max <- lijst_matches[["biotoop_overig"]]
-biotoop_overig_opp <- lijst_oppervlaktes[["biotoop_overig"]]
-
-
+bwk_max <- lijst_matches[["bwk"]]
+bwk_opp <- lijst_oppervlaktes[["bwk"]]
 
 # Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
 rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
-```{r omgevingslagen en verbossing}
+```{r basisbiotoop en groenkaart}
 # ==============================================================================
-# STAP 1: OMGEVINGSLAAG SYNCHRONISATIE & VERBOSSINGSFILTER (>20 ARE HOOGGROEN)
+# STAP 1: BASISBIOTOOP EN HOOGGROEN COUPLING (100M FUZZY CLUSTERING)
 # ==============================================================================
-message("-> Externe omgevingslagen en groenkaart inlezen...")
+message("-> Groenkaart inlezen en synchroniseren voor de bosstructuur...")
 
-r_ovstr_raw      <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_ovstrg_10m.tif"))
-r_drainage_raw   <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_drainage_10m.tif"))
-r_profiel_raw    <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_profiel_10m.tif"))
-r_groenkaart_raw <- rast(here("data/input/ASCI Files/Groenkaart_2021.tif"))
+# Inlezen en resamplen van de groenkaart (waarde 1 = hooggroen/bomen)
+r_groen_raw <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_groenkaart_10m.tif"))
+r_groen     <- terra::resample(r_groen_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
 
-# Grid-synchronisatie (C++ resample naar id_raster_TV grid)
-r_ovstr      <- terra::resample(r_ovstr_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
-r_drainage   <- terra::resample(r_drainage_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
-r_profiel    <- terra::resample(r_profiel_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
-r_groenkaart <- terra::resample(r_groenkaart_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
+# Selecteer hooggroen (waarde 1)
+zwartespecht_groen_ok <- r_groen == 1
 
-message("-> Verbossingsfilter berekenen: hooggroencomplexen groter dan 20 are uitsluiten...")
-# Oude model: Hooggroen (waarde 1) wegknippen indien groter dan 20 are (2000 m²)
-# We voeren een interne binaire clustering uit op de bomenlaag met dist_m = 0
-r_hooggroen_bin <- r_groenkaart == 1
-r_hooggroen_bin <- terra::ifel(r_hooggroen_bin == 1, 1, NA)
+# Logische OF-schakeling: geschikt bos is de BWK-bosklasse óf het hooggroen
+zwartespecht_basis_max <- (bwk_max == 1) | zwartespecht_groen_ok
+zwartespecht_basis_max <- terra::ifel(zwartespecht_basis_max == 1, 1, NA)
 
-verbossing_clusters <- cluster_filter_compleet(
-  masker       = r_hooggroen_bin,
-  opp_laag     = r_hooggroen_bin, # Dummy opp laag
-  drempel_m2   = 2000,   # 20 are = 2000 m²
-  dist_m       = 0,       
-  werkelijk    = FALSE      
-)
-
-# Dit binaire raster markeert de storende bosvlakken
-r_verbossing_masker <- !is.na(verbossing_clusters$raster)
-
-rm(r_ovstr_raw, r_drainage_raw, r_profiel_raw, r_groenkaart_raw, r_hooggroen_bin, verbossing_clusters)
-```
-
-
-```{r biotoopselectie}
-# ==============================================================================
-# STAP 2: VALLEIFILTER VIA TRANSPARANTE CODES EN BIOTOOPSELECTIE
-# ==============================================================================
-message("-> Valleicriteria configureren op basis van biologische klassen...")
-
-# --- 1. DEFINIEER DE CODES VISUEEL (GEEN HARDE PIXEL-ID'S BLIND GOKKEN) ---
-# Drainage: 'd' en natter (Klassen: d = matig nat, e = nat, f = zeer nat, g = uiterst nat, en 0 = open water/ven)
-gewenste_drainage_letters <- c("d", "e", "f", "g", "h", "i", "e-f", "h-i", "e-i")
-
-# Bodemprofiel: Polder- en valleigronden zonder duidelijke profielontwikkeling (vaak klasses '1' en '6')
-gewenste_profiel_types   <- c("p", "p+x")
-
-# Overstromingsgevoeligheid: Reëel en mogelijk overstromingsgevoelig (Klassen 1 en 2)
-gewenste_overstroming    <- c(1, 2)
-
-# --- 2. VERTAAL DE CODES NAAR DE ACTUELE RASTER-INDICES ---
-# Note: Pas de index-cijfers hieronder aan als je legenda-sleutel van de TIF's verschilt
-drain_cats           <- terra::cats(r_drainage)[[1]]
-drainage_nat_ok   <- drain_cats$value[drain_cats$Label %in% gewenste_drainage_letters]
-
-prof_cats           <- terra::cats(r_profiel)[[1]]
-profiel_vallei_ok   <- prof_cats$value[prof_cats$Label %in% gewenste_profiel_types]
-
-overstroming_ok   <- r_ovstr %in% gewenste_overstroming  # Direct gekoppeld aan klasse 1 en 2
-
-# --- 2. VERTAAL DE CODES NAAR DE ACTUELE RASTER-INDICES ---
-# Haal de ID-nummers op uit de categorie-tabellen
-ids_drainage_nat <- drain_cats$value[drain_cats$Label %in% gewenste_drainage_letters]
-ids_profiel_val  <- prof_cats$value[prof_cats$Label %in% gewenste_profiel_types]
-
-# Zet ze om naar zuivere binaire SpatRasters via de %in% operator
-drainage_nat_ok   <- r_drainage %in% ids_drainage_nat
-profiel_vallei_ok <- r_profiel %in% ids_profiel_val
-overstroming_ok   <- r_ovstr %in% gewenste_overstroming  # Was al een SpatRaster, perfect!
-
-# Nu zijn alle drie de bouwstenen identieke SpatRasters en werkt de OF-schakeling feilloos
-vallei_indicator <- overstroming_ok | drainage_nat_ok | profiel_vallei_ok
-
-# Gecombineerde binaire vallei-indicator
-vallei_indicator <- overstroming_ok | drainage_nat_ok | profiel_vallei_ok
-
-message("-> Valleifilter toepassen op de natte graslanden van de wulp...")
-
-# Graslanden moeten strikt binnen de gedefinieerde valleigebieden liggen
-r_grasland_vallei_max <- (biotoop_grasland_nat_max == 1) & vallei_indicator
-r_grasland_vallei_max <- terra::ifel(r_grasland_vallei_max == 1, 1, NA)
-r_grasland_vallei_opp <- terra::mask(biotoop_grasland_nat_opp, r_grasland_vallei_max)
-
-# Overige biotopen (zoals de open heidegebieden en venen) hoeven niet aan de valleicheck te voldoen
-r_biotoop_geschikt_max <- !is.na(r_grasland_vallei_max) | (biotoop_overig_max == 1)
-r_biotoop_geschikt_max <- terra::ifel(r_biotoop_geschikt_max == 1, 1, NA)
-
-# Koppel het verbossingsmasker (>20 are hooggroen) los als uitsluiting
-r_biotoop_finaal_max <- terra::ifel(r_biotoop_geschikt_max == 1 & r_verbossing_masker == 0, 1, NA)
-
-# Werkelijke oppervlakte fracties zuiver verzamelen en maskeren via het parallelle spoor
-r_biotoop_finaal_opp <- terra::app(
+# Oppervlaktespoor netjes parallel opbouwen
+zwartespecht_basis_opp <- terra::app(
   terra::sds(
-    terra::ifel(is.na(r_grasland_vallei_opp), 0, r_grasland_vallei_opp),
-    terra::ifel(is.na(biotoop_overig_opp), 0, biotoop_overig_opp)
+    terra::ifel(is.na(bwk_opp), 0, bwk_opp),
+    terra::ifel(is.na(zwartespecht_groen_ok), 0, terra::ifel(zwartespecht_groen_ok == 1, 1, 0))
   ),
   fun = function(x) pmin(sum(x, na.rm = TRUE), 1)
 )
-r_biotoop_finaal_opp     <- terra::mask(r_biotoop_finaal_opp, r_biotoop_finaal_max)
-r_biotoop_finaal_opp     <- terra::ifel(r_biotoop_finaal_opp == 0, NA, r_biotoop_finaal_opp)
+zwartespecht_basis_opp <- terra::mask(zwartespecht_basis_opp, zwartespecht_basis_max)
+zwartespecht_basis_opp <- terra::ifel(zwartespecht_basis_opp == 0, NA, zwartespecht_basis_opp)
 
-# Schoonmaken van de lokale omgevingsvariabelen
-rm(r_ovstr, r_drainage, r_profiel, drainage_nat_ok, profiel_vallei_ok, overstroming_ok, vallei_indicator, 
-   r_grasland_vallei_max, r_grasland_vallei_opp, r_biotoop_geschikt_max, r_verbossing_masker,
-   gewenste_drainage_letters, gewenste_profiel_types, gewenste_overstroming)
+message("-> Initiële landschapsclustering uitvoeren (100m fuzzy)...")
+# Alle geschikte cellen binnen 100m vormen samen één functioneel boscomplex
+zwartespecht_clusters <- cluster_filter_compleet(
+  masker       = zwartespecht_basis_max,
+  opp_laag     = zwartespecht_basis_opp,
+  drempel_m2   = 0,  # We groeperen eerst ALLES, filtering gebeurt in de volgende stappen
+  dist_m       = 100,       
+  werkelijk    = FALSE      
+)
+
+r_bos_patches <- zwartespecht_clusters$clusters
+
+rm(r_groen_raw, r_groen, zwartespecht_groen_ok, zwartespecht_clusters)
 ```
 
-```{r clustering en 100 ha eis}
-# ==============================================================================
-# STAP 3: RUIMTELIJKE CLUSTERING (100M FUZZY) EN MINIMALE OPP-EIS (100 HA)
-# ==============================================================================
-message("-> Landschappelijke clustering (100m fuzzy) en filteren op min. 100 ha...")
 
-# Wulp vereist een aaneengesloten open landschapscomplex van minimaal 100 ha (1.000.000 m²)
-wulp_clusters <- cluster_filter_compleet(
-  masker       = r_biotoop_finaal_max,
-  opp_laag     = r_biotoop_finaal_opp,
+```{r bosgrootte classificatie}
+# ==============================================================================
+# STAP 2: CLASSIFICATIE BOSGROOTTE (OPTIMAAL >300 HA VS. SUBOPTIMAAL 50-300 HA)
+# ==============================================================================
+# Failsafe initialisatie van de binaire klasse-rasters
+r_bos_groot_300ha <- template_TV * NA
+r_bos_klein_50ha  <- template_TV * NA
+
+if (!all(is.na(terra::values(r_bos_patches, mat=FALSE)))) {
+  message("-> Bosvlakken classificeren op basis van oppervlakte (ha)...")
+  
+  # Bereken de exacte oppervlakte (ha) per unieke cluster via cellSize
+  area_raster <- r_bos_patches * terra::cellSize(r_bos_patches, unit = "ha")
+  stats_ha    <- terra::zonal(area_raster, r_bos_patches, fun = "sum", na.rm = TRUE)
+  colnames(stats_ha) <- c("ID", "Grootte_ha")
+  
+  # Splits de ID's op basis van de ecologische drempelwaardes (50 ha en 300 ha)
+  ids_300ha   <- stats_ha$ID[stats_ha$Grootte_ha >= 300]
+  ids_50_300ha <- stats_ha$ID[stats_ha$Grootte_ha >= 50 & stats_ha$Grootte_ha < 300]
+  
+  if (length(ids_300ha) > 0) {
+    r_bos_groot_300ha <- terra::ifel(r_bos_patches %in% ids_300ha, 1, NA)
+  }
+  
+  if (length(ids_50_300ha) > 0) {
+    r_bos_klein_50ha <- terra::ifel(r_bos_patches %in% ids_50_300ha, 1, NA)
+  }
+  
+  rm(area_raster, stats_ha)
+}
+```
+
+```{r netwerk en actieradius analyse}
+# ==============================================================================
+# STAP 3: RECONSTRUCTIE NETWERK (4 KM BUFFER INTERACTIE)
+# ==============================================================================
+message("-> Netwerkrelaties controleren binnen een actieradius van 4 km...")
+
+# Failsafe initialisatie van de goedgekeurde suboptimalisatie laag
+r_bos_klein_goedgekeurd <- template_TV * NA
+
+# Criterium: Kleine bossen (50-300 ha) zijn geschikt mits ze op <4 km liggen van:
+# A. Een groot bos (>300 ha) ÓF B. Een ander klein bos (50-300 ha) waarmee ze een netwerk vormen.
+if (!all(is.na(terra::values(r_bos_klein_50ha, mat=FALSE)))) {
+  
+  # Trek de 4 km binaire buffers rondom beide bosklassen
+  buffer_4km_klein <- terra::buffer(r_bos_klein_50ha, width = 4000)
+  
+  if (!all(is.na(terra::values(r_bos_groot_300ha, mat=FALSE)))) {
+    buffer_4km_groot <- terra::buffer(r_bos_groot_300ha, width = 4000)
+    # Match met groot OF met klein (buiten zichzelf)
+    netwerk_masker <- !is.na(buffer_4km_groot) | !is.na(buffer_4km_klein)
+    suppressWarnings(rm(buffer_4km_groot))
+  } else {
+    netwerk_masker <- !is.na(buffer_4km_klein)
+  }
+  
+  # Snijd de kleine bossen uit die binnen het netwerk vallen
+  r_bos_klein_goedgekeurd <- terra::mask(r_bos_klein_50ha, netwerk_masker)
+  rm(buffer_4km_klein, netwerk_masker)
+}
+
+message("-> Alle biologisch geschikte bossen samenvoegen...")
+# Combineer de grote bossen en de goedgekeurde netwerkbossen (Logische OF)
+leefgebied1_max <- !is.na(r_bos_groot_300ha) | !is.na(r_bos_klein_goedgekeurd)
+leefgebied1_max <- terra::ifel(leefgebied1_max == 1, 1, NA)
+
+rm(r_bos_groot_300ha, r_bos_klein_50ha, r_bos_klein_goedgekeurd)
+```
+
+```{r finale clustering en samensmelting}
+# ==============================================================================
+# STAP 4: FINALE COMPACTHEIDS-CHECK EN SAMENSMELTING OP TEMPLATE
+# ==============================================================================
+message("-> Finale 100m clustering en 100 ha minimumoppervlakte check...")
+
+# Conform het oude script ondergaat de samengevoegde kaart een finale 100m fuzzy-clustering
+# waarbij het totale aaneengesloten complex minimaal 100 ha (1.000.000 m²) moet bedragen.
+finaal_leefgebied_clusters <- cluster_filter_compleet(
+  masker       = leefgebied1_max,
+  opp_laag     = zwartespecht_basis_opp,
   drempel_m2   = 1000000,   
   dist_m       = 100,       
   werkelijk    = FALSE      
 )
 
-r_wulp_cluster_ids <- wulp_clusters$clusters
-```
+# Definitieve eindrasters voor de zwarte specht
+zwartespecht_leefgebied_max <- terra::crop(finaal_leefgebied_clusters$raster, template_TV)
+zwartespecht_leefgebied_opp <- terra::crop(terra::mask(zwartespecht_basis_opp, zwartespecht_leefgebied_max), template_TV)
 
-```{r finale samensmelting}
-# ==============================================================================
-# STAP 4: FINALE SAMENSMELTING EN SCHOONMAAK (ZONDER ECOREGIO)
-# ==============================================================================
-message("-> Finaal leefgebied vastleggen en synchroniseren met template...")
-
-# Omdat de ecoregio-check wegvalt, is de binaire laag direct gelijk aan de goedgekeurde clusters
-wulp_leefgebied_max <- terra::ifel(!is.na(r_wulp_cluster_ids), 1, NA)
-
-# Het werkelijke oppervlaktespoor behoudt de ECHTE fracties binnen de goedgekeurde 100 ha clusters!
-wulp_leefgebied_opp <- terra::mask(r_biotoop_finaal_opp, wulp_leefgebied_max)
-
-# Synchroniseren en croppen naar het Turnhoutse master template
-wulp_leefgebied_max <- terra::crop(wulp_leefgebied_max, template_TV)
-wulp_leefgebied_opp <- terra::crop(wulp_leefgebied_opp, template_TV)
-
-# Grote eindschoonmaak van het geheugen
-rm(r_groenkaart, r_biotoop_finaal_max, r_biotoop_finaal_opp, wulp_clusters, r_wulp_cluster_ids)
+# Grote eindschoonmaak van het R-geheugen
+rm(zwartespecht_basis_max, zwartespecht_basis_opp, r_bos_patches, leefgebied1_max, finaal_leefgebied_clusters)
 gc()
 ```
 
 # Resultaten en Statistiek
 ```{r Resultaten en statistiek}
-# --- RECHTSTREEKSE KOPPELING MET DE GEGENEREERDE RASTERS VAN DE wulp ---
-opp_bron  <- wulp_leefgebied_opp             
-final_max <- wulp_leefgebied_max         
-final_opp <- wulp_leefgebied_opp         
+# --- RECHTSTREEKSE KOPPELING MET DE GEGENEREERDE RASTERS VAN DE zwartespecht ---
+opp_bron  <- zwartespecht_leefgebied_opp             
+final_max <- zwartespecht_leefgebied_max         
+final_opp <- zwartespecht_leefgebied_opp         
 
-# Dynamisch pad naar de waarnemingen van de wulp
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Wulp.csv")
+# Dynamisch pad naar de waarnemingen van de zwartespecht
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_zwartespecht.csv")
 
 # ==============================================================================
 # ECO-VISUELE FIX: Clusters definiëren via de echte 500m model-zoekstraal!

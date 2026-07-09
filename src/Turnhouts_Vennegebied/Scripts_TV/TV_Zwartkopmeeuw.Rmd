@@ -96,7 +96,7 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
 # Soort informatie ophalen
 ```{r Soort informatie}
 df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
-soort <- "wulp"
+soort <- "zwartkopmeeuw"
 
 resultaat <- df %>%
 filter(Soort == soort) %>%
@@ -105,7 +105,7 @@ select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
 # Variabelen definiëren
 oppervlakte_ha <- resultaat$MinOpp_ha[1]
 afstand_m <- resultaat$AfstandBiotopen_m[1]
-buffer_m <- 10000 #resultaat$Dispersiecap_m[1]
+buffer_m <- 20000 #resultaat$Dispersiecap_m[1]
 
 print(resultaat)
 rm(df, resultaat)
@@ -241,177 +241,174 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
 }
 
 # Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
-biotoop_grasland_nat_max <- lijst_matches[["biotoop_grasland_nat"]]
-biotoop_grasland_nat_opp <- lijst_oppervlaktes[["biotoop_grasland_nat"]]
-biotoop_overig_max <- lijst_matches[["biotoop_overig"]]
-biotoop_overig_opp <- lijst_oppervlaktes[["biotoop_overig"]]
-
-
+voortplanting_bwk_max <- lijst_matches[["voortplanting_bwk"]]
+voortplanting_bwk_opp <- lijst_oppervlaktes[["voortplanting_bwk"]]
+foerageer_open_max <- lijst_matches[["foerageer_open"]]
+foerageer_open_opp <- lijst_oppervlaktes[["foerageer_open"]]
 
 # Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
 rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
-```{r omgevingslagen en verbossing}
+```{r voortplantingsgebied}
 # ==============================================================================
-# STAP 1: OMGEVINGSLAAG SYNCHRONISATIE & VERBOSSINGSFILTER (>20 ARE HOOGGROEN)
+# STAP 1: VOORTPLANTINGSGEBIED (HOOGGROEN, MINIMAAL 50 HA, 100M CLUSTERING)
 # ==============================================================================
-message("-> Externe omgevingslagen en groenkaart inlezen...")
+message("-> Groenkaart inlezen en synchroniseren als fallback voor oude bossen...")
 
-r_ovstr_raw      <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_ovstrg_10m.tif"))
-r_drainage_raw   <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_drainage_10m.tif"))
-r_profiel_raw    <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_profiel_10m.tif"))
-r_groenkaart_raw <- rast(here("data/input/ASCI Files/Groenkaart_2021.tif"))
+# We laden de groenkaart nu alvast hier in (wordt ook in de latere chunks hergebruikt)
+r_groen_raw <- rast(here("data/input/ASCI Files/Groenkaart_2021.tif"))
+r_groen     <- terra::resample(r_groen_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
 
-# Grid-synchronisatie (C++ resample naar id_raster_TV grid)
-r_ovstr      <- terra::resample(r_ovstr_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
-r_drainage   <- terra::resample(r_drainage_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
-r_profiel    <- terra::resample(r_profiel_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
-r_groenkaart <- terra::resample(r_groenkaart_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
+# TIJDELIJKE FIX: Selecteer waarde 1 (hooggroen/bomen) in plaats van de bosinventaris
+zwartkopmeeuw_hooggroen_ok <- r_groen == 1
 
-message("-> Verbossingsfilter berekenen: hooggroencomplexen groter dan 20 are uitsluiten...")
-# Oude model: Hooggroen (waarde 1) wegknippen indien groter dan 20 are (2000 m²)
-# We voeren een interne binaire clustering uit op de bomenlaag met dist_m = 0
-r_hooggroen_bin <- r_groenkaart == 1
-r_hooggroen_bin <- terra::ifel(r_hooggroen_bin == 1, 1, NA)
+# Combineer de BWK-boskaarten met de hooggroen-selectie
+zwartkopmeeuw_voort_basis_max <- (voortplanting_bwk_max == 1) & zwartkopmeeuw_hooggroen_ok
+zwartkopmeeuw_voort_basis_max <- terra::ifel(zwartkopmeeuw_voort_basis_max == 1, 1, NA)
+zwartkopmeeuw_voort_basis_opp <- terra::mask(voortplanting_bwk_opp, zwartkopmeeuw_voort_basis_max)
 
-verbossing_clusters <- cluster_filter_compleet(
-  masker       = r_hooggroen_bin,
-  opp_laag     = r_hooggroen_bin, # Dummy opp laag
-  drempel_m2   = 2000,   # 20 are = 2000 m²
-  dist_m       = 0,       
-  werkelijk    = FALSE      
-)
-
-# Dit binaire raster markeert de storende bosvlakken
-r_verbossing_masker <- !is.na(verbossing_clusters$raster)
-
-rm(r_ovstr_raw, r_drainage_raw, r_profiel_raw, r_groenkaart_raw, r_hooggroen_bin, verbossing_clusters)
-```
-
-
-```{r biotoopselectie}
-# ==============================================================================
-# STAP 2: VALLEIFILTER VIA TRANSPARANTE CODES EN BIOTOOPSELECTIE
-# ==============================================================================
-message("-> Valleicriteria configureren op basis van biologische klassen...")
-
-# --- 1. DEFINIEER DE CODES VISUEEL (GEEN HARDE PIXEL-ID'S BLIND GOKKEN) ---
-# Drainage: 'd' en natter (Klassen: d = matig nat, e = nat, f = zeer nat, g = uiterst nat, en 0 = open water/ven)
-gewenste_drainage_letters <- c("d", "e", "f", "g", "h", "i", "e-f", "h-i", "e-i")
-
-# Bodemprofiel: Polder- en valleigronden zonder duidelijke profielontwikkeling (vaak klasses '1' en '6')
-gewenste_profiel_types   <- c("p", "p+x")
-
-# Overstromingsgevoeligheid: Reëel en mogelijk overstromingsgevoelig (Klassen 1 en 2)
-gewenste_overstroming    <- c(1, 2)
-
-# --- 2. VERTAAL DE CODES NAAR DE ACTUELE RASTER-INDICES ---
-# Note: Pas de index-cijfers hieronder aan als je legenda-sleutel van de TIF's verschilt
-drain_cats           <- terra::cats(r_drainage)[[1]]
-drainage_nat_ok   <- drain_cats$value[drain_cats$Label %in% gewenste_drainage_letters]
-
-prof_cats           <- terra::cats(r_profiel)[[1]]
-profiel_vallei_ok   <- prof_cats$value[prof_cats$Label %in% gewenste_profiel_types]
-
-overstroming_ok   <- r_ovstr %in% gewenste_overstroming  # Direct gekoppeld aan klasse 1 en 2
-
-# --- 2. VERTAAL DE CODES NAAR DE ACTUELE RASTER-INDICES ---
-# Haal de ID-nummers op uit de categorie-tabellen
-ids_drainage_nat <- drain_cats$value[drain_cats$Label %in% gewenste_drainage_letters]
-ids_profiel_val  <- prof_cats$value[prof_cats$Label %in% gewenste_profiel_types]
-
-# Zet ze om naar zuivere binaire SpatRasters via de %in% operator
-drainage_nat_ok   <- r_drainage %in% ids_drainage_nat
-profiel_vallei_ok <- r_profiel %in% ids_profiel_val
-overstroming_ok   <- r_ovstr %in% gewenste_overstroming  # Was al een SpatRaster, perfect!
-
-# Nu zijn alle drie de bouwstenen identieke SpatRasters en werkt de OF-schakeling feilloos
-vallei_indicator <- overstroming_ok | drainage_nat_ok | profiel_vallei_ok
-
-# Gecombineerde binaire vallei-indicator
-vallei_indicator <- overstroming_ok | drainage_nat_ok | profiel_vallei_ok
-
-message("-> Valleifilter toepassen op de natte graslanden van de wulp...")
-
-# Graslanden moeten strikt binnen de gedefinieerde valleigebieden liggen
-r_grasland_vallei_max <- (biotoop_grasland_nat_max == 1) & vallei_indicator
-r_grasland_vallei_max <- terra::ifel(r_grasland_vallei_max == 1, 1, NA)
-r_grasland_vallei_opp <- terra::mask(biotoop_grasland_nat_opp, r_grasland_vallei_max)
-
-# Overige biotopen (zoals de open heidegebieden en venen) hoeven niet aan de valleicheck te voldoen
-r_biotoop_geschikt_max <- !is.na(r_grasland_vallei_max) | (biotoop_overig_max == 1)
-r_biotoop_geschikt_max <- terra::ifel(r_biotoop_geschikt_max == 1, 1, NA)
-
-# Koppel het verbossingsmasker (>20 are hooggroen) los als uitsluiting
-r_biotoop_finaal_max <- terra::ifel(r_biotoop_geschikt_max == 1 & r_verbossing_masker == 0, 1, NA)
-
-# Werkelijke oppervlakte fracties zuiver verzamelen en maskeren via het parallelle spoor
-r_biotoop_finaal_opp <- terra::app(
-  terra::sds(
-    terra::ifel(is.na(r_grasland_vallei_opp), 0, r_grasland_vallei_opp),
-    terra::ifel(is.na(biotoop_overig_opp), 0, biotoop_overig_opp)
-  ),
-  fun = function(x) pmin(sum(x, na.rm = TRUE), 1)
-)
-r_biotoop_finaal_opp     <- terra::mask(r_biotoop_finaal_opp, r_biotoop_finaal_max)
-r_biotoop_finaal_opp     <- terra::ifel(r_biotoop_finaal_opp == 0, NA, r_biotoop_finaal_opp)
-
-# Schoonmaken van de lokale omgevingsvariabelen
-rm(r_ovstr, r_drainage, r_profiel, drainage_nat_ok, profiel_vallei_ok, overstroming_ok, vallei_indicator, 
-   r_grasland_vallei_max, r_grasland_vallei_opp, r_biotoop_geschikt_max, r_verbossing_masker,
-   gewenste_drainage_letters, gewenste_profiel_types, gewenste_overstroming)
-```
-
-```{r clustering en 100 ha eis}
-# ==============================================================================
-# STAP 3: RUIMTELIJKE CLUSTERING (100M FUZZY) EN MINIMALE OPP-EIS (100 HA)
-# ==============================================================================
-message("-> Landschappelijke clustering (100m fuzzy) en filteren op min. 100 ha...")
-
-# Wulp vereist een aaneengesloten open landschapscomplex van minimaal 100 ha (1.000.000 m²)
-wulp_clusters <- cluster_filter_compleet(
-  masker       = r_biotoop_finaal_max,
-  opp_laag     = r_biotoop_finaal_opp,
-  drempel_m2   = 1000000,   
+message("-> Voortplantingspatches groeperen (100m fuzzy) en filteren op min. 50 ha...")
+# Voortplantingsbos moet minimaal 50 ha (500.000 m²) groot zijn
+voort_clusters <- cluster_filter_compleet(
+  masker       = zwartkopmeeuw_voort_basis_max,
+  opp_laag     = zwartkopmeeuw_voort_basis_opp,
+  drempel_m2   = 500000,   
   dist_m       = 100,       
   werkelijk    = FALSE      
 )
 
-r_wulp_cluster_ids <- wulp_clusters$clusters
+# Bewaar de functionele boskernen
+r_zwartkopmeeuw_bos_max <- voort_clusters$raster
+r_zwartkopmeeuw_bos_opp <- terra::mask(voort_clusters$raster, r_zwartkopmeeuw_bos_max)
+
+# LET OP: r_groen NIET verwijderen, die hebben we in Stap 3 en 4 nog hard nodig!
+rm(zwartkopmeeuw_hooggroen_ok, zwartkopmeeuw_voort_basis_max, zwartkopmeeuw_voort_basis_opp, voort_clusters)
 ```
 
-```{r finale samensmelting}
+
+```{r open foerageergebied}
 # ==============================================================================
-# STAP 4: FINALE SAMENSMELTING EN SCHOONMAAK (ZONDER ECOREGIO)
+# STAP 2: OPEN FOERAGEERGEBIED (MINIMAAL 50 HA, 500M CLUSTERING)
 # ==============================================================================
-message("-> Finaal leefgebied vastleggen en synchroniseren met template...")
+message("-> Open foerageergebieden groeperen (500m fuzzy) en filteren op min. 50 ha...")
 
-# Omdat de ecoregio-check wegvalt, is de binaire laag direct gelijk aan de goedgekeurde clusters
-wulp_leefgebied_max <- terra::ifel(!is.na(r_wulp_cluster_ids), 1, NA)
+# Open foerageergebieden moeten minimaal 50 ha (500.000 m²) groot zijn
+open_foer_clusters <- cluster_filter_compleet(
+  masker       = foerageer_open_max,
+  opp_laag     = foerageer_open_opp,
+  drempel_m2   = 500000,   
+  dist_m       = 500,       
+  werkelijk    = FALSE      
+)
 
-# Het werkelijke oppervlaktespoor behoudt de ECHTE fracties binnen de goedgekeurde 100 ha clusters!
-wulp_leefgebied_opp <- terra::mask(r_biotoop_finaal_opp, wulp_leefgebied_max)
+r_zwartkopmeeuw_open_max <- open_foer_clusters$raster
+r_zwartkopmeeuw_open_opp <- terra::mask(foerageer_open_opp, r_zwartkopmeeuw_open_max)
 
-# Synchroniseren en croppen naar het Turnhoutse master template
-wulp_leefgebied_max <- terra::crop(wulp_leefgebied_max, template_TV)
-wulp_leefgebied_opp <- terra::crop(wulp_leefgebied_opp, template_TV)
+rm(open_foer_clusters)
+```
 
-# Grote eindschoonmaak van het geheugen
-rm(r_groenkaart, r_biotoop_finaal_max, r_biotoop_finaal_opp, wulp_clusters, r_wulp_cluster_ids)
+```{r optimaal foerageercomplex}
+# ==============================================================================
+# STAP 3: OPTIMAAL FOERAGEERCOMPLEX (BOS + OPEN, MINIMAAL 250 HA, 500M)
+# ==============================================================================
+message("-> Bos en open gebieden samenvoegen tot gecombineerd foerageerlandschap...")
+
+# Logische OF-schakeling: foerageergebied is ofwel het geschikte bos óf het open foerageergebied
+foerageer_basis_max <- !is.na(r_zwartkopmeeuw_bos_max) | !is.na(r_zwartkopmeeuw_open_max)
+foerageer_basis_max <- terra::ifel(foerageer_basis_max == 1, 1, NA)
+
+# We tellen de fracties logisch samen voor het oppervlaktespoor
+foerageer_basis_opp <- terra::app(
+  terra::sds(
+    terra::ifel(is.na(r_zwartkopmeeuw_bos_opp), 0, r_zwartkopmeeuw_bos_opp),
+    terra::ifel(is.na(r_zwartkopmeeuw_open_opp), 0, r_zwartkopmeeuw_open_opp)
+  ),
+  fun = function(x) pmin(sum(x, na.rm = TRUE), 1)
+)
+foerageer_basis_opp <- terra::ifel(foerageer_basis_opp == 0, NA, foerageer_basis_opp)
+
+message("-> Complexen groeperen (500m fuzzy) en filteren op min. 250 ha...")
+# Het gecombineerde, optimale foerageercomplex moet minimaal 250 ha (2.500.000 m²) groot zijn
+foerageer_complex_clusters <- cluster_filter_compleet(
+  masker       = foerageer_basis_max,
+  opp_laag     = foerageer_basis_opp,
+  drempel_m2   = 2500000,   
+  dist_m       = 500,       
+  werkelijk    = FALSE      
+)
+
+r_foerageer2_max <- foerageer_complex_clusters$raster
+r_foerageer2_opp <- terra::mask(foerageer_basis_opp, r_foerageer2_max)
+
+rm(foerageer_basis_max, foerageer_basis_opp, foerageer_complex_clusters)
+```
+
+```{r actieradius en finale samensmelting}
+# ==============================================================================
+# STAP 4: ACTIERADIUS CHECK (5 KM) EN LEEFGEBIED SAMENSMELTING MET WERKELIJKE OPP
+# ==============================================================================
+message("-> Actieradiuskoppeling (5000m) berekenen tussen boskernen en foerageercomplexen...")
+
+# Gebruik de binaire rasters om de buffers van 5 km te trekken
+buffer_5000m_foer <- terra::buffer(r_foerageer2_max, width = 5000)
+buffer_5000m_bos  <- terra::buffer(r_zwartkopmeeuw_bos_max, width = 5000)
+
+# Snijd zowel de binaire potentie (max) als de werkelijke fracties (opp) uit via de buffers
+r_voortplanting0_max <- terra::mask(r_zwartkopmeeuw_bos_max, buffer_5000m_foer)
+r_voortplanting0_opp <- terra::mask(r_zwartkopmeeuw_bos_opp, buffer_5000m_foer) # Echte bos-fracties behouden!
+
+r_foerageer0_max <- terra::mask(r_foerageer2_max, buffer_5000m_bos)
+r_foerageer0_opp <- terra::mask(r_foerageer2_opp, buffer_5000m_bos) # Echte foerageer-fracties behouden!
+
+rm(buffer_5000m_foer, buffer_5000m_bos)
+
+message("-> Leefgebieden (Spoor 1) samenvoegen...")
+leefgebied1_max <- !is.na(r_voortplanting0_max) | !is.na(r_foerageer0_max)
+leefgebied1_max <- terra::ifel(leefgebied1_max == 1, 1, NA)
+
+# Tel de werkelijke fracties zuiver bij elkaar op (tot max 100% / 1.0 per cel)
+leefgebied1_opp <- terra::app(
+  terra::sds(
+    terra::ifel(is.na(r_voortplanting0_opp), 0, r_voortplanting0_opp),
+    terra::ifel(is.na(r_foerageer0_opp), 0, r_foerageer0_opp)
+  ),
+  fun = function(x) pmin(sum(x, na.rm = TRUE), 1)
+)
+leefgebied1_opp <- terra::ifel(leefgebied1_opp == 0, NA, leefgebied1_opp)
+
+rm(r_voortplanting0_max, r_voortplanting0_opp, r_foerageer0_max, r_foerageer0_opp)
+
+message("-> Finale clustering (500m fuzzy) en eindoppervlakte filter (250 ha)...")
+# De finale landscape-check (250 ha) gebeurt binair om de grens te bepalen
+finaal_leefgebied_clusters <- cluster_filter_compleet(
+  masker       = leefgebied1_max,
+  opp_laag     = leefgebied1_opp,
+  drempel_m2   = 2500000,   
+  dist_m       = 500,       
+  werkelijk    = FALSE      
+)
+
+# CRUCIALE FIX: Het finale werkelijke oppervlaktespoor snijdt de ECHTE fracties (leefgebied1_opp) uit!
+zwartkopmeeuw_leefgebied_max <- terra::crop(finaal_leefgebied_clusters$raster, template_TV)
+zwartkopmeeuw_leefgebied_opp <- terra::crop(terra::mask(leefgebied1_opp, zwartkopmeeuw_leefgebied_max), template_TV)
+
+# Grote eindschoonmaak
+rm(r_zwartkopmeeuw_bos_max, r_zwartkopmeeuw_bos_opp, r_zwartkopmeeuw_open_max, r_zwartkopmeeuw_open_opp, 
+   r_foerageer2_max, r_foerageer2_opp, leefgebied1_max, leefgebied1_opp, finaal_leefgebied_clusters)
 gc()
 ```
 
 # Resultaten en Statistiek
 ```{r Resultaten en statistiek}
-# --- RECHTSTREEKSE KOPPELING MET DE GEGENEREERDE RASTERS VAN DE wulp ---
-opp_bron  <- wulp_leefgebied_opp             
-final_max <- wulp_leefgebied_max         
-final_opp <- wulp_leefgebied_opp         
+# --- RECHTSTREEKSE KOPPELING MET DE GEGENEREERDE RASTERS VAN DE zwartkopmeeuw ---
+opp_bron  <- zwartkopmeeuw_leefgebied_opp             
+final_max <- zwartkopmeeuw_leefgebied_max         
+final_opp <- zwartkopmeeuw_leefgebied_opp         
 
-# Dynamisch pad naar de waarnemingen van de wulp
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Wulp.csv")
+# Dynamisch pad naar de waarnemingen van de zwartkopmeeuw
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_zwartkopmeeuw.csv")
 
 # ==============================================================================
 # ECO-VISUELE FIX: Clusters definiëren via de echte 500m model-zoekstraal!
