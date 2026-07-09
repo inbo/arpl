@@ -251,168 +251,164 @@ rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
-```{r omgevingslagen watersnip}
+```{r voortplantingsgebied}
 # ==============================================================================
-# STAP 1: OMGEVINGSFILTERS & PRIMAIRE CLUSTERING (10 HA, 100M BUFFER)
+# STAP 1: VOORTPLANTINGSGEBIED (HOOGGROEN, MINIMAAL 50 HA, 100M CLUSTERING)
 # ==============================================================================
-message("-> Drainage en groen/waterkaarten inlezen en synchroniseren...")
+message("-> Groenkaart inlezen en synchroniseren als fallback voor oude bossen...")
 
-r_drainage_raw <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_drainage_10m.tif"))
-r_groen_raw    <- rast(here("data/input/ASCI Files/Groenkaart_2021.tif"))
-r_grb_raw      <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_grb_water_10m.tif"))
+# We laden de groenkaart nu alvast hier in (wordt ook in de latere chunks hergebruikt)
+r_groen_raw <- rast(here("data/input/ASCI Files/Groenkaart_2021.tif"))
+r_groen     <- terra::resample(r_groen_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
 
-# Extents en grids 100% matchen met het brongrid via resample
-r_drainage <- terra::resample(r_drainage_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
-r_groen    <- terra::resample(r_groen_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
-r_grb      <- terra::resample(r_grb_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
+# TIJDELIJKE FIX: Selecteer waarde 1 (hooggroen/bomen) in plaats van de bosinventaris
+wespendief_hooggroen_ok <- r_groen == 1
 
-# Drainagecorrectie (Drainageklasse d en natter, of code 0)
-drain_cats           <- terra::cats(r_drainage)[[1]]
-geselecteerde_letters <- c("d", "e", "f", "h", "i", "g", "e-f", "h-i", "e-i")
-watersnip_drain_ids     <- drain_cats$value[drain_cats$Label %in% geselecteerde_letters]
-watersnip_drainage_ok  <- r_drainage %in% watersnip_drain_ids
+# Combineer de BWK-boskaarten met de hooggroen-selectie
+wespendief_voort_basis_max <- (voortplanting_bwk_max == 1) & wespendief_hooggroen_ok
+wespendief_voort_basis_max <- terra::ifel(wespendief_voort_basis_max == 1, 1, NA)
+wespendief_voort_basis_opp <- terra::mask(voortplanting_bwk_opp, wespendief_voort_basis_max)
 
-# Basisbiotoop combineren met de harde geografische randvoorwaarden
-watersnip_basis_max <- (biotopen_max == 1) & watersnip_drainage_ok
-watersnip_basis_max <- terra::ifel(watersnip_basis_max == 1, 1, NA)
-watersnip_basis_opp <- terra::mask(biotopen_opp, watersnip_basis_max)
-
-# Ruim direct de zware onbewerkte bronbestanden op
-rm(r_drainage_raw, r_ecoregio_raw, r_groen_raw, r_grb_raw, watersnip_drainage_ok, watersnip_ecoregio_ok)
-```
-
-
-```{r primaire clustering watersnip}
-# ==============================================================================
-# STAP 2: PRIMAIRE CLUSTERING (10 HA, 100M BUFFER)
-# ==============================================================================
-message("-> Primaire clustering (100m fuzzy koppeling) en filteren op min. 10 ha...")
-
-watersnip_clusters <- cluster_filter_compleet(
-  masker       = watersnip_basis_max,
-  opp_laag     = watersnip_basis_opp,
-  drempel_m2   = 100000,   
+message("-> Voortplantingspatches groeperen (100m fuzzy) en filteren op min. 50 ha...")
+# Voortplantingsbos moet minimaal 50 ha (500.000 m²) groot zijn
+voort_clusters <- cluster_filter_compleet(
+  masker       = wespendief_voort_basis_max,
+  opp_laag     = wespendief_voort_basis_opp,
+  drempel_m2   = 500000,   
   dist_m       = 100,       
   werkelijk    = FALSE      
 )
 
-r_cluster_ids <- watersnip_clusters$clusters
+# Bewaar de functionele boskernen
+r_wespendief_bos_max <- voort_clusters$raster
+r_wespendief_bos_opp <- terra::mask(voort_clusters$raster, r_wespendief_bos_max)
+
+# LET OP: r_groen NIET verwijderen, die hebben we in Stap 3 en 4 nog hard nodig!
+rm(wespendief_hooggroen_ok, wespendief_voort_basis_max, wespendief_voort_basis_opp, voort_clusters)
 ```
 
-```{r kwaliteitscontrole watersnip}
-# ==============================================================================
-# STAP 3: LANDSCHAPSKWALITEIT CHECKS PER UNIEKE CLUSTER
-# ==============================================================================
-# Failsafe initialisatie van de tussentijdse ID-lijst
-ids_kwaliteit_ok <- c()
 
-if (!all(is.na(terra::values(r_cluster_ids, mat=FALSE)))) {
-  
-  message("-> Landschapschecks per cluster (openheid <75% bos & water <90%) berekenen...")
-  
-  # A. Totale oppervlakte (ha) per unieke cluster
-  area_ha_raster <- r_cluster_ids * terra::cellSize(r_cluster_ids, unit = "ha")
-  totale_opp_per_cluster <- terra::zonal(area_ha_raster, r_cluster_ids, fun = "sum", na.rm = TRUE)
-  colnames(totale_opp_per_cluster) <- c("Cluster_ID", "Totaal_ha")
-  
-  # B. Aandeel bos/verbossing controleren (<75% verbossing)
-  bos_masker <- terra::mask(r_groen == 1, r_cluster_ids)
-  bos_ha_raster <- bos_masker * terra::cellSize(bos_masker, unit = "ha")
-  bos_per_cluster <- terra::zonal(bos_ha_raster, r_cluster_ids, fun = "sum", na.rm = TRUE)
-  colnames(bos_per_cluster) <- c("Cluster_ID", "Bos_ha")
-  
-  # C. Aandeel open water via GRB watergang evalueren (<90% open water)
-  water_masker <- terra::mask(r_grb == 1, r_cluster_ids)
-  water_ha_raster <- water_masker * terra::cellSize(water_masker, unit = "ha")
-  water_per_cluster <- terra::zonal(water_ha_raster, r_cluster_ids, fun = "sum", na.rm = TRUE)
-  colnames(water_per_cluster) <- c("Cluster_ID", "Water_ha")
-  
-  # Data samenvoegen voor de percentage-analyse
-  cluster_stats <- merge(totale_opp_per_cluster, bos_per_cluster, by = "Cluster_ID", all.x = TRUE) %>%
-    merge(water_per_cluster, by = "Cluster_ID", all.x = TRUE)
-  
-  cluster_stats[is.na(cluster_stats)] <- 0
-  cluster_stats$Pct_Bos   <- (cluster_stats$Bos_ha / cluster_stats$Totaal_ha) * 100
-  cluster_stats$Pct_Water <- (cluster_stats$Water_ha / cluster_stats$Totaal_ha) * 100
-  
-  # Selecteer de clusters die voldoen aan de openheids- en watereisen
-  ids_kwaliteit_ok <- cluster_stats$Cluster_ID[cluster_stats$Pct_Bos < 75 & cluster_stats$Pct_Water < 90]
-  
-  # Tijdelijke objecten uit deze stap opschonen
-  rm(area_ha_raster, totale_opp_per_cluster, bos_masker, bos_ha_raster, bos_per_cluster, water_masker, water_ha_raster, water_per_cluster, cluster_stats)
-}
+```{r open foerageergebied}
+# ==============================================================================
+# STAP 2: OPEN FOERAGEERGEBIED (MINIMAAL 50 HA, 500M CLUSTERING)
+# ==============================================================================
+message("-> Open foerageergebieden groeperen (500m fuzzy) en filteren op min. 50 ha...")
+
+# Open foerageergebieden moeten minimaal 50 ha (500.000 m²) groot zijn
+open_foer_clusters <- cluster_filter_compleet(
+  masker       = foerageer_open_max,
+  opp_laag     = foerageer_open_opp,
+  drempel_m2   = 500000,   
+  dist_m       = 500,       
+  werkelijk    = FALSE      
+)
+
+r_wespendief_open_max <- open_foer_clusters$raster
+r_wespendief_open_opp <- terra::mask(foerageer_open_opp, r_wespendief_open_max)
+
+rm(open_foer_clusters)
 ```
 
-```{r kern en finale samenstelling}
+```{r optimaal foerageercomplex}
 # ==============================================================================
-# STAP 4: TERRESTRISCHE KERN CHECK & FINALE SAMENVOEGING
+# STAP 3: OPTIMAAL FOERAGEERCOMPLEX (BOS + OPEN, MINIMAAL 250 HA, 500M)
 # ==============================================================================
-# Failsafe initialisatie van de eindrasters
-watersnip_leefgebied_max <- template_TV * NA
-watersnip_leefgebied_opp <- template_TV * NA
+message("-> Bos en open gebieden samenvoegen tot gecombineerd foerageerlandschap...")
 
-if (length(ids_kwaliteit_ok) > 0) {
-  message("-> Check aaneengesloten terrestrische kern (min. 10 ha) binnen goedgekeurde clusters...")
-  
-  # Bepaling van de terrestrische laag (basisbiotoop zonder open water)
-  r_terrestrisch_basis <- watersnip_basis_max & (r_grb == 0 | is.na(r_grb))
-  r_terrestrisch_basis <- terra::ifel(r_terrestrisch_basis == 1, 1, NA)
-  
-  # Interne clustering om de terrestrische blokken te vinden (dist_m = 0)
-  terrestrische_patches <- cluster_filter_compleet(
-    masker       = r_terrestrisch_basis,
-    opp_laag     = watersnip_basis_opp,
-    drempel_m2   = 100000,   # Moet minimaal 10 ha (100.000 m²) groot zijn
-    dist_m       = 0,       
-    werkelijk    = FALSE      
-  )
-  
-  r_terr_patch_ids <- terrestrische_patches$clusters
-  
-  if (!all(is.na(terra::values(r_terr_patch_ids, mat=FALSE)))) {
-    message("-> Overlap matrices berekenen via snelle C++ unieke pixelcombinaties...")
-    
-    r_combinatie <- c(r_cluster_ids, r_terr_patch_ids)
-    df_overlap <- as.data.frame(r_combinatie, na.rm = TRUE)
-    
-    if (nrow(df_overlap) > 0) {
-      colnames(df_overlap) <- c("Cluster_ID", "Terr_Patch_ID")
-      
-      df_overlap_gefilterd <- df_overlap %>% 
-        filter(Cluster_ID %in% ids_kwaliteit_ok)
-      
-      ids_finaal_goedgekeurd <- unique(df_overlap_gefilterd$Cluster_ID)
-      
-      if (length(ids_finaal_goedgekeurd) > 0) {
-        message(paste("-> Finaal", length(ids_finaal_goedgekeurd), "cluster(s) voldoen aan ALLE biologische criteria."))
-        
-        watersnip_leefgebied_max <- terra::ifel(r_cluster_ids %in% ids_finaal_goedgekeurd, 1, NA)
-        watersnip_leefgebied_opp <- terra::mask(watersnip_clusters$raster, watersnip_leefgebied_max)
-      }
-    }
-    rm(r_combinatie, df_overlap)
-  }
-}
+# Logische OF-schakeling: foerageergebied is ofwel het geschikte bos óf het open foerageergebied
+foerageer_basis_max <- !is.na(r_wespendief_bos_max) | !is.na(r_wespendief_open_max)
+foerageer_basis_max <- terra::ifel(foerageer_basis_max == 1, 1, NA)
 
-# Eind-synchronisatie en strak trekken op het studiegebied
-watersnip_leefgebied_max <- terra::crop(watersnip_leefgebied_max, template_TV)
-watersnip_leefgebied_opp <- terra::crop(watersnip_leefgebied_opp, template_TV)
+# We tellen de fracties logisch samen voor het oppervlaktespoor
+foerageer_basis_opp <- terra::app(
+  terra::sds(
+    terra::ifel(is.na(r_wespendief_bos_opp), 0, r_wespendief_bos_opp),
+    terra::ifel(is.na(r_wespendief_open_opp), 0, r_wespendief_open_opp)
+  ),
+  fun = function(x) pmin(sum(x, na.rm = TRUE), 1)
+)
+foerageer_basis_opp <- terra::ifel(foerageer_basis_opp == 0, NA, foerageer_basis_opp)
 
-# Grote eindschoonmaak van alle omgevingslagen en tussenproducten
-rm(r_drainage, r_ecoregio, r_groen, r_grb, watersnip_basis_max, watersnip_basis_opp, 
-   watersnip_clusters, r_cluster_ids, ids_kwaliteit_ok)
+message("-> Complexen groeperen (500m fuzzy) en filteren op min. 250 ha...")
+# Het gecombineerde, optimale foerageercomplex moet minimaal 250 ha (2.500.000 m²) groot zijn
+foerageer_complex_clusters <- cluster_filter_compleet(
+  masker       = foerageer_basis_max,
+  opp_laag     = foerageer_basis_opp,
+  drempel_m2   = 2500000,   
+  dist_m       = 500,       
+  werkelijk    = FALSE      
+)
+
+r_foerageer2_max <- foerageer_complex_clusters$raster
+r_foerageer2_opp <- terra::mask(foerageer_basis_opp, r_foerageer2_max)
+
+rm(foerageer_basis_max, foerageer_basis_opp, foerageer_complex_clusters)
+```
+
+```{r actieradius en finale samensmelting}
+# ==============================================================================
+# STAP 4: ACTIERADIUS CHECK (5 KM) EN LEEFGEBIED SAMENSMELTING MET WERKELIJKE OPP
+# ==============================================================================
+message("-> Actieradiuskoppeling (5000m) berekenen tussen boskernen en foerageercomplexen...")
+
+# Gebruik de binaire rasters om de buffers van 5 km te trekken
+buffer_5000m_foer <- terra::buffer(r_foerageer2_max, width = 5000)
+buffer_5000m_bos  <- terra::buffer(r_wespendief_bos_max, width = 5000)
+
+# Snijd zowel de binaire potentie (max) als de werkelijke fracties (opp) uit via de buffers
+r_voortplanting0_max <- terra::mask(r_wespendief_bos_max, buffer_5000m_foer)
+r_voortplanting0_opp <- terra::mask(r_wespendief_bos_opp, buffer_5000m_foer) # Echte bos-fracties behouden!
+
+r_foerageer0_max <- terra::mask(r_foerageer2_max, buffer_5000m_bos)
+r_foerageer0_opp <- terra::mask(r_foerageer2_opp, buffer_5000m_bos) # Echte foerageer-fracties behouden!
+
+rm(buffer_5000m_foer, buffer_5000m_bos)
+
+message("-> Leefgebieden (Spoor 1) samenvoegen...")
+leefgebied1_max <- !is.na(r_voortplanting0_max) | !is.na(r_foerageer0_max)
+leefgebied1_max <- terra::ifel(leefgebied1_max == 1, 1, NA)
+
+# Tel de werkelijke fracties zuiver bij elkaar op (tot max 100% / 1.0 per cel)
+leefgebied1_opp <- terra::app(
+  terra::sds(
+    terra::ifel(is.na(r_voortplanting0_opp), 0, r_voortplanting0_opp),
+    terra::ifel(is.na(r_foerageer0_opp), 0, r_foerageer0_opp)
+  ),
+  fun = function(x) pmin(sum(x, na.rm = TRUE), 1)
+)
+leefgebied1_opp <- terra::ifel(leefgebied1_opp == 0, NA, leefgebied1_opp)
+
+rm(r_voortplanting0_max, r_voortplanting0_opp, r_foerageer0_max, r_foerageer0_opp)
+
+message("-> Finale clustering (500m fuzzy) en eindoppervlakte filter (250 ha)...")
+# De finale landscape-check (250 ha) gebeurt binair om de grens te bepalen
+finaal_leefgebied_clusters <- cluster_filter_compleet(
+  masker       = leefgebied1_max,
+  opp_laag     = leefgebied1_opp,
+  drempel_m2   = 2500000,   
+  dist_m       = 500,       
+  werkelijk    = FALSE      
+)
+
+# CRUCIALE FIX: Het finale werkelijke oppervlaktespoor snijdt de ECHTE fracties (leefgebied1_opp) uit!
+wespendief_leefgebied_max <- terra::crop(finaal_leefgebied_clusters$raster, template_TV)
+wespendief_leefgebied_opp <- terra::crop(terra::mask(leefgebied1_opp, wespendief_leefgebied_max), template_TV)
+
+# Grote eindschoonmaak
+rm(r_wespendief_bos_max, r_wespendief_bos_opp, r_wespendief_open_max, r_wespendief_open_opp, 
+   r_foerageer2_max, r_foerageer2_opp, leefgebied1_max, leefgebied1_opp, finaal_leefgebied_clusters)
 gc()
 ```
 
 # Resultaten en Statistiek
 ```{r Resultaten en statistiek}
-# --- RECHTSTREEKSE KOPPELING MET DE GEGENEREERDE RASTERS VAN DE WATERSNIP ---
-opp_bron  <- watersnip_leefgebied_opp             
-final_max <- watersnip_leefgebied_max         
-final_opp <- watersnip_leefgebied_opp         
+# --- RECHTSTREEKSE KOPPELING MET DE GEGENEREERDE RASTERS VAN DE wespendief ---
+opp_bron  <- wespendief_leefgebied_opp             
+final_max <- wespendief_leefgebied_max         
+final_opp <- wespendief_leefgebied_opp         
 
-# Dynamisch pad naar de waarnemingen van de watersnip
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Watersnip.csv")
+# Dynamisch pad naar de waarnemingen van de wespendief
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Wespendief.csv")
 
 # ==============================================================================
 # ECO-VISUELE FIX: Clusters definiëren via de echte 500m model-zoekstraal!
