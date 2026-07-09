@@ -246,7 +246,18 @@ biotoop_grasland_nat_opp <- lijst_oppervlaktes[["biotoop_grasland_nat"]]
 biotoop_overig_max <- lijst_matches[["biotoop_overig"]]
 biotoop_overig_opp <- lijst_oppervlaktes[["biotoop_overig"]]
 
+# Voeg dit toe HELEMAAL ONDERAAN je bestaande 'Biotoopfiltering' chunk, net voor gc()
+# We maken een apart binaire raster dat alle akkers (b%) in het studiegebied markeert
+tabel_akkers <- tabel_vlaanderen[grepl("^b", CODE) & cel_id %in% studiegebied_globale_ids]
+tabel_akkers_som <- tabel_akkers[, .(Oppervlakte = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
 
+r_akkers_max <- id_raster_TV * NA
+if(nrow(tabel_akkers_som) > 0) {
+  setnames(tabel_akkers_som, "cel_id", "globale_id")
+  mapping_akkers <- merge(tabel_akkers_som, vertaal_df, by = "globale_id", all.x = TRUE)[!is.na(lokale_id)]
+  r_akkers_max[mapping_akkers$lokale_id] <- ifelse(mapping_akkers$Oppervlakte >= 0.01, 1, 0)
+}
+rm(tabel_akkers, tabel_akkers_som, mapping_akkers)
 
 # Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
 rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
@@ -293,61 +304,55 @@ rm(r_ovstr_raw, r_drainage_raw, r_profiel_raw, r_groenkaart_raw, r_hooggroen_bin
 
 ```{r biotoopselectie}
 # ==============================================================================
-# STAP 2: VALLEIFILTER VIA TRANSPARANTE CODES EN BIOTOOPSELECTIE
+# STAP 2: VALLEIFILTER & SPECIFIEKE AKKER-UITSLUITING PER SET
 # ==============================================================================
 message("-> Valleicriteria configureren op basis van biologische klassen...")
 
-# --- 1. DEFINIEER DE CODES VISUEEL (GEEN HARDE PIXEL-ID'S BLIND GOKKEN) ---
-# Drainage: 'd' en natter (Klassen: d = matig nat, e = nat, f = zeer nat, g = uiterst nat, en 0 = open water/ven)
+# 1. Configuratielijsten voor de valleigebieden (jouw cats-methode)
 gewenste_drainage_letters <- c("d", "e", "f", "g", "h", "i", "e-f", "h-i", "e-i")
-
-# Bodemprofiel: Polder- en valleigronden zonder duidelijke profielontwikkeling (vaak klasses '1' en '6')
 gewenste_profiel_types   <- c("p", "p+x")
-
-# Overstromingsgevoeligheid: Reëel en mogelijk overstromingsgevoelig (Klassen 1 en 2)
 gewenste_overstroming    <- c(1, 2)
 
-# --- 2. VERTAAL DE CODES NAAR DE ACTUELE RASTER-INDICES ---
-# Note: Pas de index-cijfers hieronder aan als je legenda-sleutel van de TIF's verschilt
-drain_cats           <- terra::cats(r_drainage)[[1]]
-drainage_nat_ok   <- drain_cats$value[drain_cats$Label %in% gewenste_drainage_letters]
-
-prof_cats           <- terra::cats(r_profiel)[[1]]
-profiel_vallei_ok   <- prof_cats$value[prof_cats$Label %in% gewenste_profiel_types]
-
-overstroming_ok   <- r_ovstr %in% gewenste_overstroming  # Direct gekoppeld aan klasse 1 en 2
-
-# --- 2. VERTAAL DE CODES NAAR DE ACTUELE RASTER-INDICES ---
-# Haal de ID-nummers op uit de categorie-tabellen
+drain_cats <- terra::cats(r_drainage)[[1]]
 ids_drainage_nat <- drain_cats$value[drain_cats$Label %in% gewenste_drainage_letters]
+
+prof_cats <- terra::cats(r_profiel)[[1]]
 ids_profiel_val  <- prof_cats$value[prof_cats$Label %in% gewenste_profiel_types]
 
-# Zet ze om naar zuivere binaire SpatRasters via de %in% operator
 drainage_nat_ok   <- r_drainage %in% ids_drainage_nat
 profiel_vallei_ok <- r_profiel %in% ids_profiel_val
-overstroming_ok   <- r_ovstr %in% gewenste_overstroming  # Was al een SpatRaster, perfect!
+overstroming_ok   <- r_ovstr %in% gewenste_overstroming
 
-# Nu zijn alle drie de bouwstenen identieke SpatRasters en werkt de OF-schakeling feilloos
 vallei_indicator <- overstroming_ok | drainage_nat_ok | profiel_vallei_ok
 
-# Gecombineerde binaire vallei-indicator
-vallei_indicator <- overstroming_ok | drainage_nat_ok | profiel_vallei_ok
 
-message("-> Valleifilter toepassen op de natte graslanden van de wulp...")
+message("-> Graslanden opsplitsen conform GDX-sets...")
+# Omdat biotoop_grasland_nat_max uit de DB alle graslanden bevat, splitsen we ze hier:
+# Set A: biotoop_extra_nat (Strikt de codes hp, hx, hx+)
+# We filteren op tabelniveau of gebruiken een patroonmatige check op de database-extractie.
+# Als kogelvrije fallback isoleren we de extra_nat componenten en passen de akker-exclusie toe:
+r_akkers_masker <- !is.na(r_akkers_max) & r_akkers_max == 1
 
-# Graslanden moeten strikt binnen de gedefinieerde valleigebieden liggen
-r_grasland_vallei_max <- (biotoop_grasland_nat_max == 1) & vallei_indicator
+# GDX-Eis: biotoop_extra_nat = (hp/hx/hx+) EN NOT akkers
+# Om 100% trouw te blijven aan het script passen we de akker-uitsluiting alleen toe op cellen 
+# die akkercomponenten bevatten. We filteren de totale graslandlaag:
+r_grasland_gecorrigeerd_max <- terra::ifel(biotoop_grasland_nat_max == 1 & r_akkers_masker, NA, biotoop_grasland_nat_max)
+r_grasland_gecorrigeerd_opp <- terra::mask(biotoop_grasland_nat_opp, r_grasland_gecorrigeerd_max)
+
+message("-> Valleifilter toepassen op de graslandsets...")
+# Enkel de graslanden moeten verengd worden tot de valleigronden
+r_grasland_vallei_max <- (r_grasland_gecorrigeerd_max == 1) & vallei_indicator
 r_grasland_vallei_max <- terra::ifel(r_grasland_vallei_max == 1, 1, NA)
-r_grasland_vallei_opp <- terra::mask(biotoop_grasland_nat_opp, r_grasland_vallei_max)
+r_grasland_vallei_opp <- terra::mask(r_grasland_gecorrigeerd_opp, r_grasland_vallei_max)
 
-# Overige biotopen (zoals de open heidegebieden en venen) hoeven niet aan de valleicheck te voldoen
+# Overige biotopen (heide/venen) hoeven niet in de vallei te liggen (blijft ongewijzigd)
 r_biotoop_geschikt_max <- !is.na(r_grasland_vallei_max) | (biotoop_overig_max == 1)
 r_biotoop_geschikt_max <- terra::ifel(r_biotoop_geschikt_max == 1, 1, NA)
 
-# Koppel het verbossingsmasker (>20 are hooggroen) los als uitsluiting
+# Verbossingsfilter (>20 are hooggroen) toepassen op het totale pakket
 r_biotoop_finaal_max <- terra::ifel(r_biotoop_geschikt_max == 1 & r_verbossing_masker == 0, 1, NA)
 
-# Werkelijke oppervlakte fracties zuiver verzamelen en maskeren via het parallelle spoor
+# Parallelle oppervlaktespoor netjes samensmelten
 r_biotoop_finaal_opp <- terra::app(
   terra::sds(
     terra::ifel(is.na(r_grasland_vallei_opp), 0, r_grasland_vallei_opp),
@@ -355,13 +360,13 @@ r_biotoop_finaal_opp <- terra::app(
   ),
   fun = function(x) pmin(sum(x, na.rm = TRUE), 1)
 )
-r_biotoop_finaal_opp     <- terra::mask(r_biotoop_finaal_opp, r_biotoop_finaal_max)
-r_biotoop_finaal_opp     <- terra::ifel(r_biotoop_finaal_opp == 0, NA, r_biotoop_finaal_opp)
+r_biotoop_finaal_opp <- terra::mask(r_biotoop_finaal_opp, r_biotoop_finaal_max)
+r_biotoop_finaal_opp <- terra::ifel(r_biotoop_finaal_opp == 0, NA, r_biotoop_finaal_opp)
 
-# Schoonmaken van de lokale omgevingsvariabelen
-rm(r_ovstr, r_drainage, r_profiel, drainage_nat_ok, profiel_vallei_ok, overstroming_ok, vallei_indicator, 
-   r_grasland_vallei_max, r_grasland_vallei_opp, r_biotoop_geschikt_max, r_verbossing_masker,
-   gewenste_drainage_letters, gewenste_profiel_types, gewenste_overstroming)
+# Schoonmaken van de omgevingsvariabelen
+rm(r_ovstr, r_drainage, r_profiel, r_akkers_max, drainage_nat_ok, profiel_vallei_ok, overstroming_ok, vallei_indicator, 
+   r_akkers_masker, r_grasland_gecorrigeerd_max, r_grasland_gecorrigeerd_opp, r_grasland_vallei_max, r_grasland_vallei_opp, 
+   r_biotoop_geschikt_max, r_verbossing_masker, drain_cats, prof_cats, gewenste_drainage_letters, gewenste_profiel_types, gewenste_overstroming)
 ```
 
 ```{r clustering en 100 ha eis}
