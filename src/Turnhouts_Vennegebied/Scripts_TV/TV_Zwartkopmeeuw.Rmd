@@ -105,7 +105,7 @@ select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
 # Variabelen definiëren
 oppervlakte_ha <- resultaat$MinOpp_ha[1]
 afstand_m <- resultaat$AfstandBiotopen_m[1]
-buffer_m <- 20000 #resultaat$Dispersiecap_m[1]
+buffer_m <- 10000 #resultaat$Dispersiecap_m[1]
 
 print(resultaat)
 rm(df, resultaat)
@@ -241,162 +241,153 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
 }
 
 # Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
-voortplanting_bwk_max <- lijst_matches[["voortplanting_bwk"]]
-voortplanting_bwk_opp <- lijst_oppervlaktes[["voortplanting_bwk"]]
-foerageer_open_max <- lijst_matches[["foerageer_open"]]
-foerageer_open_opp <- lijst_oppervlaktes[["foerageer_open"]]
+voortplanting1_max <- lijst_matches[["voortplanting1"]]
+voortplanting1_opp <- lijst_oppervlaktes[["voortplanting1"]]
+water1_max <- lijst_matches[["water1"]]
+water1_opp <- lijst_oppervlaktes[["water1"]]
+foerageer1_max <- lijst_matches[["foerageer1"]]
+foerageer1_opp <- lijst_oppervlaktes[["foerageer1"]]
 
 # Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
 rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
-```{r voortplantingsgebied}
+```{r voortplantingsgebied en water}
 # ==============================================================================
-# STAP 1: VOORTPLANTINGSGEBIED (HOOGGROEN, MINIMAAL 50 HA, 100M CLUSTERING)
+# STAP 1: VOORTPLANTINGSCLUSTERS (30 HA) & WATERLICHAMEN (2 HA) BIJ 50M FUZZY
 # ==============================================================================
-message("-> Groenkaart inlezen en synchroniseren als fallback voor oude bossen...")
-
-# We laden de groenkaart nu alvast hier in (wordt ook in de latere chunks hergebruikt)
-r_groen_raw <- rast(here("data/input/ASCI Files/Groenkaart_2021.tif"))
-r_groen     <- terra::resample(r_groen_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
-
-# TIJDELIJKE FIX: Selecteer waarde 1 (hooggroen/bomen) in plaats van de bosinventaris
-zwartkopmeeuw_hooggroen_ok <- r_groen == 1
-
-# Combineer de BWK-boskaarten met de hooggroen-selectie
-zwartkopmeeuw_voort_basis_max <- (voortplanting_bwk_max == 1) & zwartkopmeeuw_hooggroen_ok
-zwartkopmeeuw_voort_basis_max <- terra::ifel(zwartkopmeeuw_voort_basis_max == 1, 1, NA)
-zwartkopmeeuw_voort_basis_opp <- terra::mask(voortplanting_bwk_opp, zwartkopmeeuw_voort_basis_max)
-
-message("-> Voortplantingspatches groeperen (100m fuzzy) en filteren op min. 50 ha...")
-# Voortplantingsbos moet minimaal 50 ha (500.000 m²) groot zijn
+message("-> Voortplantingsgebieden groeperen (50m fuzzy) en filteren op min. 30 ha...")
+# Voortplantingsgebied moet minimaal 30 ha (300.000 m²) groot zijn
 voort_clusters <- cluster_filter_compleet(
-  masker       = zwartkopmeeuw_voort_basis_max,
-  opp_laag     = zwartkopmeeuw_voort_basis_opp,
-  drempel_m2   = 500000,   
-  dist_m       = 100,       
+  masker       = voortplanting1_max,
+  opp_laag     = voortplanting1_opp,
+  drempel_m2   = 300000,   
+  dist_m       = 50,       
   werkelijk    = FALSE      
 )
+r_voort_30ha_max <- voort_clusters$raster
+r_voort_30ha_opp <- terra::mask(voortplanting1_opp, r_voort_30ha_max)
 
-# Bewaar de functionele boskernen
-r_zwartkopmeeuw_bos_max <- voort_clusters$raster
-r_zwartkopmeeuw_bos_opp <- terra::mask(voort_clusters$raster, r_zwartkopmeeuw_bos_max)
+message("-> Waterlichamen groeperen (50m fuzzy) en filteren op min. 2 ha...")
+# Waterlichamen moeten minimaal 2 ha (20.000 m²) groot zijn
+water_clusters <- cluster_filter_compleet(
+  masker       = water1_max,
+  opp_laag     = water1_opp,
+  drempel_m2   = 20000,   
+  dist_m       = 50,       
+  werkelijk    = FALSE      
+)
+r_water_2ha_max <- water_clusters$raster
 
-# LET OP: r_groen NIET verwijderen, die hebben we in Stap 3 en 4 nog hard nodig!
-rm(zwartkopmeeuw_hooggroen_ok, zwartkopmeeuw_voort_basis_max, zwartkopmeeuw_voort_basis_opp, voort_clusters)
+rm(voort_clusters, water_clusters)
 ```
 
 
-```{r open foerageergebied}
+```{r interactie met open water}
 # ==============================================================================
-# STAP 2: OPEN FOERAGEERGEBIED (MINIMAAL 50 HA, 500M CLUSTERING)
+# STAP 2: INTERACTIE KOPPELING TUSSEN BROEDGEBIED EN WATER (5 KM ACTIERADIUS)
 # ==============================================================================
-message("-> Open foerageergebieden groeperen (500m fuzzy) en filteren op min. 50 ha...")
+message("-> Afstandsrelaties berekenen tussen broedgebied en water (5000m)...")
 
-# Open foerageergebieden moeten minimaal 50 ha (500.000 m²) groot zijn
-open_foer_clusters <- cluster_filter_compleet(
-  masker       = foerageer_open_max,
-  opp_laag     = foerageer_open_opp,
-  drempel_m2   = 500000,   
-  dist_m       = 500,       
-  werkelijk    = FALSE      
-)
+# Failsafe initialisatie
+r_voort_vlakbij_water_max <- template_TV * NA
+r_voort_vlakbij_water_opp <- template_TV * NA
 
-r_zwartkopmeeuw_open_max <- open_foer_clusters$raster
-r_zwartkopmeeuw_open_opp <- terra::mask(foerageer_open_opp, r_zwartkopmeeuw_open_max)
+if (!all(is.na(terra::values(r_voort_30ha_max, mat=FALSE))) && !all(is.na(terra::values(r_water_2ha_max, mat=FALSE)))) {
+  # Trek een binaire buffer van 5 km rondom de goedgekeurde waterlichamen
+  buffer_5km_water <- terra::buffer(r_water_2ha_max, width = 5000)
+  
+  # Filter het voortplantingsgebied: moet binnen 5 km van water liggen
+  r_voort_vlakbij_water_max <- terra::mask(r_voort_30ha_max, buffer_5km_water)
+  r_voort_vlakbij_water_opp <- terra::mask(r_voort_30ha_opp, buffer_5km_water)
+  
+  rm(buffer_5km_water)
+}
 
-rm(open_foer_clusters)
+rm(r_voort_30ha_max, r_voort_30ha_opp, r_water_2ha_max)
 ```
 
-```{r optimaal foerageercomplex}
+```{r foerageergebied en netwerk}
 # ==============================================================================
-# STAP 3: OPTIMAAL FOERAGEERCOMPLEX (BOS + OPEN, MINIMAAL 250 HA, 500M)
+# STAP 3: FOERAGEERGEBIED (200 HA) & INTERACTIE MET BROEDGEBIED (20 KM)
 # ==============================================================================
-message("-> Bos en open gebieden samenvoegen tot gecombineerd foerageerlandschap...")
+message("-> Foerageergebieden (weilanden) groeperen (50m fuzzy) en filteren op min. 200 ha...")
+# Vochtige weilanden moeten een open foerageercomplex vormen van minimaal 200 ha (2.000.000 m²)
+foer_clusters <- cluster_filter_compleet(
+  masker       = foerageer1_max,
+  opp_laag     = foerageer1_opp,
+  drempel_m2   = 2000000,   
+  dist_m       = 50,       
+  werkelijk    = FALSE      
+)
+r_foer_200ha_max <- foer_clusters$raster
+r_foer_200ha_opp <- terra::mask(foerageer1_opp, r_foer_200ha_max)
 
-# Logische OF-schakeling: foerageergebied is ofwel het geschikte bos óf het open foerageergebied
-foerageer_basis_max <- !is.na(r_zwartkopmeeuw_bos_max) | !is.na(r_zwartkopmeeuw_open_max)
-foerageer_basis_max <- terra::ifel(foerageer_basis_max == 1, 1, NA)
+message("-> Functionele actieradiuskoppeling (20 km) berekenen tussen broed- en foerageergebied...")
+# Failsafe initialisatie van de interactie-uitkomsten
+r_voort_finaal_max <- template_TV * NA
+r_voort_finaal_opp <- template_TV * NA
+r_foer_finaal_max  <- template_TV * NA
+r_foer_finaal_opp  <- template_TV * NA
 
-# We tellen de fracties logisch samen voor het oppervlaktespoor
-foerageer_basis_opp <- terra::app(
+if (!all(is.na(terra::values(r_voort_vlakbij_water_max, mat=FALSE))) && !all(is.na(terra::values(r_foer_200ha_max, mat=FALSE)))) {
+  # Trek de wederzijdse grote foerageerbuffers van 20 km (20.000 meter)
+  buffer_20km_foer  <- terra::buffer(r_foer_200ha_max, width = 20000)
+  buffer_20km_voort <- terra::buffer(r_voort_vlakbij_water_max, width = 20000)
+  
+  # Filter de broedgebieden nabij foerageergebied (en omgekeerd)
+  r_voort_finaal_max <- terra::mask(r_voort_vlakbij_water_max, buffer_20km_foer)
+  r_voort_finaal_opp <- terra::mask(r_voort_vlakbij_water_opp, buffer_20km_foer)
+  
+  r_foer_finaal_max  <- terra::mask(r_foer_200ha_max, buffer_20km_voort)
+  r_foer_finaal_opp  <- terra::mask(r_foer_200ha_opp, buffer_20km_voort)
+  
+  rm(buffer_20km_foer, buffer_20km_voort)
+}
+
+rm(foer_clusters, r_voort_vlakbij_water_max, r_voort_vlakbij_water_opp, r_foer_200ha_max, r_foer_200ha_opp)
+```
+
+```{r finale samensmelting}
+# ==============================================================================
+# STAP 4: FINALE SAMENVOEGING EN COMPACTHEIDS-CHECK (200 HA OP COMPONENT)
+# ==============================================================================
+message("-> Leefgebieden (voortplanting + foerageren) logisch samensmelten...")
+
+# MAX-spoor (Binaire aanwezigheid): Logische OF-schakeling
+leefgebied_basis_max <- !is.na(r_voort_finaal_max) | !is.na(r_foer_finaal_max)
+leefgebied_basis_max <- terra::ifel(leefgebied_basis_max == 1, 1, NA)
+
+# OPP-spoor: Tel de parallelle werkelijke oppervlaktefracties zuiver bij elkaar op
+leefgebied_basis_opp <- terra::app(
   terra::sds(
-    terra::ifel(is.na(r_zwartkopmeeuw_bos_opp), 0, r_zwartkopmeeuw_bos_opp),
-    terra::ifel(is.na(r_zwartkopmeeuw_open_opp), 0, r_zwartkopmeeuw_open_opp)
+    terra::ifel(is.na(r_voort_finaal_opp), 0, r_voort_finaal_opp),
+    terra::ifel(is.na(r_foer_finaal_opp), 0, r_foer_finaal_opp)
   ),
   fun = function(x) pmin(sum(x, na.rm = TRUE), 1)
 )
-foerageer_basis_opp <- terra::ifel(foerageer_basis_opp == 0, NA, foerageer_basis_opp)
+leefgebied_basis_opp <- terra::mask(leefgebied_basis_opp, leefgebied_basis_max)
+leefgebied_basis_opp <- terra::ifel(leefgebied_basis_opp == 0, NA, leefgebied_basis_opp)
 
-message("-> Complexen groeperen (500m fuzzy) en filteren op min. 250 ha...")
-# Het gecombineerde, optimale foerageercomplex moet minimaal 250 ha (2.500.000 m²) groot zijn
-foerageer_complex_clusters <- cluster_filter_compleet(
-  masker       = foerageer_basis_max,
-  opp_laag     = foerageer_basis_opp,
-  drempel_m2   = 2500000,   
-  dist_m       = 500,       
-  werkelijk    = FALSE      
-)
+rm(r_voort_finaal_max, r_voort_finaal_opp, r_foer_finaal_max, r_foer_finaal_opp)
 
-r_foerageer2_max <- foerageer_complex_clusters$raster
-r_foerageer2_opp <- terra::mask(foerageer_basis_opp, r_foerageer2_max)
-
-rm(foerageer_basis_max, foerageer_basis_opp, foerageer_complex_clusters)
-```
-
-```{r actieradius en finale samensmelting}
-# ==============================================================================
-# STAP 4: ACTIERADIUS CHECK (5 KM) EN LEEFGEBIED SAMENSMELTING MET WERKELIJKE OPP
-# ==============================================================================
-message("-> Actieradiuskoppeling (5000m) berekenen tussen boskernen en foerageercomplexen...")
-
-# Gebruik de binaire rasters om de buffers van 5 km te trekken
-buffer_5000m_foer <- terra::buffer(r_foerageer2_max, width = 5000)
-buffer_5000m_bos  <- terra::buffer(r_zwartkopmeeuw_bos_max, width = 5000)
-
-# Snijd zowel de binaire potentie (max) als de werkelijke fracties (opp) uit via de buffers
-r_voortplanting0_max <- terra::mask(r_zwartkopmeeuw_bos_max, buffer_5000m_foer)
-r_voortplanting0_opp <- terra::mask(r_zwartkopmeeuw_bos_opp, buffer_5000m_foer) # Echte bos-fracties behouden!
-
-r_foerageer0_max <- terra::mask(r_foerageer2_max, buffer_5000m_bos)
-r_foerageer0_opp <- terra::mask(r_foerageer2_opp, buffer_5000m_bos) # Echte foerageer-fracties behouden!
-
-rm(buffer_5000m_foer, buffer_5000m_bos)
-
-message("-> Leefgebieden (Spoor 1) samenvoegen...")
-leefgebied1_max <- !is.na(r_voortplanting0_max) | !is.na(r_foerageer0_max)
-leefgebied1_max <- terra::ifel(leefgebied1_max == 1, 1, NA)
-
-# Tel de werkelijke fracties zuiver bij elkaar op (tot max 100% / 1.0 per cel)
-leefgebied1_opp <- terra::app(
-  terra::sds(
-    terra::ifel(is.na(r_voortplanting0_opp), 0, r_voortplanting0_opp),
-    terra::ifel(is.na(r_foerageer0_opp), 0, r_foerageer0_opp)
-  ),
-  fun = function(x) pmin(sum(x, na.rm = TRUE), 1)
-)
-leefgebied1_opp <- terra::ifel(leefgebied1_opp == 0, NA, leefgebied1_opp)
-
-rm(r_voortplanting0_max, r_voortplanting0_opp, r_foerageer0_max, r_foerageer0_opp)
-
-message("-> Finale clustering (500m fuzzy) en eindoppervlakte filter (250 ha)...")
-# De finale landscape-check (250 ha) gebeurt binair om de grens te bepalen
+message("-> Finale landschapscheck: 50m fuzzy clustering en minimum van 200 ha...")
+# Het uiteindelijke samengevoegde netwerkcomplex moet na een laatste 50m clustering minimaal 200 ha groot zijn
 finaal_leefgebied_clusters <- cluster_filter_compleet(
-  masker       = leefgebied1_max,
-  opp_laag     = leefgebied1_opp,
-  drempel_m2   = 2500000,   
-  dist_m       = 500,       
+  masker       = leefgebied_basis_max,
+  opp_laag     = leefgebied_basis_opp,
+  drempel_m2   = 2000000,   
+  dist_m       = 50,       
   werkelijk    = FALSE      
 )
 
-# CRUCIALE FIX: Het finale werkelijke oppervlaktespoor snijdt de ECHTE fracties (leefgebied1_opp) uit!
+# Vastleggen en croppen naar het Turnhoutse master template
 zwartkopmeeuw_leefgebied_max <- terra::crop(finaal_leefgebied_clusters$raster, template_TV)
-zwartkopmeeuw_leefgebied_opp <- terra::crop(terra::mask(leefgebied1_opp, zwartkopmeeuw_leefgebied_max), template_TV)
+zwartkopmeeuw_leefgebied_opp <- terra::crop(terra::mask(leefgebied_basis_opp, zwartkopmeeuw_leefgebied_max), template_TV)
 
-# Grote eindschoonmaak
-rm(r_zwartkopmeeuw_bos_max, r_zwartkopmeeuw_bos_opp, r_zwartkopmeeuw_open_max, r_zwartkopmeeuw_open_opp, 
-   r_foerageer2_max, r_foerageer2_opp, leefgebied1_max, leefgebied1_opp, finaal_leefgebied_clusters)
+# Grote eindschoonmaak van het R-geheugen
+rm(leefgebied_basis_max, leefgebied_basis_opp, finaal_leefgebied_clusters)
 gc()
 ```
 
@@ -408,7 +399,7 @@ final_max <- zwartkopmeeuw_leefgebied_max
 final_opp <- zwartkopmeeuw_leefgebied_opp         
 
 # Dynamisch pad naar de waarnemingen van de zwartkopmeeuw
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_zwartkopmeeuw.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Zwartkopmeeuw.csv")
 
 # ==============================================================================
 # ECO-VISUELE FIX: Clusters definiëren via de echte 500m model-zoekstraal!
