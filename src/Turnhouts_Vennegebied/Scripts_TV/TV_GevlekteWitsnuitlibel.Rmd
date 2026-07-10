@@ -757,7 +757,7 @@ gc()
 message("-> Start ARPL en Actuele Verspreiding netwerkanalyse met waarnemingen...")
 
 # 1. Pad naar het waarnemingsbestand van de libel
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_GevlekteWitsnuitlibel.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_GevlekteWitsnuitlibel.csv")
 
 # 2. Inlezen en bufferen van waarnemingen
 if (file.exists(waarnemingen_path)) {

@@ -408,7 +408,7 @@ final_max <- wespendief_leefgebied_max
 final_opp <- wespendief_leefgebied_opp         
 
 # Dynamisch pad naar de waarnemingen van de wespendief
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Wespendief.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Wespendief.csv")
 
 # ==============================================================================
 # ECO-VISUELE FIX: Clusters definiëren via de echte 500m model-zoekstraal!

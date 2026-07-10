@@ -668,7 +668,7 @@ cat("=========================================================\n\n")
 message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor kamsalamander...")
 
 # 1. Pad naar het waarnemingsbestand van de kamsalamander
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Kamsalamander.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Kamsalamander.csv")
 
 # 2. Inlezen en bufferen van waarnemingen
 if (file.exists(waarnemingen_path)) {

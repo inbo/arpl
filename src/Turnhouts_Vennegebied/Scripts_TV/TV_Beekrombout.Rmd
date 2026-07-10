@@ -520,7 +520,7 @@ binnen_masker <- terra::mask(terra::ifel(!is.na(template_TV), 1, 1), area_shape_
 
 # --- Setup voor waarnemingen (Blijft ongewijzigd) ---
 opp_bron <- final_opp
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Beekrombout.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Beekrombout.csv")
 
 if (file.exists(waarnemingen_path)) {
   waarnemingen_raw <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)

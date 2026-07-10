@@ -301,7 +301,7 @@ levels(r_status) <- status_labels
 soort_format <- paste0(toupper(substr(soort, 1, 1)), tolower(substr(soort, 2, nchar(soort))))
 soort_format <- gsub(" ", "_", soort_format)
 
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Adder_dummy.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Adder_dummy.csv")
 
 if (file.exists(waarnemingen_path)) {
   waarnemingen_raw <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)

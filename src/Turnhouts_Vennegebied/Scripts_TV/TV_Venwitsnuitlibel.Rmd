@@ -458,7 +458,7 @@ finaal_max_binair <- venwitsnuitlibel_leefgebied_max
 finaal_opp_binair <- venwitsnuitlibel_leefgebied_opp
 
 # 1. Pad naar het waarnemingsbestand van de venwitsnuitlibel
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Venwitsnuitlibel.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Venwitsnuitlibel.csv")
 
 # 2. Inlezen van waarnemingen
 if (file.exists(waarnemingen_path)) {

@@ -618,7 +618,7 @@ cat("==================================================\n")
 message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor kwartelkoning...")
 
 # 1. Pad naar het waarnemingsbestand van de kwartelkoning
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Kwartelkoning.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Kwartelkoning.csv")
 
 # 2. Inlezen van waarnemingen
 if (file.exists(waarnemingen_path)) {

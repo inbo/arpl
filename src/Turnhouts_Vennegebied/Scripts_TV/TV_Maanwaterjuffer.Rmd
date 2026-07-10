@@ -428,7 +428,7 @@ message("-> Parallelle modellering succesvol voltooid! Bestanden opgeslagen in d
 message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor maanwaterjuffer...")
 
 # 1. Pad naar het waarnemingsbestand van de maanwaterjuffer
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Maanwaterjuffer.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Maanwaterjuffer.csv")
 
 # 2. Inlezen van waarnemingen
 if (file.exists(waarnemingen_path)) {

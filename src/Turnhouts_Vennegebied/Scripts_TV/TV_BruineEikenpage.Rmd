@@ -380,7 +380,7 @@ binnen_masker <- terra::rasterize(area_shape_proj, template_TV, field = 1)
 # ==============================================================================
 # 2. BESTAANDE SETUP VOOR WAARNEMINGEN KOPPELEN
 # ==============================================================================
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_BruineEikenpage_dummy.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_BruineEikenpage_dummy.csv")
 
 if (file.exists(waarnemingen_path)) {
   waarnemingen_raw <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)

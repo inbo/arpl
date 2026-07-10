@@ -471,7 +471,7 @@ finaal_max_binair <- speerwaterjuffer_leefgebied_max
 finaal_opp_binair <- speerwaterjuffer_leefgebied_opp
 
 # 1. Pad naar het waarnemingsbestand van de speerwaterjuffer
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Speerwaterjuffer.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Speerwaterjuffer.csv")
 
 # 2. Inlezen van waarnemingen
 if (file.exists(waarnemingen_path)) {

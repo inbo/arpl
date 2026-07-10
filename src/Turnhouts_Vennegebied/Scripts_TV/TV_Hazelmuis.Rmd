@@ -384,16 +384,14 @@ gc()
 # Resultaten en Statistiek
 ```{r Resultaten en statistiek}
 # --- ECOLOOG-MAPPING: KOPPEL GENERIEKE VARIABELEN AAN HAZELMUIS RASTERS ---
-# cl_max wordt het geclusterde leefgebied vóór de finale filter
-# bwk_opp wordt de totale gecombineerde leefgebiedslaag
-cl_max        <- leefgebied_finaal_geclusterd$clusters
-bwk_opp       <- hazelmuis_leefgebied1
-final_max     <- hazelmuis_leefgebied
-final_opp     <- hazelmuis_leefgebied
+cl_max         <- leefgebied_finaal_geclusterd$clusters
+bwk_opp        <- hazelmuis_leefgebied1
+final_max      <- hazelmuis_leefgebied
+final_opp      <- hazelmuis_leefgebied
 
-# Drempelwaarden mappen (0.3 ha = 3000 m2)
-oppervlakte_ha <- 0.3
-drempel_m2     <- 3000
+# EXPERT-EISSEN: Drempels kogelvrij instellen op 0.5 ha
+oppervlakte_ha <- 0.5
+drempel_m2     <- 5000
 
 # Binnen masker is de binaire template van Turnhouts Vennegebied
 binnen_masker  <- template_TV
@@ -402,7 +400,7 @@ binnen_masker  <- template_TV
 soort_format <- paste0(toupper(substr(soort, 1, 1)), tolower(substr(soort, 2, nchar(soort))))
 soort_format <- gsub(" ", "_", soort_format)
 
-waarnemingen_path <- paste0(here("data/input/Waarnemingen_Soorten"), "/Waarnemingen_", soort_format, ".csv")
+waarnemingen_path <- paste0(here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied"), "/Waarnemingen_", soort_format, ".csv")
 
 if (file.exists(waarnemingen_path)) {
   waarnemingen_raw <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)
@@ -526,7 +524,8 @@ tabel_totaal %>%
 
 # Interactieve kaart
 ```{r Interactieve kaart}
-# --- DE KAART REKENT NU MET DE ZUIVERE GEGEVENS ---
+# --- INTERACTIEVE KAART: METADATA EN PARALLELLE GEGEVENSKOPPELING ---
+
 if (has_observations && nrow(df_points_sf) > 0) {
   waarneming_smear_web <- st_transform(waarneming_smear_sf, 4326)
   points_web           <- st_transform(df_points_sf, 4326)
@@ -535,9 +534,9 @@ if (has_observations && nrow(df_points_sf) > 0) {
   points_web           <- st_sf(st_sfc(crs = 4326))
 }
 
-if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
-  # We gebruiken hier direct de gecorrigeerde en beveiligde 'stats_gecombineerd' tabel!
-  cluster_info <- stats_gecombineerd %>%
+# --- GEFIXT: DATA EN POPUPS RECHTSTREEKS GEKOPPELD AAN DE HAZELMUIS CLUSTERS ---
+if (!is.null(cl_max) && !all(is.na(terra::values(cl_max, mat=FALSE))) && nrow(stats_gecombineerd) > 0) {
+  cluster_info_A <- stats_gecombineerd %>%
     left_join(zonal_zone, by = "ID") %>% 
     mutate(
       Zone = ifelse(!is.na(In_TV) & In_TV > 0, "Binnen TV", "Buiten TV (Buffer)"),
@@ -545,40 +544,51 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
       Type = ifelse(ID %in% ids_werkelijk_totaal, "Werkelijk Habitat", "Potentieel (Niet Werkelijk)"),
       Popup = paste0(
         "<div style='font-family: Arial; min-width: 180px;'>",
+        "<strong>Hazelmuis Leefgebied Netwerk</strong><br>",
         "<strong>Cluster ID:</strong> ", ID, "<br>",
         "<strong>Zone:</strong> ", Zone, "<br><hr>",
         "<strong>Status:</strong> ", Type, "<br>",
-        "<strong>Actueel Relevant (ARPL):</strong> ", 
-        ifelse(ARPL, "<span style='color:green; font-weight:bold;'>JA</span>", 
-                     "<span style='color:red;'>NEE (Geen waarneming of onder drempel)</span>"), "<br><br>",
+        "<strong>Actueel Relevant (ARPL):</strong> ", ifelse(ARPL, "<span style='color:green;font-weight:bold;'>JA</span>", "<span style='color:red;'>NEE</span>"), "<br>",
         "<strong>Potentieel Oppervlak:</strong> ", round(Pot_ha, 2), " ha<br>",
-        "<strong>Werkelijk Habitat:</strong> ", round(coalesce(Werk_ha, 0), 2), " ha",
+        "<strong>Werkelijk Habitat binnen dit netwerk:</strong> ", round(coalesce(Werk_ha, 0), 2), " ha",
         "</div>"
       )
     )
 
-  cl_poly <- terra::as.polygons(cl_max, aggregate = TRUE) %>% 
-    st_as_sf() %>% 
-    st_transform(4326)
-
-  cl_poly_final <- cl_poly %>%
-    inner_join(cluster_info, by = setNames("ID", names(cl_poly)[1]))
+  cl_poly_A <- terra::as.polygons(cl_max, aggregate = TRUE) %>% st_as_sf() %>% st_transform(4326)
+  cl_poly_final_A <- cl_poly_A %>% inner_join(cluster_info_A, by = setNames("ID", names(cl_poly_A)[1]))
 } else {
-  cl_poly_final <- st_sf(st_sfc(crs = 4326))
+  cl_poly_final_A <- st_sf(st_sfc(crs = 4326))
 }
 
-r_web_status         <- terra::project(r_status, "EPSG:4326", method = "near")
-grens_web            <- st_transform(st_as_sf(area_shape_proj), 4326)
-bbox                 <- st_bbox(grens_web)
+# --- GEFIXT: R_STATUS PIXEL-LAAG OPBOUW ZONDER SCRIPT-MISMATCH ---
+if (!is.null(cl_max) && !all(is.na(terra::values(cl_max, mat=FALSE))) && nrow(stats_gecombineerd) > 0) {
+  bin_w  <- if(length(ids_werk_bin) > 0) ids_werk_bin else -999
+  buit_w <- if(length(ids_werk_buit) > 0) ids_werk_buit else -999
+  bin_p  <- if(length(ids_pot_bin) > 0) ids_pot_bin else -999
+  buit_p <- if(length(ids_pot_buit) > 0) ids_pot_buit else -999
+  
+  r_status <- terra::ifel(cl_max %in% bin_w, 3,
+              terra::ifel(cl_max %in% buit_w, 4,
+              terra::ifel(cl_max %in% bin_p, 1,
+              terra::ifel(cl_max %in% buit_p, 2, NA))))
+  
+  r_web_status <- terra::project(r_status, "EPSG:4326", method = "near")
+} else {
+  r_web_status <- terra::rast(template_TV, vals = NA) %>% terra::project("EPSG:4326")
+}
+
+grens_web <- st_transform(st_as_sf(area_shape_proj), 4326)
+bbox      <- st_bbox(grens_web)
 
 pal_status <- colorFactor(palette = c("#4daf4a", "#e41a1c"), levels = c("Werkelijk Habitat", "Potentieel (Niet Werkelijk)"))
 pal_4 <- colorFactor(
   palette = c("#FF00FF", "#FF8C00", "#4daf4a", "#377eb8"), 
-  levels = c("Maximale Potentie (Binnen)", "Maximale Potentie (Buiten)", 
-             "Werkelijk Habitat (Binnen)", "Werkelijk Habitat (Buiten)"), 
+  levels = c("1", "2", "3", "4"),
   na.color = "transparent"
 )
 
+# --- LEAFLET INTERACTIEVE KAART OPBOUW ---
 map <- leaflet() %>%
   addTiles(group = "OSM (Kaart)") %>%
   addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet") %>%
@@ -588,16 +598,16 @@ if(!all(is.na(terra::values(r_web_status, mat=FALSE)))) {
   map <- map %>% addRasterImage(terra::as.int(r_web_status), colors = pal_4, opacity = 0.5, group = "Habitat Status (Pixels)")
 }
 
-if(nrow(cl_poly_final) > 0) {
+if(nrow(cl_poly_final_A) > 0) {
   map <- map %>% addPolygons(
-    data = cl_poly_final,
+    data = cl_poly_final_A,
     fillColor = ~pal_status(Type),
     fillOpacity = ~ifelse(ARPL, 0.6, 0.1), 
     color = ~pal_status(Type), 
     weight = ~ifelse(ARPL, 3, 0.5), 
     opacity = 1,
     popup = ~Popup,
-    group = "Leefgebieden"
+    group = "Leefgebieden (Netwerk)"
   )
 }
 
@@ -605,10 +615,7 @@ if(has_observations && nrow(df_points_sf) > 0) {
   map <- map %>%
     addPolygons(
       data = waarneming_smear_web,  
-      color = "#377eb8", 
-      weight = 2, 
-      fill = FALSE,       
-      dashArray = "10, 5", 
+      color = "#377eb8", weight = 2, fill = FALSE, dashArray = "10, 5", 
       group = "Dispersiebereik (Smear)"
     ) %>%
     addCircles(
@@ -622,7 +629,7 @@ map %>%
   addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens Studiegebied") %>%
   addLayersControl(
     baseGroups = c("OSM (Kaart)", "Satelliet"),
-    overlayGroups = c("Leefgebieden", "Habitat Status (Pixels)", 
+    overlayGroups = c("Leefgebieden (Netwerk)", "Habitat Status (Pixels)", 
                       "Dispersiebereik (Smear)", "Waarnemingen", "Grens Studiegebied"),
     options = layersControlOptions(collapsed = FALSE)
   )

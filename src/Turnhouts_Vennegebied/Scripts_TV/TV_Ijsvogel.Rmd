@@ -411,7 +411,7 @@ message("-> Finale leefgebiedrasters op basis van >1km oeverlengte succesvol ber
 message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor ijsvogel...")
 
 # 1. Pad naar het waarnemingsbestand van de ijsvogel (dynamisch opgebouwd)
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten", paste0("Waarnemingen_", tools::toTitleCase(soort), ".csv"))
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied", paste0("Waarnemingen_", tools::toTitleCase(soort), ".csv"))
 
 # 2. Inlezen en bufferen van waarnemingen
 if (file.exists(waarnemingen_path)) {

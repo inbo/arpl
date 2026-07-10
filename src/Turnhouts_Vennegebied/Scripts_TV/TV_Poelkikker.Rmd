@@ -599,7 +599,7 @@ cat("=========================================================\n\n")
 message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor poelkikker...")
 
 # 1. Pad naar het waarnemingsbestand van de poelkikker
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Poelkikker.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Poelkikker.csv")
 
 # 2. Inlezen en bufferen van waarnemingen
 if (file.exists(waarnemingen_path)) {

@@ -376,7 +376,7 @@ rm(gladdeslang_open_max, gladdeslang_open_opp, zoekzone_rand_max, zoekzone_rand_
 # ==============================================================================
 # 1. WAARNEMINGEN INLADEN (GECORRIGEERD EN WATERDICHT)
 # ==============================================================================
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_GladdeSlang.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_GladdeSlang.csv")
 
 if (file.exists(waarnemingen_path)) {
   # Inlezen via de nieuwe Python-export (gescheiden door ;, decimalen zijn .)

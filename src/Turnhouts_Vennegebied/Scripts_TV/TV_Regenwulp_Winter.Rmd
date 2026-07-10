@@ -259,7 +259,7 @@ final_max <- finaal_leefgebied_max
 final_opp <- finaal_leefgebied_opp         
 
 # Dynamisch pad naar de waarnemingen van het porseleinhoen
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Porseleinhoen.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Porseleinhoen.csv")
 
 # Clusters bepalen op basis van het finale maximale leefgebied
 cl_max      <- terra::patches(terra::buffer(final_max, width = 25), directions = 8, zeroAsNA = TRUE) %>% 

@@ -585,7 +585,7 @@ cat("=========================================================\n\n")
 message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor heikikker...")
 
 # 1. Pad naar het waarnemingsbestand van de heikikker
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Heikikker.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Heikikker.csv")
 
 # 2. Inlezen en bufferen van waarnemingen
 if (file.exists(waarnemingen_path)) {

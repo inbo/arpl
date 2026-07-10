@@ -496,7 +496,7 @@ gc()
 ```{r Resultaten en statistiek}
 # --- CRUCIALE FIX: Herstel opp_bron voor de rekenhulp ---
 opp_bron <- final_opp
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_BontDikkopje.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_BontDikkopje.csv")
 
 if (file.exists(waarnemingen_path)) {
   waarnemingen_raw <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)

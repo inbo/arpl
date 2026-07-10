@@ -442,7 +442,7 @@ message("-> Parallelle modellering succesvol voltooid! Logica met Ruim Land + Bo
 message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor noordsewitsnuitlibel...")
 
 # 1. Pad naar het waarnemingsbestand van de noordsewitsnuitlibel
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_NoordseWitsnuitlibel.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_NoordseWitsnuitlibel.csv")
 
 # 2. Inlezen van waarnemingen
 if (file.exists(waarnemingen_path)) {

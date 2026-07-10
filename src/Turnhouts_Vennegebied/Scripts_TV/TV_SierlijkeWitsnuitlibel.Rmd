@@ -572,7 +572,7 @@ finaal_max_binair <- sierlijkewitsnuitlibel_finaal_max
 finaal_opp_binair <- sierlijkewitsnuitlibel_finaal_opp
 
 # 1. Pad naar het waarnemingsbestand van de sierlijkewitsnuitlibel
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_SierlijkeWitsnuitlibel.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_SierlijkeWitsnuitlibel.csv")
 
 # 2. Inlezen van waarnemingen
 if (file.exists(waarnemingen_path)) {

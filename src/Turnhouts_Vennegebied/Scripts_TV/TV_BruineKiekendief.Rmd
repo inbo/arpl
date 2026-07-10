@@ -530,7 +530,7 @@ gc()
 message(paste("-> Start netwerkanalyse voor:", soort))
 
 # 1. Pad naar het waarnemingsbestand van de bruine kiekendief
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_BruineKiekendief.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_BruineKiekendief.csv")
 
 if (file.exists(waarnemingen_path)) {
   waarnemingen_raw    <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)

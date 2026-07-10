@@ -396,7 +396,7 @@ final_max <- zwartespecht_leefgebied_max
 final_opp <- zwartespecht_leefgebied_opp         
 
 # Dynamisch pad naar de waarnemingen van de zwartespecht
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_ZwarteSpecht.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_ZwarteSpecht.csv")
 
 # ==============================================================================
 # ECO-VISUELE FIX: Clusters definiëren via de echte 500m model-zoekstraal!

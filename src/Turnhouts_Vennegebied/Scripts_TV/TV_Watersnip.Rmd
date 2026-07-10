@@ -410,7 +410,7 @@ final_max <- watersnip_leefgebied_max
 final_opp <- watersnip_leefgebied_opp         
 
 # Dynamisch pad naar de waarnemingen van de watersnip
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Watersnip.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Watersnip.csv")
 
 # ==============================================================================
 # ECO-VISUELE FIX: Clusters definiëren via de echte 500m model-zoekstraal!

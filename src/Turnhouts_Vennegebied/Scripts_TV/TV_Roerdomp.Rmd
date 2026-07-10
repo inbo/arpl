@@ -475,7 +475,7 @@ final_max <- finaal_leefgebied_max
 final_opp <- finaal_leefgebied_opp         
 
 # Dynamisch pad naar de waarnemingen van de roerdomp
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Roerdomp.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Roerdomp.csv")
 
 # ==============================================================================
 # ECO-VISUELE FIX: Clusters definiëren via de echte 500m model-zoekstraal!

@@ -517,7 +517,7 @@ finaal_max_binair <- venglazenmaker_leefgebied_max
 finaal_opp_binair <- venglazenmaker_leefgebied_opp
 
 # 1. Pad naar het waarnemingsbestand van de venglazenmaker
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Venglazenmaker.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Venglazenmaker.csv")
 
 # 2. Inlezen van waarnemingen
 if (file.exists(waarnemingen_path)) {

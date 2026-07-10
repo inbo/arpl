@@ -369,7 +369,7 @@ finaal_leefgebied_opp <- leefgebied_opp_lijst$raster
 
 # Resultaten en Statistiek
 ```{r Resultaten en statistiek}
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Nachtzwaluw.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Nachtzwaluw.csv")
 # Clusters bepalen op basis van het finale maximale leefgebied
 cl_max      <- terra::patches(terra::buffer(finaal_leefgebied_max, width = 25), directions = 8, zeroAsNA = TRUE) %>% 
                  terra::mask(finaal_leefgebied_max)

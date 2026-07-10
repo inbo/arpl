@@ -402,7 +402,7 @@ gc()
 ```{r waarnemingen inlezen en ARPL}
 message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor veldkrekel...")
 
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Veldkrekel.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Veldkrekel.csv")
 
 if (file.exists(waarnemingen_path)) {
   waarnemingen_raw    <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)

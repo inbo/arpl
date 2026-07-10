@@ -854,7 +854,7 @@ grutto_kaart_A <- maak_kaart_laag(resA_strikt)
 # --- STAP 11.5 & 11.6: ARPL & ACTUELE VERSPREIDING (ECHTE BINAIRE OUTPUT) ---
 
 # 1. Waarnemingen inladen
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Grutto.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Grutto.csv")
 
 if (file.exists(waarnemingen_path)) {
   waarnemingen_raw    <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)

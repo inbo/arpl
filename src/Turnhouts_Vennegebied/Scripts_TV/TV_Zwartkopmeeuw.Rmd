@@ -399,7 +399,7 @@ final_max <- zwartkopmeeuw_leefgebied_max
 final_opp <- zwartkopmeeuw_leefgebied_opp         
 
 # Dynamisch pad naar de waarnemingen van de zwartkopmeeuw
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Zwartkopmeeuw.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Zwartkopmeeuw.csv")
 
 # ==============================================================================
 # ECO-VISUELE FIX: Clusters definiëren via de echte 500m model-zoekstraal!

@@ -438,7 +438,7 @@ hoogveenglanslibel_leefgebied_opp <- terra::ifel(hoogveenglanslibel_leefgebied_o
 message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor hoogveenglanslibel...")
 
 # 1. Pad naar het waarnemingsbestand van de hoogveenglanslibel
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Hoogveenglanslibel.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Hoogveenglanslibel.csv")
 
 # 2. Inlezen en bufferen van waarnemingen
 if (file.exists(waarnemingen_path)) {

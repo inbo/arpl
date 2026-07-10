@@ -373,7 +373,7 @@ final_max <- paapje_finaal_max
 final_opp <- paapje_finaal_opp         
 
 # Dynamisch pad naar de waarnemingen van het paapje
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Paapje.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Paapje.csv")
 
 # Clusters bepalen op basis van het finale maximale leefgebied
 cl_max      <- terra::patches(terra::buffer(final_max, width = 25), directions = 8, zeroAsNA = TRUE) %>% 

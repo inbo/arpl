@@ -360,7 +360,7 @@ gc()
 message(paste("-> Start ARPL en Actuele Verspreiding analyse voor:", soort))
 
 # 1. Pad naar het waarnemingsbestand
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Boompieper.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Boompieper.csv")
 
 # 2. Inlezen en bufferen van waarnemingen voor ARPL (dispersiebereik)
 if (file.exists(waarnemingen_path)) {

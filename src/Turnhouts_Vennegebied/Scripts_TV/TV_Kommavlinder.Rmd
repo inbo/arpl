@@ -391,7 +391,7 @@ gc()
 message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor kommavlinder...")
 
 # 1. Pad naar het waarnemingsbestand van de kommavlinder
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Waarnemingen_Kommavlinder.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Kommavlinder.csv")
 
 # 2. Inlezen en bufferen van waarnemingen
 if (file.exists(waarnemingen_path)) {
