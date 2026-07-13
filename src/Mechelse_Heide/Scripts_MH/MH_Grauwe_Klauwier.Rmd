@@ -277,7 +277,7 @@ r_buffer_bouw  <- terra::buffer(r_bouw_10ha, width = 100)
 masker_stoor_bouw <- !is.na(r_buffer_bouw)
 
 message("-> GRB Wegverbindingen uitlezen en dynamisch filteren op tekstlabels...")
-r_wegen_raw <- terra::rast(here("data/input/Raster_Vlaanderen/GRB_Wegverbinding_at.tif"))
+r_wegen_raw <- terra::rast(here("data/input/Raster_Vlaanderen/vlaanderen_wegverbinding_10m.tif"))
 r_wegen     <- terra::resample(r_wegen_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
 
 # --- DYNAMISCHE METADATA-CHECK OP BASIS VAN JOUW OMSCHRIJVINGEN ---
