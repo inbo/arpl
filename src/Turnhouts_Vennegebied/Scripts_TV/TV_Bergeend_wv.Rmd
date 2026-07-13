@@ -425,7 +425,7 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   
   if(has_observations && nrow(df_points_sf) > 0) {
     extract_ids_max <- terra::extract(cl_max, waarneming_blobs_vect, ID = FALSE)
-    ids_raken_waarneming := if(nrow(extract_ids_max) > 0) unique(na.omit(extract_ids_max[[1]])) else c()
+    ids_raken_waarneming <- if(nrow(extract_ids_max) > 0) unique(na.omit(extract_ids_max[[1]])) else c()
   } else {
     ids_raken_waarneming <- c()
   }

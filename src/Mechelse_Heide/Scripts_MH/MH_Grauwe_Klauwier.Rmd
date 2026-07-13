@@ -325,24 +325,44 @@ r_kern_10ha_opp <- terra::mask(voortplanting_gezuiverd_opp, r_kern_10ha_max)
 rm(cl_kern, voortplanting_gezuiverd_max, voortplanting_gezuiverd_opp)
 ```
 
-```{r kleine landschapselementen check}
+```{r kleine landschapselementen via groenkaart}
 # ==============================================================================
-# STAP 3: EVALUATIE VAN LINEAIRE KLE'S BINNEN DE KERNEN (MINSTENS 500 METER)
+# STAP 3: LIJNVORMIG HOOG- EN LAAGGROEN AFLEIDEN UIT DE GROENKAART (MIN 500M)
 # ==============================================================================
-message("-> Lijnvormige kleine landschapselementen (KLE) inladen en filteren...")
+message("-> Groenkaart inlezen en synchroniseren met turnhoutse template...")
+r_groen_raw <- terra::rast(here("data/input/ASCI Files/Groenkaart_2021.tif"))
+r_groen     <- terra::resample(r_groen_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
 
-# We laden de lijnvormige houtkanten/hagenlaag in (kb%, kh%, kj%, kw% uit de BWK of groenlaag)
-r_kle_lijnen_raw <- terra::rast(here("data/input/Raster_Vlaanderen/vlaanderen_kle_lijnen_10m.tif"))
-r_kle_lijnen     <- terra::resample(r_kle_lijnen_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
-r_kle_binair     <- terra::ifel(r_kle_lijnen > 0, 1, 0)
+# 1 = Hooggroen, 2 = Laaggroen
+r_hooggroen <- r_groen == 1
+r_laaggroen <- r_groen == 2
 
+message("-> Lijnvormige elementen detecteren via focal variatie (Majority Filter vervanger)...")
+# We kijken in een 3x3 venster rondom elke pixel naar de variatie (focal 'modal' of 'sd')
+# Smalle lijnen hebben veel niet-groen buren; dichte bossen hebben louter groen buren.
+focal_hoog <- terra::focal(r_hooggroen, w = 3, fun = "sum", na.rm = TRUE)
+focal_laag <- terra::focal(r_laaggroen, w = 3, fun = "sum", na.rm = TRUE)
+
+# Een pixel is lijnvormig groen als het groen is, maar GEEN onderdeel is van een massief blok
+# (bvb. tussen de 1 en 6 buren in een 3x3 venster, in plaats van een volle 8 of 9)
+r_lijn_hooggroen <- r_hooggroen == 1 & (focal_hoog >= 1 & focal_hoog <= 6)
+r_lijn_laaggroen <- r_laaggroen == 1 & (focal_laag >= 1 & focal_laag <= 6)
+
+# Smelt lijnvormig hoog- en laaggroen samen tot één binaire KLE-laag
+r_kle_groenkaart <- (r_lijn_hooggroen == 1) | (r_lijn_laaggroen == 1)
+r_kle_binair     <- terra::ifel(r_kle_groenkaart, 1, 0)
+
+message("-> Controle: Ligt er minstens 500 meter KLE binnen de kernbiotopen?")
 if (!all(is.na(terra::values(r_kern_10ha_max, mat=FALSE)))) {
-  # Tel de KLE pixels per uniek kerncluster via zonal
+  # Groepeer de kernbiotopen in unieke patches om ze per stuk te kunnen beoordelen
   cl_patches <- terra::patches(r_kern_10ha_max, directions = 8, zeroAsNA = TRUE)
+  
+  # Tel het aantal KLE-pixels dat BINNEN elk kerncluster valt via zonal
   kle_counts <- terra::zonal(r_kle_binair, cl_patches, fun = "sum", na.rm = TRUE)
   colnames(kle_counts) <- c("ID", "KLE_pixels")
   
-  # 500 meter gedeeld door een celgrootte van 10m = minstens 50 pixels aan KLE-lijnen
+  # Aangezien we op een 10m grid werken, staat 1 pixel gelijk aan 10 meter lengte.
+  # 500 meter vereiste lijnlengte / 10m cellsize = minstens 50 pixels!
   goedgekeurde_patch_ids <- kle_counts$ID[kle_counts$KLE_pixels >= 50]
   
   if (length(goedgekeurde_patch_ids) > 0) {
@@ -358,87 +378,84 @@ if (!all(is.na(terra::values(r_kern_10ha_max, mat=FALSE)))) {
   r_voortplanting_finaal_opp <- id_raster_TV * NA
 }
 
-rm(r_kle_lijnen_raw, r_kle_lijnen, r_kle_binair, r_kern_10ha_max, r_kern_10ha_opp)
+rm(r_groen_raw, r_groen, r_hooggroen, r_laaggroen, focal_hoog, focal_laag, 
+   r_lijn_hooggroen, r_lijn_laaggroen, r_kle_groenkaart, r_kle_binair, r_kern_10ha_max, r_kern_10ha_opp)
 ```
 
-```{r foerageerkoppeling en graslandfilter}
+```{r grauweklauwier stap 4 - foerageerkoppeling en graslandfilter}
 # ==============================================================================
 # STAP 4: FOERAGEERHABITAT KOPPELEN (100M BUFFER) EN GRASLAND MONOTONITEITSTEST
 # ==============================================================================
 message("-> Wederzijdse afstandsinteractie berekenen (100m foerageerbereik)...")
 
-r_leefgebied_bruto_max <- id_raster_TV * NA
-r_leefgebied_bruto_opp <- id_raster_TV * NA
+grauweklauwier_leefgebied_max <- id_raster_TV * NA
+grauweklauwier_leefgebied_opp <- id_raster_TV * NA
 
 if (!all(is.na(terra::values(r_voortplanting_finaal_max, mat=FALSE)))) {
-  # Kernen bufferen met 100 meter om foerageergebied te capteren
+  # Goedgekeurde kernen (die de 500m Groenkaart-KLE-test hebben overleefd) 100m bufferen
   buffer_100m_kern <- terra::buffer(r_voortplanting_finaal_max, width = 100)
   
   # Foerageerhabitat is geldig binnen 100m van een goedgekeurde kern
   r_foerageer_geclipt_max <- terra::mask(foerageerbiotoop_max, buffer_100m_kern)
   
-  # Smelt kernen en geclipt foerageergebied samen via logische OF
+  # Voeg kern en geclipt foerageergebied samen via logische OF
   r_leefgebied_bruto_max <- (!is.na(r_voortplanting_finaal_max) & r_voortplanting_finaal_max == 1) | 
                             (!is.na(r_foerageer_geclipt_max) & r_foerageer_geclipt_max == 1)
   r_leefgebied_bruto_max <- terra::ifel(r_leefgebied_bruto_max == 1, 1, NA)
   
-  # Filter direct op de minimale totale leefgebied-ondergrens van 15 hectare
+  # Filter het geheel op de minimale totale leefgebiedsgrootte van GDX: 15 hectare
   cl_leefgebied <- cluster_filter_compleet(
     masker     = r_leefgebied_bruto_max,
-    opp_laag   = foerageerbiotoop_opp, # Gebruik de totale biotoopfracties
-    drempel_m2 = 15 * 10000,           # Totale netwerkgrootte = 15 ha
+    opp_laag   = foerageerbiotoop_opp, 
+    drempel_m2 = 15 * 10000, # Totale oppervlakte van het netwerk moet >= 15 ha zijn
     dist_m     = 50,
     werkelijk  = FALSE
   )
-  r_leefgebied_bruto_max <- cl_leefgebied$raster
-}
-
-# --- CRUCIALE MONOTONITEITSTEST: HP-GRASLAND FILTER < 90% ---
-message("-> Intensief cultuurgraslandfilter toepassen (maximaal 90% hp)...")
-grauweklauwier_leefgebied_max <- id_raster_TV * NA
-grauweklauwier_leefgebied_opp <- id_raster_TV * NA
-
-if (!all(is.na(terra::values(r_leefgebied_bruto_max, mat=FALSE)))) {
-  cl_final_patches <- terra::patches(r_leefgebied_bruto_max, directions = 8, zeroAsNA = TRUE)
+  r_leefgebied_netwerk_max <- cl_leefgebied$raster
   
-  # Bereken de totale oppervlakte per cluster
-  opp_totaal <- terra::zonal(foerageerbiotoop_opp, cl_final_patches, fun = "sum", na.rm = TRUE)
-  colnames(opp_totaal) <- c("ID", "Totaal_ha")
-  
-  # Bereken de oppervlakte aan louter intensief grasland (hp) binnen de leefgebieden
-  # We isoleren de 'hp' componenten uit de centrale tabel_vlaanderen via de crosswalk
-  tabel_hp <- tabel_vlaanderen[CODE %in% gouden_namenlijst[grepl("^hp", gouden_namenlijst)] & cel_id %in% studiegebied_globale_ids]
-  tabel_hp_som <- tabel_hp[, .(Opp_HP = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
-  
-  r_hp_fractie <- id_raster_TV * NA
-  if (nrow(tabel_hp_som) > 0) {
-    setnames(tabel_hp_som, "cel_id", "globale_id")
-    tabel_hp_mapping <- merge(tabel_hp_som, vertaal_df, by = "globale_id", all.x = TRUE)[!is.na(lokale_id)]
-    if (nrow(tabel_hp_mapping) > 0) r_hp_fractie[tabel_hp_mapping$lokale_id] <- tabel_hp_mapping$Opp_HP
-  }
-  
-  opp_hp_zonal <- terra::zonal(r_hp_fractie, cl_final_patches, fun = "sum", na.rm = TRUE)
-  colnames(opp_hp_zonal) <- c("ID", "HP_ha")
-  
-  # Voeg samen en evalueer de fractie
-  grasland_check <- merge(opp_totaal, opp_hp_zonal, by = "ID", all.x = TRUE)
-  grasland_check$HP_ha[is.na(grasland_check$HP_ha)] <- 0
-  grasland_check$GraslandAandeel <- grasland_check$HP_ha / grasland_check$Totaal_ha
-  
-  # Enkel netwerken waar het aandeel intensief grasland STRICT minder is dan 90% overleven
-  goedgekeurde_leefgebied_ids <- grasland_check$ID[grasland_check$GraslandAandeel < 0.90]
-  
-  if (length(goedgekeurde_leefgebied_ids) > 0) {
-    masker_leefgebied_ok <- cl_final_patches %in% goedgekeurde_leefgebied_ids
-    grauweklauwier_leefgebied_max <- terra::ifel(masker_leefgebied_ok == 1, 1, NA) %>% terra::crop(template_TV)
-    grauweklauwier_leefgebied_opp <- terra::mask(foerageerbiotoop_opp, grauweklauwier_leefgebied_max) %>% terra::crop(template_TV)
+  # --- CRUCIALE MONOTONITEITSTEST: HP-GRASLAND FILTER < 90% ---
+  if (!all(is.na(terra::values(r_leefgebied_netwerk_max, mat=FALSE)))) {
+    cl_final_patches <- terra::patches(r_leefgebied_netwerk_max, directions = 8, zeroAsNA = TRUE)
+    
+    # Bereken de totale oppervlakte per cluster
+    opp_totaal <- terra::zonal(foerageerbiotoop_opp, cl_final_patches, fun = "sum", na.rm = TRUE)
+    colnames(opp_totaal) <- c("ID", "Totaal_ha")
+    
+    # Isoleer de 'hp%' codes (cultuurgrasland) uit de database om het aandeel te berekenen
+    tabel_hp <- tabel_vlaanderen[CODE %in% gouden_namenlijst[grepl("^hp", gouden_namenlijst)] & cel_id %in% studiegebied_globale_ids]
+    tabel_hp_som <- tabel_hp[, .(Opp_HP = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
+    
+    r_hp_fractie <- id_raster_TV * NA
+    if (nrow(tabel_hp_som) > 0) {
+      setnames(tabel_hp_som, "cel_id", "globale_id")
+      tabel_hp_mapping <- merge(tabel_hp_som, vertaal_df, by = "globale_id", all.x = TRUE)[!is.na(lokale_id)]
+      if (nrow(tabel_hp_mapping) > 0) r_hp_fractie[tabel_hp_mapping$lokale_id] <- tabel_hp_mapping$Opp_HP
+    }
+    
+    opp_hp_zonal <- terra::zonal(r_hp_fractie, cl_final_patches, fun = "sum", na.rm = TRUE)
+    colnames(opp_hp_zonal) <- c("ID", "HP_ha")
+    
+    # Bereken het graslandaandeel per cluster
+    grasland_check <- merge(opp_totaal, opp_hp_zonal, by = "ID", all.x = TRUE)
+    grasland_check$HP_ha[is.na(grasland_check$HP_ha)] <- 0
+    grasland_check$GraslandAandeel <- grasland_check$HP_ha / grasland_check$Totaal_ha
+    
+    # Alleen clusters waar het aandeel intensief grasland STRICT minder dan 90% is overleven!
+    goedgekeurde_leefgebied_ids <- grasland_check$ID[grasland_check$GraslandAandeel < 0.90]
+    
+    if (length(goedgekeurde_leefgebied_ids) > 0) {
+      masker_leefgebied_ok <- cl_final_patches %in% goedgekeurde_leefgebied_ids
+      grauweklauwier_leefgebied_max <- terra::ifel(masker_leefgebied_ok == 1, 1, NA) %>% terra::crop(template_TV)
+      grauweklauwier_leefgebied_opp <- terra::mask(foerageerbiotoop_opp, grauweklauwier_leefgebied_max) %>% terra::crop(template_TV)
+    }
   }
 }
 
 message("--- GRAUWE KLAUWIER MODEL SUCCESVOL AFGEROND ---")
-cat("Totaal stabiel leefgebied Grauwe Klauwier (ha):", round(calc_ha_exact(grauweklauwier_leefgebied_opp), 2), "\n")
+cat("Totaal stabiel leefgebied Grauwe Klauwier via Groenkaart (ha):", round(calc_ha_exact(grauweklauwier_leefgebied_opp), 2), "\n")
 
-rm(r_leefgebied_bruto_max, r_voortplanting_finaal_max, r_voortplanting_finaal_opp, foerageerbiotoop_max, foerageerbiotoop_opp, masker_stoor_bouw, masker_stoor_wegen)
+rm(r_voortplanting_finaal_max, r_voortplanting_finaal_opp, foerageerbiotoop_max, foerageerbiotoop_opp, 
+   masker_stoor_bouw, masker_stoor_wegen, r_leefgebied_bruto_max, r_leefgebied_netwerk_max)
 gc()
 ```
 
