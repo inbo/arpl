@@ -96,7 +96,7 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
 # Soort informatie ophalen
 ```{r Soort informatie}
 df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
-soort <- "grotezilverreiger"
+soort <- "regenwulp"
 
 resultaat <- df %>%
 filter(Soort == soort) %>%
@@ -241,95 +241,196 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
 }
 
 # Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
-foerageer_bwk_max <- lijst_matches[["foerageer_bwk"]]
-foerageer_bwk_opp <- lijst_oppervlaktes[["foerageer_bwk"]]
+foerageer_max <- lijst_matches[["foerageer"]]
+foerageer_opp <- lijst_oppervlaktes[["foerageer"]]
+foerageer_goed_max <- lijst_matches[["foerageer_goed"]]
+foerageer_goed_opp <- lijst_oppervlaktes[["foerageer_goed"]]
+plas_max <- lijst_matches[["plas"]]
+plas_opp <- lijst_oppervlaktes[["plas"]]
+heide_max <- lijst_matches[["heide"]]
+heide_opp <- lijst_oppervlaktes[["heide"]]
+heideplas_max <- lijst_matches[["heideplas"]]
+heideplas_opp <- lijst_oppervlaktes[["heideplas"]]
+akkers_max <- lijst_matches[["akkers"]]
+akkers_opp <- lijst_oppervlaktes[["akkers"]]
+
+# [1] "foerageer"      "foerageer_goed" "plas"           "heide"          "heideplas"   "akkers" 
 
 # Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
 rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
-```{r watervogelgebieden filteren}
+```{r grasland-leefgebied}
 # ==============================================================================
-# STAP 1: KANT-EN-KLARE RDS INLEZEN, REGIO CLIP EN 90% PRESENTIE-FILTER
+# STAP 1: REGENWULP - GRASLAND-LEEFGEBIED MET KWALITEITS- EN SLAAPPLAATSEISEN
 # ==============================================================================
-message("-> Universele grote zilverreigerdata inlezen...")
-sf_reiger_vlaanderen <- readRDS(here("data/input/Watervogelgebieden_Ruw/watervogelgebieden_ruw_grote_zilverreiger.rds"))
-
-message("-> Ruimtelijk uitsnijden op actieve regio via sf st_filter...")
-sf_regio_template <- sf::st_as_sf(area_buffer_fix)
-sf_reiger_regio   <- sf::st_filter(sf_reiger_vlaanderen, sf_regio_template)
-
-message("-> Filteren op vogelgebieden met waargenomen aantallen > 0...")
-locatie_aantallen <- sf_reiger_regio %>%
-  st_drop_geometry() %>% 
-  group_by(locationwvkey) %>%
-  summarise(
-    MaximaalGeteld = max(seizoenstotaal, na.rm = TRUE),
-    TotaalGeteld   = sum(seizoenstotaal, na.rm = TRUE)
-  )
-
-# Selecteer alle keys waar minstens één kemphaan is geteld (seizoenstotaal > 0)
-goedgekeurde_keys <- locatie_aantallen$locationwvkey[
-  locatie_aantallen$TotaalGeteld > 0 | locatie_aantallen$MaximaalGeteld > 0
-]
-
-gebied_geselecteerd <- sf_reiger_regio %>%
-  distinct(locationwvkey, .keep_all = TRUE) %>% 
-  filter(locationwvkey %in% goedgekeurde_keys)
-
-message("-> Geselecteerde vogelgebieden rasteriseren op het studieterrein...")
-r_watervogelgebied_max <- terra::rasterize(
-  x = terra::vect(gebied_geselecteerd),
-  y = id_raster_TV,
-  field = 1,
-  background = NA
+message("-> Spoor 1: Bruto foerageergebied clusteren op 50m en zeven op min. 300 ha...")
+cl_foer_bruto <- cluster_filter_compleet(
+  masker     = foerageer_max,
+  opp_laag   = foerageer_opp,
+  drempel_m2 = 300 * 10000, # 300 hectare
+  dist_m     = 50,
+  werkelijk  = FALSE
 )
+r_foer_300ha_max <- cl_foer_bruto$raster
 
-rm(sf_reiger_vlaanderen, sf_reiger_regio, locatie_scores, gebied_geselecteerd, sf_regio_template)
+message("-> Goed foerageergebied clusteren op 50m en zeven op min. 100 ha...")
+cl_foer_goed <- cluster_filter_compleet(
+  masker     = foerageer_goed_max,
+  opp_laag   = foerageer_goed_opp,
+  drempel_m2 = 100 * 10000, # 100 hectare
+  dist_m     = 50,
+  werkelijk  = FALSE
+)
+r_foer_goed_100ha_max <- cl_foer_goed$raster
+
+message("-> Filteren: Kwalitatief goed gebied moet binnen 50 meter van het bruto gebied liggen...")
+dist_goed_100ha <- terra::distance(terra::ifel(r_foer_goed_100ha_max == 1, 1, NA))
+r_leefgebied_kwaliteit_max <- terra::ifel(dist_goed_100ha <= 50, 1, NA) %>% 
+                              terra::mask(r_foer_300ha_max)
+
+# --- SLAAPPLAATS-CHECK: ONDIEPE PLASSEN OF SLIKKEN ---
+message("-> Slaapplaten (plassen) verwerken (min. 0.5 ha)...")
+# Note: de biotoopfiltering levert 'plas_max' / 'plas_opp'
+# We checken de aanwezigheid van 'plas_max' in het geheugen
+if (exists("plas_max")) {
+  r_active_plas <- plas_max
+  r_active_plas_opp <- plas_opp
+} else {
+  # Fallback voor het geval de dictionary-tag 'plas' heet
+  r_active_plas <- foerageer_max * NA
+  r_active_plas_opp <- foerageer_opp * NA
+}
+
+cl_plas <- cluster_filter_compleet(
+  masker     = r_active_plas,
+  opp_laag   = r_active_plas_opp,
+  drempel_m2 = 0.5 * 10000, # 0.5 hectare
+  dist_m     = 50,
+  werkelijk  = FALSE
+)
+r_plas_05ha_max <- cl_plas$raster
+
+message("-> Slikken en schorren verwerken (min. 0.25 ha)...")
+# Slikken en schorren komen uit de 'da%' en 'ds%' codes die in de database zitten.
+# Indien niet als aparte match opgevangen, maken we een lege laag om crashes te voorkomen.
+if (exists("slik_max")) {
+  r_active_slik <- slik_max
+  r_active_slik_opp <- slik_opp
+} else {
+  r_active_slik <- foerageer_max * NA
+  r_active_slik_opp <- foerageer_opp * NA
+}
+
+cl_slik <- cluster_filter_compleet(
+  masker     = r_active_slik,
+  opp_laag   = r_active_slik_opp,
+  drempel_m2 = 0.25 * 10000, # 0.25 hectare
+  dist_m     = 50,
+  werkelijk  = FALSE
+)
+r_slik_025ha_max <- cl_slik$raster
+
+# Afstanden berekenen tot slaapplaatsen
+dist_plas <- terra::distance(terra::ifel(r_plas_05ha_max == 1, 1, NA))
+dist_slik <- terra::distance(terra::ifel(r_slik_025ha_max == 1, 1, NA))
+
+# Criterium A: Maximaal 50 meter van een plas
+r_leefgebied_4a <- terra::ifel(dist_plas <= 50, 1, NA) %>% terra::mask(r_leefgebied_kwaliteit_max)
+# Criterium B: Maximaal 100 meter van een slikgebied
+r_leefgebied_4b <- terra::ifel(dist_slik <= 100, 1, NA) %>% terra::mask(r_leefgebied_kwaliteit_max)
+
+# Combineren en herclusteren op minimaal 50 ha
+r_grasland_leefgebied_bruto <- (!is.na(r_leefgebied_4a) & r_leefgebied_4a == 1) | 
+                                (!is.na(r_leefgebied_4b) & r_leefgebied_4b == 1)
+r_grasland_leefgebied_bruto <- terra::ifel(r_grasland_leefgebied_bruto == 1, 1, NA)
+
+cl_grasland_final <- cluster_filter_compleet(
+  masker     = r_grasland_leefgebied_bruto,
+  opp_laag   = foerageer_opp, # Gebruik foerageer_opp als proxy voor de zonal sums
+  drempel_m2 = 50 * 10000, # Minimaal 50 ha
+  dist_m     = 50,
+  werkelijk  = FALSE
+)
+r_grasland_leefgebied_finaal <- cl_grasland_final$raster
+
+rm(cl_foer_bruto, r_foer_300ha_max, cl_foer_goed, r_foer_goed_100ha_max, dist_goed_100ha, 
+   r_leefgebied_kwaliteit_max, cl_plas, r_plas_05ha_max, cl_slik, r_slik_025ha_max, 
+   dist_plas, dist_slik, r_leefgebied_4a, r_leefgebied_4b, r_grasland_leefgebied_bruto, cl_grasland_final)
 ```
 
 
-```{r landschapsclustering en gebiedskruising}
+```{r regenwulp stap 2 - heide-leefgebied en eindcombinatie}
 # ==============================================================================
-# STAP 2: 50M FUZZY CLUSTERING (30 HA) EN KRUISING MET GOEDGEKEURDE TELGEBIEDEN
+# STAP 2: REGENWULP - HEIDE-LEEFGEBIED, COMBINATIE EN AKKER-EXCLUSIE
 # ==============================================================================
-message("-> Landschapsclustering foerageerhabitat (50m fuzzy, drempel 30 ha)...")
+message("-> Spoor 2: Heide clusteren op 50m en zeven op min. 50 ha...")
+cl_heide <- cluster_filter_compleet(
+  masker     = heide_max,
+  opp_laag   = heide_opp,
+  drempel_m2 = 50 * 10000, # 50 hectare
+  dist_m     = 50,
+  werkelijk  = FALSE
+)
+r_heide_50ha_max <- cl_heide$raster
 
-# Bereken de drempel dynamisch in m2 op basis van de ingelezen Excel-variabele (30 ha)
-drempel_m2 <- oppervlakte_ha * 10000
+message("-> Heideplas (vennen) clusteren op 50m en zeven op min. 0.5 ha...")
+cl_heideplas <- cluster_filter_compleet(
+  masker     = heideplas_max,
+  opp_laag   = heideplas_opp,
+  drempel_m2 = 0.5 * 10000, # 0.5 hectare
+  dist_m     = 50,
+  werkelijk  = FALSE
+)
+r_heideplas_05ha_max <- cl_heideplas$raster
 
-reiger_clusters <- cluster_filter_compleet(
-  masker       = foerageer_bwk_max,
-  opp_laag     = foerageer_bwk_opp,
-  drempel_m2   = drempel_m2, 
-  dist_m       = 50,
-  werkelijk    = FALSE
+message("-> Filteren: Heideplas moet binnen 100 meter van de heide liggen...")
+dist_heideplas <- terra::distance(terra::ifel(r_heideplas_05ha_max == 1, 1, NA))
+r_heide_leefgebied_finaal <- terra::ifel(dist_heideplas <= 100, 1, NA) %>% 
+                             terra::mask(r_heide_50ha_max)
+
+# --- SAMENVOEGEN EN AKKERS EXCLUDEREN ---
+message("-> Beide sporen combineren en akkers uitsluiten...")
+r_leefgebied_gecombineerd <- (!is.na(r_grasland_leefgebied_finaal) & r_grasland_leefgebied_finaal == 1) | 
+                             (!is.na(r_heide_leefgebied_finaal) & r_heide_leefgebied_finaal == 1)
+r_leefgebied_gecombineerd <- terra::ifel(r_leefgebied_gecombineerd == 1, 1, NA)
+
+# Akkers resoluut wegsnijden (masker omdraaien)
+r_leefgebied_zonder_akkers <- terra::mask(r_leefgebied_gecombineerd, akkers_max, inverse = TRUE)
+
+# --- FINALE CLUSTERING OP 50 HA (ANALOG MET DE ECOREGIO-TOETS) ---
+message("-> Finale clustering op minimaal 50 ha...")
+cl_regenwulp_finaal <- cluster_filter_compleet(
+  masker     = r_leefgebied_zonder_akkers,
+  opp_laag   = foerageer_opp, # proxy
+  drempel_m2 = 50 * 10000, # 50 hectare
+  dist_m     = 50,
+  werkelijk  = FALSE
 )
 
-r_foer_30ha_max <- reiger_clusters$raster
-r_foer_30ha_opp <- terra::mask(foerageer_bwk_opp, r_foer_30ha_max)
+regenwulp_leefgebied_max <- cl_regenwulp_finaal$raster %>% terra::crop(template_TV)
+regenwulp_leefgebied_opp <- terra::mask(foerageer_opp, regenwulp_leefgebied_max) %>% terra::crop(template_TV)
 
-message("-> Intersectie: Alleen geschikt habitat BINNEN de vogelgebieden behouden...")
-grotezilverreiger_leefgebied_max <- terra::mask(r_foer_30ha_max, r_watervogelgebied_max) %>% terra::crop(template_TV)
-grotezilverreiger_leefgebied_opp <- terra::mask(r_foer_30ha_opp, r_watervogelgebied_max) %>% terra::crop(template_TV)
+message("--- REGENWULP MODEL SUCCESVOL AFGEROND ---")
+cat("Totaal stabiel leefgebied Regenwulp (ha):", round(calc_ha_exact(regenwulp_leefgebied_opp), 2), "\n")
 
-message("--- GROTE ZILVERREIGER MODEL SUCCESVOL AFGEROND ---")
-cat("Totaal werkelijk habitat Grote Zilverreiger binnen regio (ha):", round(calc_ha_exact(grotezilverreiger_leefgebied_opp), 2), "\n")
-
-rm(reiger_clusters, r_foer_30ha_max, r_foer_30ha_opp, r_watervogelgebied_max)
+rm(cl_heide, r_heide_50ha_max, cl_heideplas, r_heideplas_05ha_max, dist_heideplas, r_heide_leefgebied_finaal,
+   r_grasland_leefgebied_finaal, r_leefgebied_gecombineerd, r_leefgebied_zonder_akkers, cl_regenwulp_finaal)
 gc()
 ```
 
 # Resultaten en Statistiek
 ```{r Resultaten en statistiek}
 # ==============================================================================
-# ECOLOOG-MAPPING: BRUG TUSSEN SCRIPT EN STATISTIEK
+# ECOLOOG-MAPPING: BRUG TUSSEN SCRIPT EN STATISTIEK (MET VEILIGE DREMPEL_M2)
 # ==============================================================================
-cl_max    <- grotezilverreiger_leefgebied_max
-final_max <- grotezilverreiger_leefgebied_max
-bwk_opp   <- grotezilverreiger_leefgebied_opp
-final_opp <- grotezilverreiger_leefgebied_opp
+drempel_m2 <- oppervlakte_ha * 10000
+
+cl_max    <- regenwulp_leefgebied_max
+final_max <- regenwulp_leefgebied_max
+bwk_opp   <- regenwulp_leefgebied_opp
+final_opp <- regenwulp_leefgebied_opp
 binnen_masker <- template_TV
 
 # --- BEREKENING EN STATISTIEK ---

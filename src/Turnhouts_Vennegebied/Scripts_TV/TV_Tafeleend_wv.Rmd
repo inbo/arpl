@@ -96,7 +96,7 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
 # Soort informatie ophalen
 ```{r Soort informatie}
 df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
-soort <- "grotezilverreiger"
+soort <- "tafeleend"
 
 resultaat <- df %>%
 filter(Soort == soort) %>%
@@ -251,17 +251,17 @@ gc()
 
 ```{r watervogelgebieden filteren}
 # ==============================================================================
-# STAP 1: KANT-EN-KLARE RDS INLEZEN, REGIO CLIP EN 90% PRESENTIE-FILTER
+# STAP 1: tafeleend - REGIO CLIP EN FILTER OP SEIZOENSTOTAAL GROTER DAN 0
 # ==============================================================================
-message("-> Universele grote zilverreigerdata inlezen...")
-sf_reiger_vlaanderen <- readRDS(here("data/input/Watervogelgebieden_Ruw/watervogelgebieden_ruw_grote_zilverreiger.rds"))
+message("-> Universele tafeleenddata inlezen...")
+sf_tafeleend_vlaanderen <- readRDS(here("data/input/Watervogelgebieden_Ruw/watervogelgebieden_ruw_tafeleend.rds"))
 
 message("-> Ruimtelijk uitsnijden op actieve regio via sf st_filter...")
 sf_regio_template <- sf::st_as_sf(area_buffer_fix)
-sf_reiger_regio   <- sf::st_filter(sf_reiger_vlaanderen, sf_regio_template)
+sf_tafeleend_regio  <- sf::st_filter(sf_tafeleend_vlaanderen, sf_regio_template)
 
 message("-> Filteren op vogelgebieden met waargenomen aantallen > 0...")
-locatie_aantallen <- sf_reiger_regio %>%
+locatie_aantallen <- sf_tafeleend_regio %>%
   st_drop_geometry() %>% 
   group_by(locationwvkey) %>%
   summarise(
@@ -269,12 +269,12 @@ locatie_aantallen <- sf_reiger_regio %>%
     TotaalGeteld   = sum(seizoenstotaal, na.rm = TRUE)
   )
 
-# Selecteer alle keys waar minstens één kemphaan is geteld (seizoenstotaal > 0)
+# Selecteer alle keys waar minstens één tafeleend is geteld (seizoenstotaal > 0)
 goedgekeurde_keys <- locatie_aantallen$locationwvkey[
   locatie_aantallen$TotaalGeteld > 0 | locatie_aantallen$MaximaalGeteld > 0
 ]
 
-gebied_geselecteerd <- sf_reiger_regio %>%
+gebied_geselecteerd <- sf_tafeleend_regio %>%
   distinct(locationwvkey, .keep_all = TRUE) %>% 
   filter(locationwvkey %in% goedgekeurde_keys)
 
@@ -286,50 +286,94 @@ r_watervogelgebied_max <- terra::rasterize(
   background = NA
 )
 
-rm(sf_reiger_vlaanderen, sf_reiger_regio, locatie_scores, gebied_geselecteerd, sf_regio_template)
+rm(sf_tafeleend_vlaanderen, sf_tafeleend_regio, locatie_aantallen, gebied_geselecteerd, sf_regio_template)
 ```
 
 
-```{r landschapsclustering en gebiedskruising}
+```{r tafeleend stap 2 - waterlopen en clustering met exacte codes}
 # ==============================================================================
-# STAP 2: 50M FUZZY CLUSTERING (30 HA) EN KRUISING MET GOEDGEKEURDE TELGEBIEDEN
+# STAP 2: WATERLOPEN INTEGREREN (EXACTE CODES), FUZZY CLUSTERING EN GEBIEDSKRUISING (5 HA)
 # ==============================================================================
-message("-> Landschapsclustering foerageerhabitat (50m fuzzy, drempel 30 ha)...")
+message("-> Huetzon-raster inlezen en tabelcategorieën matchen met exacte codes...")
+r_huetzon_raw <- terra::rast(here("data/input/Raster_Vlaanderen/vlaanderen_huetzon_10m.tif"))
+r_huetzon     <- terra::resample(r_huetzon_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
 
-# Bereken de drempel dynamisch in m2 op basis van de ingelezen Excel-variabele (30 ha)
+# Haal de categorieëntabel van het Huetzon-raster op
+huetzon_cats <- terra::cats(r_huetzon)[[1]]
+
+# De gewenste waterloopcodes voor de tafeleend
+gewenste_water_codes <- c("Mlz", "O1brak", "O1o", "O2zout", "Rg", "Rk")
+
+# We trimmen en negeren hoofdletterverschillen voor maximale betrouwbaarheid
+gewenste_water_clean <- tolower(trimws(gewenste_water_codes))
+
+# We checken de labels in de rastertabel van Huetzon
+ids_waterlopen_ok <- huetzon_cats$value[tolower(trimws(huetzon_cats$Label)) %in% gewenste_water_clean]
+
+# Mocht de tabelkolom anders heten (bvb. 'Code' of 'Naam'), dan doorzoeken we de hele tabelrij
+if (length(ids_waterlopen_ok) == 0) {
+  tabel_rijen_check <- apply(huetzon_cats, 1, function(row) {
+    any(tolower(trimws(row)) %in% gewenste_water_clean)
+  })
+  ids_waterlopen_ok <- huetzon_cats$value[tabel_rijen_check]
+}
+
+# Kogelvrije fallback naar de numerieke klassen (11, 12, 13, 14, 17, 18)
+if (length(ids_waterlopen_ok) == 0) {
+  message("⚠️ Waarschuwing: Gewenste codes niet gevonden in Huetzon-tabel. We vallen terug op klassieke waterloopklassen.")
+  ids_waterlopen_ok <- c(11, 12, 13, 14, 17, 18)
+} else {
+  message(paste("-> Waterloop ID's succesvol gematcht op basis van je codes:", paste(ids_waterlopen_ok, collapse = ", ")))
+}
+
+# Selecteer de waterloop-pixels uit het raster
+r_waterlopen <- r_huetzon %in% ids_waterlopen_ok
+
+# Voeg waterlopen toe aan het foerageerhabitat via logische OF
+foerageer_compleet_max <- (!is.na(foerageer_bwk_max) & foerageer_bwk_max == 1) | (r_waterlopen == 1)
+foerageer_compleet_max <- terra::ifel(foerageer_compleet_max == 1, 1, NA)
+
+# Koppel de oppervlakte-fracties (water krijgt volledige pixelsomming = 1.0)
+r_waterlopen_opp <- terra::ifel(r_waterlopen == 1, 1.0, NA)
+foerageer_compleet_opp <- terra::cover(foerageer_bwk_opp, r_waterlopen_opp)
+
+message("-> Landschapsclustering op hersteld habitat (50m fuzzy, drempel 5 ha)...")
 drempel_m2 <- oppervlakte_ha * 10000
 
-reiger_clusters <- cluster_filter_compleet(
-  masker       = foerageer_bwk_max,
-  opp_laag     = foerageer_bwk_opp,
+tafeleend_clusters <- cluster_filter_compleet(
+  masker       = foerageer_compleet_max,
+  opp_laag     = foerageer_compleet_opp,
   drempel_m2   = drempel_m2, 
   dist_m       = 50,
   werkelijk    = FALSE
 )
 
-r_foer_30ha_max <- reiger_clusters$raster
-r_foer_30ha_opp <- terra::mask(foerageer_bwk_opp, r_foer_30ha_max)
+r_foer_5ha_max <- tafeleend_clusters$raster
+r_foer_5ha_opp <- terra::mask(foerageer_compleet_opp, r_foer_5ha_max)
 
-message("-> Intersectie: Alleen geschikt habitat BINNEN de vogelgebieden behouden...")
-grotezilverreiger_leefgebied_max <- terra::mask(r_foer_30ha_max, r_watervogelgebied_max) %>% terra::crop(template_TV)
-grotezilverreiger_leefgebied_opp <- terra::mask(r_foer_30ha_opp, r_watervogelgebied_max) %>% terra::crop(template_TV)
+message("-> Intersectie: Alleen geschikt habitat BINNEN de gereserveerde watervogelgebieden...")
+tafeleend_leefgebied_max <- terra::mask(r_foer_5ha_max, r_watervogelgebied_max) %>% terra::crop(template_TV)
+tafeleend_leefgebied_opp <- terra::mask(r_foer_5ha_opp, r_watervogelgebied_max) %>% terra::crop(template_TV)
 
-message("--- GROTE ZILVERREIGER MODEL SUCCESVOL AFGEROND ---")
-cat("Totaal werkelijk habitat Grote Zilverreiger binnen regio (ha):", round(calc_ha_exact(grotezilverreiger_leefgebied_opp), 2), "\n")
+message("--- tafeleend MODEL SUCCESVOL AFGEROND ---")
+cat("Totaal stabiel leefgebied tafeleend (ha):", round(calc_ha_exact(tafeleend_leefgebied_opp), 2), "\n")
 
-rm(reiger_clusters, r_foer_30ha_max, r_foer_30ha_opp, r_watervogelgebied_max)
+rm(r_huetzon_raw, r_huetzon, huetzon_cats, ids_waterlopen_ok, r_waterlopen, r_waterlopen_opp, 
+   foerageer_compleet_max, foerageer_compleet_opp, tafeleend_clusters, r_foer_5ha_max, r_foer_5ha_opp, r_watervogelgebied_max)
 gc()
 ```
 
 # Resultaten en Statistiek
 ```{r Resultaten en statistiek}
 # ==============================================================================
-# ECOLOOG-MAPPING: BRUG TUSSEN SCRIPT EN STATISTIEK
+# ECOLOOG-MAPPING: BRUG TUSSEN SCRIPT EN STATISTIEK (MET VEILIGE DREMPEL_M2)
 # ==============================================================================
-cl_max    <- grotezilverreiger_leefgebied_max
-final_max <- grotezilverreiger_leefgebied_max
-bwk_opp   <- grotezilverreiger_leefgebied_opp
-final_opp <- grotezilverreiger_leefgebied_opp
+drempel_m2 <- oppervlakte_ha * 10000
+
+cl_max    <- tafeleend_leefgebied_max
+final_max <- tafeleend_leefgebied_max
+bwk_opp   <- tafeleend_leefgebied_opp
+final_opp <- tafeleend_leefgebied_opp
 binnen_masker <- template_TV
 
 # --- BEREKENING EN STATISTIEK ---

@@ -96,7 +96,7 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
 # Soort informatie ophalen
 ```{r Soort informatie}
 df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
-soort <- "grotezilverreiger"
+soort <- "kemphaan"
 
 resultaat <- df %>%
 filter(Soort == soort) %>%
@@ -249,19 +249,19 @@ rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
-```{r watervogelgebieden filteren}
+```{r watervogelgebieden filteren gefixt}
 # ==============================================================================
-# STAP 1: KANT-EN-KLARE RDS INLEZEN, REGIO CLIP EN 90% PRESENTIE-FILTER
+# STAP 1: KEMPHAAN - REGIO CLIP EN FILTER OP AANTALLEN GROTER DAN 0
 # ==============================================================================
-message("-> Universele grote zilverreigerdata inlezen...")
-sf_reiger_vlaanderen <- readRDS(here("data/input/Watervogelgebieden_Ruw/watervogelgebieden_ruw_grote_zilverreiger.rds"))
+message("-> Universele kemphaandata inlezen...")
+sf_kemphaan_vlaanderen <- readRDS(here("data/input/Watervogelgebieden_Ruw/watervogelgebieden_ruw_kemphaan.rds"))
 
 message("-> Ruimtelijk uitsnijden op actieve regio via sf st_filter...")
 sf_regio_template <- sf::st_as_sf(area_buffer_fix)
-sf_reiger_regio   <- sf::st_filter(sf_reiger_vlaanderen, sf_regio_template)
+sf_kemphaan_regio  <- sf::st_filter(sf_kemphaan_vlaanderen, sf_regio_template)
 
 message("-> Filteren op vogelgebieden met waargenomen aantallen > 0...")
-locatie_aantallen <- sf_reiger_regio %>%
+locatie_aantallen <- sf_kemphaan_regio %>%
   st_drop_geometry() %>% 
   group_by(locationwvkey) %>%
   summarise(
@@ -274,7 +274,7 @@ goedgekeurde_keys <- locatie_aantallen$locationwvkey[
   locatie_aantallen$TotaalGeteld > 0 | locatie_aantallen$MaximaalGeteld > 0
 ]
 
-gebied_geselecteerd <- sf_reiger_regio %>%
+gebied_geselecteerd <- sf_kemphaan_regio %>%
   distinct(locationwvkey, .keep_all = TRUE) %>% 
   filter(locationwvkey %in% goedgekeurde_keys)
 
@@ -286,20 +286,20 @@ r_watervogelgebied_max <- terra::rasterize(
   background = NA
 )
 
-rm(sf_reiger_vlaanderen, sf_reiger_regio, locatie_scores, gebied_geselecteerd, sf_regio_template)
+rm(sf_kemphaan_vlaanderen, sf_kemphaan_regio, locatie_aantallen, gebied_geselecteerd, sf_regio_template)
 ```
 
 
 ```{r landschapsclustering en gebiedskruising}
 # ==============================================================================
-# STAP 2: 50M FUZZY CLUSTERING (30 HA) EN KRUISING MET GOEDGEKEURDE TELGEBIEDEN
+# STAP 2: 50M FUZZY CLUSTERING (5 HA) EN KRUISING MET TELGEBIEDEN (GEEN ECOREGIO)
 # ==============================================================================
-message("-> Landschapsclustering foerageerhabitat (50m fuzzy, drempel 30 ha)...")
+message("-> Landschapsclustering foerageerhabitat (50m fuzzy, drempel 5 ha)...")
 
-# Bereken de drempel dynamisch in m2 op basis van de ingelezen Excel-variabele (30 ha)
+# Bereken de drempel dynamisch in m2 op basis van de ingelezen Excel-variabele (5 ha)
 drempel_m2 <- oppervlakte_ha * 10000
 
-reiger_clusters <- cluster_filter_compleet(
+kemphaan_clusters <- cluster_filter_compleet(
   masker       = foerageer_bwk_max,
   opp_laag     = foerageer_bwk_opp,
   drempel_m2   = drempel_m2, 
@@ -307,29 +307,31 @@ reiger_clusters <- cluster_filter_compleet(
   werkelijk    = FALSE
 )
 
-r_foer_30ha_max <- reiger_clusters$raster
-r_foer_30ha_opp <- terra::mask(foerageer_bwk_opp, r_foer_30ha_max)
+r_foer_5ha_max <- kemphaan_clusters$raster
+r_foer_5ha_opp <- terra::mask(foerageer_bwk_opp, r_foer_5ha_max)
 
 message("-> Intersectie: Alleen geschikt habitat BINNEN de vogelgebieden behouden...")
-grotezilverreiger_leefgebied_max <- terra::mask(r_foer_30ha_max, r_watervogelgebied_max) %>% terra::crop(template_TV)
-grotezilverreiger_leefgebied_opp <- terra::mask(r_foer_30ha_opp, r_watervogelgebied_max) %>% terra::crop(template_TV)
+kemphaan_leefgebied_max <- terra::mask(r_foer_5ha_max, r_watervogelgebied_max) %>% terra::crop(template_TV)
+kemphaan_leefgebied_opp <- terra::mask(r_foer_5ha_opp, r_watervogelgebied_max) %>% terra::crop(template_TV)
 
-message("--- GROTE ZILVERREIGER MODEL SUCCESVOL AFGEROND ---")
-cat("Totaal werkelijk habitat Grote Zilverreiger binnen regio (ha):", round(calc_ha_exact(grotezilverreiger_leefgebied_opp), 2), "\n")
+message("--- KEMPHAAN MODEL SUCCESVOL AFGEROND ---")
+cat("Totaal werkelijk habitat Kemphaan binnen regio (ha):", round(calc_ha_exact(kemphaan_leefgebied_opp), 2), "\n")
 
-rm(reiger_clusters, r_foer_30ha_max, r_foer_30ha_opp, r_watervogelgebied_max)
+rm(kemphaan_clusters, r_foer_5ha_max, r_foer_5ha_opp, r_watervogelgebied_max)
 gc()
 ```
 
 # Resultaten en Statistiek
 ```{r Resultaten en statistiek}
 # ==============================================================================
-# ECOLOOG-MAPPING: BRUG TUSSEN SCRIPT EN STATISTIEK
+# ECOLOOG-MAPPING: BRUG TUSSEN SCRIPT EN STATISTIEK (MET VEILIGE DREMPEL_M2)
 # ==============================================================================
-cl_max    <- grotezilverreiger_leefgebied_max
-final_max <- grotezilverreiger_leefgebied_max
-bwk_opp   <- grotezilverreiger_leefgebied_opp
-final_opp <- grotezilverreiger_leefgebied_opp
+drempel_m2 <- oppervlakte_ha * 10000
+
+cl_max    <- kemphaan_leefgebied_max
+final_max <- kemphaan_leefgebied_max
+bwk_opp   <- kemphaan_leefgebied_opp
+final_opp <- kemphaan_leefgebied_opp
 binnen_masker <- template_TV
 
 # --- BEREKENING EN STATISTIEK ---
