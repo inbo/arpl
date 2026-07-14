@@ -396,40 +396,55 @@ gc()
 
 ```{r finale interactie en samensmelting venwitsnuitlibel}
 # ==============================================================================
-# COMBINATIE 2 & 3: FINALE RUIMTELIJKE INTERACTIES (100M EN 500M KOPPELINGEN)
+# COMBINATIE 2: INTERACTIE WATER EN NABIJ LANDBIOTOOP (100 METER)
 # ==============================================================================
-message("-> Ruimtelijke koppelingen (100m water-land en 500m netwerk-omgeving) berekenen...")
+message("-> Water- en nabije landbiotopen aan elkaar koppelen binnen een straal van 100m...")
 
-# 1. Interactie waterbiotoop en nabij landbiotoop (100 meter)
+# 1. Maak de buffers van 100 meter rondom de twee biologische kernen
 water_buffer_100m <- terra::buffer(waterbiotoop_clusters_max$raster, width = 100)
 land_buffer_100m  <- terra::buffer(venwitsnuitlibel_land_nabij_max, width = 100)
 
 waterbiotoop2_max <- terra::mask(waterbiotoop_clusters_max$raster, land_buffer_100m)
 waterbiotoop2_opp <- terra::mask(waterbiotoop_clusters_opp$raster, land_buffer_100m)
 
+landbiotoop2_max  <- terra::mask(venwitsnuitlibel_land_nabij_max, water_buffer_100m)
+landbiotoop2_opp  <- terra::mask(venwitsnuitlibel_land_nabij_opp, water_buffer_100m)
+
 rm(water_buffer_100m, land_buffer_100m)
 
-# 2. Interactie met de ruime omgevingspatch (>40% bos) binnen een straal van 500 meter
+# ==============================================================================
+# COMBINATIE 3: FINALE FILTERING OP RUIME OMGEVING (500M) EN SAMENSMELTING
+# ==============================================================================
+message("-> Ruime omgevingsfactor (>40% bos-complex binnen 500m) toepassen...")
+
+# Maak de buffers voor de finale ruimtelijke checks (500 meter conform het model)
 ruim_land_buffer_500m <- terra::buffer(venwitsnuitlibel_land_ruim_max, width = 500)
 water2_buffer_500m    <- terra::buffer(waterbiotoop2_max, width = 500)
 
-# Finaal goedgekeurd water- en landbiotoop complex
+# Finaal waterbiotoop: Moet binnen 500m van een geschikte ruime patch liggen
 venwitsnuitlibel_waterbiotoop_max <- terra::mask(waterbiotoop2_max, ruim_land_buffer_500m)
 venwitsnuitlibel_waterbiotoop_opp <- terra::mask(waterbiotoop2_opp, ruim_land_buffer_500m)
 
-venwitsnuitlibel_landbiotoop_max <- terra::mask(venwitsnuitlibel_land_ruim_max, water2_buffer_500m)
-venwitsnuitlibel_landbiotoop_opp = terra::mask(venwitsnuitlibel_land_ruim_opp, water2_buffer_500m)
+# --- CRUCIALE ECO-FIX: GEBRUIK NABIJ LAND IN PLAATS VAN RUIM LAND ---
+# Finaal landbiotoop: Moet binnen 500m liggen van het goedgekeurde water complex.
+# We baseren dit nu op 'landbiotoop2_max' (5 ha nabij landbiotoop) en NIET op de ruime omgeving!
+venwitsnuitlibel_landbiotoop_max <- terra::mask(landbiotoop2_max, ruim_land_buffer_500m)
+venwitsnuitlibel_landbiotoop_opp <- terra::mask(landbiotoop2_opp, ruim_land_buffer_500m)
 
-rm(ruim_land_buffer_500m, water2_buffer_500m, waterbiotoop2_max, waterbiotoop2_opp)
+# Extra controle: Het goedgekeurde landbiotoop moet uiteraard ook binnen de waterbuffer liggen
+venwitsnuitlibel_landbiotoop_max <- terra::mask(venwitsnuitlibel_landbiotoop_max, water2_buffer_500m)
+venwitsnuitlibel_landbiotoop_opp <- terra::mask(venwitsnuitlibel_landbiotoop_opp, water2_buffer_500m)
+
+rm(ruim_land_buffer_500m, water2_buffer_500m, waterbiotoop2_max, waterbiotoop2_opp, landbiotoop2_max, landbiotoop2_opp)
 
 # ==============================================================================
-# FINALE SAMENVOEGING LEEFGEBIED VENWITSNUITLIBEL
+# HET FINALE LEEFGEBIED (WATER + LAND COUPLING) - NU ZONDER RUIME OMGEVINGPIXELS!
 # ==============================================================================
 message("-> Water en land combineren tot finaal leefgebied...")
 
 # MAX-spoor: Logische OF
 venwitsnuitlibel_leefgebied_max <- terra::ifel(!is.na(venwitsnuitlibel_waterbiotoop_max) | 
-                                                 !is.na(venwitsnuitlibel_landbiotoop_max), 1, NA)
+                                               !is.na(venwitsnuitlibel_landbiotoop_max), 1, NA)
 
 # OPP-spoor: Tel de deelfracties netjes op (tot max 100% / 1.0 per cel)
 venwitsnuitlibel_leefgebied_opp <- terra::app(

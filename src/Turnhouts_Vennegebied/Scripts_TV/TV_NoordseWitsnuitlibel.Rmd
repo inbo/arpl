@@ -387,34 +387,43 @@ water_buffer100_max <- terra::buffer(waterbiotoop1_max, width = 100)
 land_buffer100_max  <- terra::buffer(landbiotoop_nabij_max, width = 100)
 
 waterbiotoop2_max <- terra::mask(waterbiotoop1_max, land_buffer100_max)
+landbiotoop2_max  <- terra::mask(landbiotoop_nabij_max, water_buffer100_max)
 
-# Interactie 2: Water2 en Ruim Land Gekoppeld (20 ha + Bos) binnen 500 meter
-ruim_buffer500_max          <- terra::buffer(landbiotoop_ruim_gekoppeld_max, width = 500)
-waterbiotoop2_buffer500_max <- terra::buffer(waterbiotoop2_max, width = 500)
+# Interactie 2: Omgevingsvoorwaarde (20 ha ruim land + bos binnen 500m)
+ruim_buffer500_max <- terra::buffer(landbiotoop_ruim_gekoppeld_max, width = 500)
 
+# Finaal waterbiotoop (max)
 waterbiotoop_finaal_max <- terra::mask(waterbiotoop2_max, ruim_buffer500_max)
-landbiotoop_finaal_max  <- terra::mask(landbiotoop_ruim_gekoppeld_max, waterbiotoop2_buffer500_max)
 
+# CRUCIALE ECO-FIX: Maskeer 'landbiotoop2_max' (het nabije land) met de omgevingsbuffer
+# in plaats van de ruime omgevingspixels zelf mee te nemen!
+landbiotoop_finaal_max  <- terra::mask(landbiotoop2_max, ruim_buffer500_max)
+
+# Voeg water en nabij land samen tot finaal leefgebied
 leefgebied_max <- terra::cover(waterbiotoop_finaal_max, landbiotoop_finaal_max)
 finaal_max_binair <- terra::ifel(!is.na(leefgebied_max), 1, NA)
 
 
 # ==============================================================================
-# VERWERKING SPOOR 2: WERKELIJKE OPPERVLAKTE
+# VERWERKING SPOOR 2: WERKELIJKE OPPERVLAKTE (FRACTIES)
 # ==============================================================================
 # Interactie 1: Water en Nabij Land (5 ha) binnen 100 meter
 water_buffer100_opp <- terra::buffer(waterbiotoop1_opp, width = 100)
 land_buffer100_opp  <- terra::buffer(landbiotoop_nabij_opp, width = 100)
 
 waterbiotoop2_opp <- terra::mask(waterbiotoop1_opp, land_buffer100_opp)
+landbiotoop2_opp  <- terra::mask(landbiotoop_nabij_opp, water_buffer100_opp)
 
-# Interactie 2: Water2 en Ruim Land Gekoppeld (20 ha + Bos) binnen 500 meter
-ruim_buffer500_opp          <- terra::buffer(landbiotoop_ruim_gekoppeld_opp, width = 500)
-waterbiotoop2_buffer500_opp <- terra::buffer(waterbiotoop2_opp, width = 500)
+# Interactie 2: Omgevingsvoorwaarde
+ruim_buffer500_opp <- terra::buffer(landbiotoop_ruim_gekoppeld_opp, width = 500)
 
+# Finaal waterbiotoop (opp)
 waterbiotoop_finaal_opp <- terra::mask(waterbiotoop2_opp, ruim_buffer500_opp)
-landbiotoop_finaal_opp  <- terra::mask(landbiotoop_ruim_gekoppeld_opp, waterbiotoop2_buffer500_opp)
 
+# CRUCIALE ECO-FIX: Gebruik ook hier 'landbiotoop2_opp' gemaskeerd met de omgevingsbuffer
+landbiotoop_finaal_opp  <- terra::mask(landbiotoop2_opp, ruim_buffer500_opp)
+
+# Voeg water en nabij land samen tot finaal leefgebied (opp)
 leefgebied_opp <- terra::cover(waterbiotoop_finaal_opp, landbiotoop_finaal_opp)
 finaal_opp_binair <- terra::ifel(!is.na(leefgebied_opp), 1, NA)
 
@@ -424,15 +433,14 @@ finaal_opp_binair <- terra::ifel(!is.na(leefgebied_opp), 1, NA)
 # ==============================================================================
 # BEHOUD waterbiotoop1_opp, land_buffer100_opp en ruim_buffer500_opp voor Leaflet!
 rm(waterbiotoop1_max, landbiotoop_nabij_max, water_buffer100_max, land_buffer100_max, 
-   waterbiotoop2_max, ruim_buffer500_max, waterbiotoop2_buffer500_max,
+   waterbiotoop2_max, landbiotoop2_max, ruim_buffer500_max, waterbiotoop2_buffer500_max,
    waterbiotoop_finaal_max, landbiotoop_finaal_max, leefgebied_max,
    landbiotoop_nabij_opp, water_buffer100_opp,
-   waterbiotoop2_opp, waterbiotoop2_buffer500_opp,
-   waterbiotoop_finaal_opp, landbiotoop_finaal_opp, leefgebied_opp,
-   landbiotoop_ruim_gekoppeld_max, landbiotoop_ruim_gekoppeld_opp)
+   waterbiotoop2_opp, landbiotoop2_opp, waterbiotoop2_buffer500_opp,
+   waterbiotoop_finaal_opp, landbiotoop_finaal_opp, leefgebied_opp)
 gc()
 
-message("-> Parallelle modellering succesvol voltooid! Logica met Ruim Land + Bos hersteld.")
+message("-> Parallelle modellering succesvol voltooid! Ruime omgevingspixels effectief weggemaskeerd.")
 ```
 
 ```{r waarnemingen inlezen en ARPL noordsewitsnuitlibel}

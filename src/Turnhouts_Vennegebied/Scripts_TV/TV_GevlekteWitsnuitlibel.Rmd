@@ -508,35 +508,43 @@ cat("=========================================================\n\n")
 
 ```{r struweel}
 # ==============================================================================
-# ECOLOOGSCH GECORRIGEERD: STRIKTE MOZAÏEK-FILTER (ZONDER OVERBODIGE AFSTANDSEIS)
+# ECOLOOGSCH GECORRIGEERD: STRIKTE & ELEGANTE 50M BUFFER-CHECK OP STRUWEEL (30%)
 # ==============================================================================
-message("-> Start gestroomlijnde mozaïek-analyse (30% struweel-check)...")
+message("-> Start gestroomlijnde mozaïek-analyse (30% struweel binnen 50m check)...")
 
-# --- STAP 1: IDENTIFICEER DE ACTIEVE FOERAGEERCLUSTERS IN HET BREDE RASTER ---
+# --- STAP 1: IDENTIFICEER DE ACTIEVE FOERAGEERCLUSTERS (SPOOR A) ---
+# We overbruggen kleine gaten van 50m binnen het foerageergebied zelf
 r_grow_foer_max <- terra::focal(foerageer0_max, w = 5, fun = "max", na.rm = TRUE)
 cl_id_foer_max  <- terra::patches(r_grow_foer_max, directions = 8, zeroAsNA = TRUE)
 cl_id_foer_max  <- terra::mask(cl_id_foer_max, foerageer0_max)
 
 
-# --- STAP 2: PERCENTAGE STRUWEEL BEREKENEN EN FILTEREN (SPOOR A) ---
-message("-> Berekenen aandeel struweel per cluster (Spoor A)...")
+# --- STAP 2: BEREKEN INVLOEDSZONE VAN 50M EN ANALYSEER STRUWEEL (SPOOR A) ---
+message("-> Berekenen aandeel struweel binnen 50m van elk foerageercluster (Spoor A)...")
 
+# 1. Bereken de netto oppervlakte (ha) van elk foerageercluster
 stats_foer_totaal <- terra::zonal(foerageer0_max * 0.01, cl_id_foer_max, fun = "sum", na.rm = TRUE)
 colnames(stats_foer_totaal) <- c("Cluster_ID", "Totaal_Foer_ha")
 
-# Maskeer het struweel *strikt* tot de binnengrenzen van de foerageerclusters
-struweel_in_foer_max <- terra::mask(struweel1_max, cl_id_foer_max)
+# 2. Creëer de 50m invloedszone rondom de clusters
+w_50m <- terra::focalMat(cl_id_foer_max, 50, type = 'circle')
+w_50m[w_50m > 0] <- 1
+cl_id_foer_buf_max <- terra::focal(cl_id_foer_max, w = w_50m, fun = "max", na.rm = TRUE)
 
-stats_struweel_in_foer <- terra::zonal(struweel_in_foer_max * 0.01, cl_id_foer_max, fun = "sum", na.rm = TRUE)
-colnames(stats_struweel_in_foer) <- c("Cluster_ID", "Struweel_Foer_ha")
+# 3. Tel hoeveel struweel er binnen deze 50m invloedszone van elk cluster ligt
+struweel_in_zone_max <- terra::mask(struweel1_max, cl_id_foer_buf_max)
+stats_struweel_in_zone <- terra::zonal(struweel_in_zone_max * 0.01, cl_id_foer_buf_max, fun = "sum", na.rm = TRUE)
+colnames(stats_struweel_in_zone) <- c("Cluster_ID", "Struweel_ha")
 
-df_mozaiek_max <- merge(stats_foer_totaal, stats_struweel_in_foer, by = "Cluster_ID", all.x = TRUE)
-df_mozaiek_max$Struweel_Foer_ha[is.na(df_mozaiek_max$Struweel_Foer_ha)] <- 0
-df_mozaiek_max$Percentage_Struweel <- (df_mozaiek_max$Struweel_Foer_ha / df_mozaiek_max$Totaal_Foer_ha) * 100
+# 4. Koppel de statistieken en bereken het percentage struweel t.o.v. foerageeroppervlakte
+df_mozaiek_max <- merge(stats_foer_totaal, stats_struweel_in_zone, by = "Cluster_ID", all.x = TRUE)
+df_mozaiek_max$Struweel_ha[is.na(df_mozaiek_max$Struweel_ha)] <- 0
+df_mozaiek_max$Percentage_Struweel <- (df_mozaiek_max$Struweel_ha / df_mozaiek_max$Totaal_Foer_ha) * 100
 
+# 5. Welke clusters voldoen aan de 30% eis?
 valide_mozaiek_ids_max <- df_mozaiek_max$Cluster_ID[df_mozaiek_max$Percentage_Struweel >= 30]
 
-# Direct toepassen op het finale leefgebied (Geen 100m check meer nodig!)
+# Direct toepassen op het finale leefgebied (struweel en buffers vallen direct af!)
 if(length(valide_mozaiek_ids_max) > 0) {
   masker_mozaiek_max <- terra::ifel(cl_id_foer_max %in% valide_mozaiek_ids_max, 1, NA)
   gevlektewitsnuitlibel_foerageer3_max <- terra::mask(foerageer0_max, masker_mozaiek_max)
@@ -546,8 +554,8 @@ if(length(valide_mozaiek_ids_max) > 0) {
 }
 
 
-# --- STAP 3: HERHAAL ECOLOOGSCH VOOR SPOOR B (WERKELIJKE FRACTIES) ---
-message("-> Verwerken Spoor B (Reële Fracties met netto 30% eis)...")
+# --- STAP 3: HERHAAL DEZELFDE LOGICA ECOLOOGSCH VOOR SPOOR B (FRACTIES) ---
+message("-> Verwerken Spoor B (Reële Fracties met 30% binnen 50m check)...")
 
 r_grow_foer_opp <- terra::focal(foerageer0_opp, w = 5, fun = "max", na.rm = TRUE)
 cl_id_foer_opp  <- terra::patches(r_grow_foer_opp, directions = 8, zeroAsNA = TRUE)
@@ -556,13 +564,16 @@ cl_id_foer_opp  <- terra::mask(cl_id_foer_opp, foerageer0_opp)
 stats_foer_totaal_opp <- terra::zonal(foerageer0_opp * 0.01, cl_id_foer_opp, fun = "sum", na.rm = TRUE)
 colnames(stats_foer_totaal_opp) <- c("Cluster_ID", "Totaal_Foer_ha")
 
-struweel_in_foer_opp <- terra::mask(struweel1_opp, cl_id_foer_opp)
-stats_struweel_in_foer_opp <- terra::zonal(struweel_in_foer_opp * 0.01, cl_id_foer_opp, fun = "sum", na.rm = TRUE)
-colnames(stats_struweel_in_foer_opp) <- c("Cluster_ID", "Struweel_Foer_ha")
+# Creëer de 50m invloedszone
+cl_id_foer_buf_opp <- terra::focal(cl_id_foer_opp, w = w_50m, fun = "max", na.rm = TRUE)
 
-df_mozaiek_opp <- merge(stats_foer_totaal_opp, stats_struweel_in_foer_opp, by = "Cluster_ID", all.x = TRUE)
-df_mozaiek_opp$Struweel_Foer_ha[is.na(df_mozaiek_opp$Struweel_Foer_ha)] <- 0
-df_mozaiek_opp$Percentage_Struweel <- (df_mozaiek_opp$Struweel_Foer_ha / df_mozaiek_opp$Totaal_Foer_ha) * 100
+struweel_in_zone_opp <- terra::mask(struweel1_opp, cl_id_foer_buf_opp)
+stats_struweel_in_zone_opp <- terra::zonal(struweel_in_zone_opp * 0.01, cl_id_foer_buf_opp, fun = "sum", na.rm = TRUE)
+colnames(stats_struweel_in_zone_opp) <- c("Cluster_ID", "Struweel_ha")
+
+df_mozaiek_opp <- merge(stats_foer_totaal_opp, stats_struweel_in_zone_opp, by = "Cluster_ID", all.x = TRUE)
+df_mozaiek_opp$Struweel_ha[is.na(df_mozaiek_opp$Struweel_ha)] <- 0
+df_mozaiek_opp$Percentage_Struweel <- (df_mozaiek_opp$Struweel_ha / df_mozaiek_opp$Totaal_Foer_ha) * 100
 
 valide_mozaiek_ids_opp <- df_mozaiek_opp$Cluster_ID[df_mozaiek_opp$Percentage_Struweel >= 30]
 
@@ -575,7 +586,8 @@ if(length(valide_mozaiek_ids_opp) > 0) {
 }
 
 # Opruimen
-rm(r_grow_foer_max, cl_id_foer_max, struweel_in_foer_max, r_grow_foer_opp, cl_id_foer_opp, struweel_in_foer_opp)
+rm(r_grow_foer_max, cl_id_foer_max, cl_id_foer_buf_max, struweel_in_zone_max,
+   r_grow_foer_opp, cl_id_foer_opp, cl_id_foer_buf_opp, struweel_in_zone_opp, w_50m)
 gc()
 ```
 

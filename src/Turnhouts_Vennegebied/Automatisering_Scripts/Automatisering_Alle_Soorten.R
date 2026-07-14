@@ -33,7 +33,7 @@ message("==================================================")
 alle_tv_scripts <- list.files(path = MAP_SCRIPTS_TV, pattern = "\\.Rmd$", full.names = TRUE)
 
 # 1b. Definieer welk script per soort moet draaien (en dus niet hier 1x geknit mag worden)
-soorten_script_tv_pad <- file.path(MAP_SCRIPTS_TV, "Leefgebieden_Simpel_TV.Rmd")
+soorten_script_tv_pad <- file.path(MAP_SCRIPTS_TV, "TV_Leefgebieden_Simpel.Rmd")
 
 # 1c. Filter het soortenscript eruit om alleen de unieke scripts over te houden
 unieke_tv_scripts <- setdiff(alle_tv_scripts, soorten_script_tv_pad)
@@ -86,7 +86,7 @@ message("\n=> Aantal geselecteerde simpele soorten voor TV-run: ", length(soorte
 # ------------------------------------------------------------------------------
 # 3. RUN HET 'SIMPEL_TV' SCRIPT PER SOORT (Knitten met parameter)
 # ------------------------------------------------------------------------------
-draai_leefgebied_model <- function(huidige_soort) {
+draai_leefgebied_model <- function(huidige_soort, script_pad) {
   output_file_name <- paste0("TV_", huidige_soort, ".html")
   
   res_row <- data.frame(
@@ -101,10 +101,11 @@ draai_leefgebied_model <- function(huidige_soort) {
   
   tryCatch({
     rmarkdown::render(
-      input = soorten_script_tv_pad, # Knit de 'Leefgebieden_Simpel_TV.Rmd' uit de Scripts_TV map
+      input = script_pad, # Nu lokaal meegegeven als argument
       output_file = output_file_name,
       output_dir = OUTPUT_DIR,
-      params = list(soort_invoer = huidige_soort), # Alleen de soortnaam doorgeven, geen scenario nodig
+      params = list(soort_invoer = huidige_soort),
+      envir = new.env(), # Forceert een schone, afgezonderde omgeving voor de Rmd
       quiet = TRUE
     )
   }, error = function(e) {
@@ -118,7 +119,11 @@ draai_leefgebied_model <- function(huidige_soort) {
 
 # Uitvoeren van de soorten-loop indien er soorten zijn gevonden
 if (length(soorten_lijst) > 0) {
-  soorten_logboek <- purrr::map_dfr(soorten_lijst, draai_leefgebied_model)
+  # We geven soorten_script_tv_pad nu expliciet mee aan de map-functie
+  soorten_logboek <- purrr::map_dfr(
+    soorten_lijst, 
+    ~draai_leefgebied_model(huidige_soort = .x, script_pad = soorten_script_tv_pad)
+  )
   eind_logboek    <- bind_rows(bind_rows(algemeen_logboek), soorten_logboek)
 } else {
   eind_logboek    <- bind_rows(algemeen_logboek)

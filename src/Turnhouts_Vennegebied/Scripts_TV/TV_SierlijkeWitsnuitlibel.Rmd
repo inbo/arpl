@@ -426,12 +426,10 @@ gc()
 ```
 
 ```{r Foerageergebied en Struweelweging}
-message("=== STAP 3: Foerageergebieden filteren en struweel-aandeel wegen ===")
+message("=== STAP 3: Foerageergebieden filteren en struweel-aandeel wegen (Netto 70% Check) ===")
 
-drempel_foerageer_m2 <- 50 * 10000 # 50 hectare drempel
-drempel_struweel_m2  <- 25 * 10000 # 25 hectare reëel bos/struweel binnendrempel
-
-# 1. Groepeer de foerageerbiotopen via een 50m plooirand (width = 25m buffer)
+# --- STAP 1: IDENTIFICEER DE FOERAGEERCLUSTERS (50M PLOOIRAND) ---
+# Groepeer de foerageerbiotopen via de gedefinieerde 50m plooirand (width = 25m buffer)
 foerageer_buffered <- terra::buffer(foerageer0_max, width = 25)
 cl_foerageer <- terra::patches(foerageer_buffered, directions = 8, zeroAsNA = TRUE) %>% terra::mask(foerageer0_max)
 
@@ -440,36 +438,48 @@ witsnuit_foerageer_finaal_opp <- template_TV * NA
 
 if (!all(is.na(terra::values(cl_foerageer, mat=FALSE)))) {
   
-  # Bereken de totale binaire oppervlakte per foerageercluster (m2)
+  # 1. Bereken de netto oppervlakte (ha) van elk foerageercluster zelf
   f_stats <- terra::freq(cl_foerageer)
-  df_stats <- data.frame(ID = f_stats$value, Foerageer_m2 = f_stats$count * 100)
+  df_stats <- data.frame(ID = f_stats$value, Foerageer_ha = f_stats$count * 0.01)
   
-  # Bereken hoeveel m2 REËEL bos/struweel er binnen elk cluster ligt via terra::zonal!
-  # Omdat struweel1_opp reële fracties bevat, vermenigvuldigen we de som met 100 voor m2.
-  zonal_struweel <- terra::zonal(struweel1_opp, cl_foerageer, fun = "sum", na.rm = TRUE)
+  # 2. Creëer de 50m invloedszone rondom de foerageerclusters (de 50m zoekbuffer uit LARCH)
+  w_50m <- terra::focalMat(cl_foerageer, 50, type = 'circle')
+  w_50m[w_50m > 0] <- 1
+  cl_foerageer_buf <- terra::focal(cl_foerageer, w = w_50m, fun = "max", na.rm = TRUE)
+  
+  # 3. Tel hoeveel reëel struweel/bos er binnen deze 50m zone van elk cluster ligt
+  # We meten dit op het OPP (fractie) raster van struweel voor maximale precisie
+  struweel_in_zone <- terra::mask(struweel1_opp, cl_foerageer_buf)
+  zonal_struweel <- terra::zonal(struweel_in_zone, cl_foerageer_buf, fun = "sum", na.rm = TRUE)
   colnames(zonal_struweel) <- c("ID", "Struweel_Fractie_Sum")
-  zonal_struweel$Struweel_m2 <- zonal_struweel$Struweel_Fractie_Sum * 100
+  zonal_struweel$Struweel_ha <- zonal_struweel$Struweel_Fractie_Sum * 0.01
   
-  # Voeg de statistieken samen
+  # 4. Koppel de data en bereken het zuivere percentage
   df_criteria <- merge(df_stats, zonal_struweel, by = "ID", all.x = TRUE)
   df_criteria[is.na(df_criteria)] <- 0
+  df_criteria$Percentage_Struweel <- (df_criteria$Struweel_ha / df_criteria$Foerageer_ha) * 100
   
-  # STRENGE DUBBELE CRITERIA EVALUATIE: 
-  # Cluster-grootte >= 50 ha EN reëel struweel-oppervlakte >= 25 ha!
-  goedgekeurde_foerageer_ids <- df_criteria$ID[df_criteria$Foerageer_m2 >= drempel_foerageer_m2 & 
-                                                df_criteria$Struweel_m2 >= drempel_struweel_m2]
+  # 5. DUBBELE CRITERIA EVALUATIE: 
+  # Het foerageercluster moet >= 50 ha zijn EN het aandeel struweel binnen 50m moet >= 70% zijn!
+  goedgekeurde_foerageer_ids <- df_criteria$ID[df_criteria$Foerageer_ha >= 50 & 
+                                                df_criteria$Percentage_Struweel >= 70]
   
   if (length(goedgekeurde_foerageer_ids) > 0) {
+    message("   [OK] Aantal clusters dat voldoet aan de 70% struweeleis: ", length(goedgekeurde_foerageer_ids))
     masker_foerageer_bin <- cl_foerageer %in% goedgekeurde_foerageer_ids
-    witsnuit_foerageer_finaal_max <- terra::ifel(masker_foerageer_bin == 1, 1, NA)
     
-    # Snijd ook de reële fractie-laag netjes uit
-    witsnuit_foerageer_finaal_opp <- terra::mask(foerageer0_notbwk_opp, witsnuit_foerageer_finaal_max)
+    # CRUCIALE ECO-FIX: We filteren de open foerageer-omgeving eruit!
+    # Als landbiotoop behouden we uitsluitend het werkelijke struweel/bos binnen de goedgekeurde netwerken.
+    witsnuit_foerageer_finaal_max <- terra::mask(struweel1_max, terra::ifel(masker_foerageer_bin == 1, 1, NA))
+    witsnuit_foerageer_finaal_opp <- terra::mask(struweel1_opp, witsnuit_foerageer_finaal_max)
+  } else {
+    message("⚠️ Waarschuwing: Geen enkel foerageercluster voldoet aan de 70% mozaïek-eis.")
   }
-  rm(f_stats, df_stats, zonal_struweel, df_criteria, goedgekeurde_foerageer_ids)
+  
+  rm(f_stats, df_stats, cl_foerageer_buf, struweel_in_zone, zonal_struweel, df_criteria, goedgekeurde_foerageer_ids, w_50m)
 }
 
-cat("Oppervlakte functioneel foerageercomplex:", calc_ha_exact(witsnuit_foerageer_finaal_max), "ha\n")
+cat("Oppervlakte functioneel beschuttingshabitat (struweel/bos):", calc_ha_exact(witsnuit_foerageer_finaal_max), "ha\n")
 
 rm(foerageer_buffered, cl_foerageer, foerageer0_max, foerageer0_notbwk_opp, struweel1_max, struweel1_opp)
 gc()
@@ -509,7 +519,7 @@ message("=== STAP 5: Finaal leefgebied complex samenstellen en filteren op 35 he
 
 drempel_35ha_m2 <- 35 * 10000
 
-# 1. Combineer water en foerageergebied (Binaire OR)
+# 1. Combineer water en het geselecteerde struweelbiotoop (Binaire OR)
 witsnuit_leefgebied1_max <- witsnuit_water_relatie_max | witsnuit_foer_relatie_max
 witsnuit_leefgebied1_max <- terra::ifel(witsnuit_leefgebied1_max == 1, 1, NA)
 
@@ -520,7 +530,7 @@ som_fracties     <- water_frac_clean + foer_frac_clean
 som_gemedieerd   <- terra::clamp(som_fracties, upper = 1.0)
 witsnuit_leefgebied1_opp <- terra::mask(som_gemedieerd, witsnuit_leefgebied1_max)
 
-# 3. FINALE CLUSTERING OP 35 HECTARE (FuzzyCluster met 50m vertalen we via width = 25m)
+# 3. FINALE CLUSTERING OP 35 HECTARE
 leefgebied_buffered   <- terra::buffer(witsnuit_leefgebied1_max, width = 25)
 r_leefgebied_clusters <- terra::patches(leefgebied_buffered, directions = 8)
 r_scherpe_clusters    <- terra::mask(r_leefgebied_clusters, witsnuit_leefgebied1_max)
@@ -541,20 +551,19 @@ if (length(goedgekeurde_cluster_ids) > 0) {
   sierlijkewitsnuitlibel_leefgebied_opp <- template_TV * NA
 }
 
-# --- UNIVERSELE OVERDRACHT VOOR JOUW STATISTIEK BLOKKEN ---
-# We slaan de resultaten op in de 'sierlijkewitsnuitlibel_finaal' matrix zodat jouw universele 
-# statistiek-, leaflet- en exportblokken er direct naadloos op doordraaien!
+# Universele overdracht
 sierlijkewitsnuitlibel_finaal_max <- sierlijkewitsnuitlibel_leefgebied_max
 sierlijkewitsnuitlibel_finaal_opp <- sierlijkewitsnuitlibel_leefgebied_opp
 
 # --- EINDOUTPUT REPORTING ---
 cat("\n==================================================\n")
-cat("   DEFINITIEVE RESULTATEN SIERLIJKE WITSNUITLIBEL \n")
+cat("    DEFINITIEVE RESULTATEN SIERLIJKE WITSNUITLIBEL \n")
 cat("==================================================\n")
 cat("Finaal Leefgebied Spoor 1 (Max Potentie):  ", calc_ha_exact(sierlijkewitsnuitlibel_leefgebied_max), "ha\n")
 cat("Finaal Leefgebied Spoor 2 (Werkelijke Opp): ", calc_ha_exact(sierlijkewitsnuitlibel_leefgebied_opp), "ha\n")
 cat("==================================================\n")
 
+# CLEANUP FIX: Verwijder de objecten die daadwerkelijk in het RAM-geheugen zitten
 rm(witsnuit_water_relatie_max, witsnuit_foer_relatie_max, witsnuit_water_relatie_opp, witsnuit_foer_relatie_opp,
    witsnuit_leefgebied1_max, witsnuit_leefgebied1_opp, water_frac_clean, foer_frac_clean, som_fracties, som_gemedieerd,
    leefgebied_buffered, r_leefgebied_clusters, r_scherpe_clusters, cluster_freq, goedgekeurde_cluster_ids)

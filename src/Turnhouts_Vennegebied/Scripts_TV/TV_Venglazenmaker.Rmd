@@ -475,14 +475,20 @@ water2_buffer_500m    <- terra::buffer(waterbiotoop2_max, width = 500)
 venglazenmaker_waterbiotoop_max <- terra::mask(waterbiotoop2_max, ruim_land_buffer_500m)
 venglazenmaker_waterbiotoop_opp <- terra::mask(waterbiotoop2_opp, ruim_land_buffer_500m)
 
-# Finaal landbiotoop: Moet binnen 500m liggen van het goedgekeurde water complex
-venglazenmaker_landbiotoop_max <- terra::mask(venglazenmaker_land_ruim_max, water2_buffer_500m)
-venglazenmaker_landbiotoop_opp <- terra::mask(venglazenmaker_land_ruim_opp, water2_buffer_500m)
+# --- CRUCIALE ECO-FIX: GEBRUIK NABIJ LAND IN PLAATS VAN RUIM LAND ---
+# Finaal landbiotoop: Moet binnen 500m liggen van het goedgekeurde water complex.
+# We baseren dit nu op 'landbiotoop2_max' (10 ha oever met >50% bos) en NIET op de ruime omgeving!
+venglazenmaker_landbiotoop_max <- terra::mask(landbiotoop2_max, ruim_land_buffer_500m)
+venglazenmaker_landbiotoop_opp <- terra::mask(landbiotoop2_opp, ruim_land_buffer_500m)
+
+# Extra controle: Het goedgekeurde landbiotoop moet uiteraard ook binnen de waterbuffer liggen
+venglazenmaker_landbiotoop_max <- terra::mask(venglazenmaker_landbiotoop_max, water2_buffer_500m)
+venglazenmaker_landbiotoop_opp <- terra::mask(venglazenmaker_landbiotoop_opp, water2_buffer_500m)
 
 rm(ruim_land_buffer_500m, water2_buffer_500m, waterbiotoop2_max, waterbiotoop2_opp, landbiotoop2_max, landbiotoop2_opp)
 
 # ==============================================================================
-# HET FINALE LEEFGEBIED (WATER + LAND COUPLING)
+# HET FINALE LEEFGEBIED (WATER + LAND COUPLING) - NU ZONDER RUIME OMGEVINGPIXELS!
 # ==============================================================================
 message("-> Water en land combineren tot finaal leefgebied venglazenmaker...")
 

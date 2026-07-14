@@ -375,48 +375,59 @@ message("-> Ruimtelijke interacties en eindsynthese per spoor uitvoeren...")
 water_buffer100_max <- terra::buffer(waterbiotoop1_max, width = 100)
 land_buffer100_max  <- terra::buffer(landbiotoop_nabij_max, width = 100)
 
+# 1. Koppel water en nabij landbiotoop (binnen 100m)
 waterbiotoop2_max <- terra::mask(waterbiotoop1_max, land_buffer100_max)
 landbiotoop2_max  <- terra::mask(landbiotoop_nabij_max, water_buffer100_max)
 
-ruim_buffer500_max        <- terra::buffer(landbiotoop_ruim_max, width = 500)
-waterbiotoop2_buffer500_max <- terra::buffer(waterbiotoop2_max, width = 500)
+# 2. Omgevingsvoorwaarde: Er moet binnen 500m een ruim biotoop van 25 ha liggen
+ruim_buffer500_max <- terra::buffer(landbiotoop_ruim_max, width = 500)
 
+# Finaal waterbiotoop (max)
 waterbiotoop_finaal_max <- terra::mask(waterbiotoop2_max, ruim_buffer500_max)
-landbiotoop_finaal_max  <- terra::mask(landbiotoop_ruim_max, waterbiotoop2_buffer500_max)
 
+# CRUCIALE ECO-FIX: We maskeren 'landbiotoop2_max' (het nabije land) met de omgevingsbuffer 
+# in plaats van de ruime omgeving zelf mee te nemen!
+landbiotoop_finaal_max  <- terra::mask(landbiotoop2_max, ruim_buffer500_max)
+
+# 3. Voeg water en nabij land samen tot finaal leefgebied (nu zonder ruime omgeving!)
 leefgebied_max <- terra::cover(waterbiotoop_finaal_max, landbiotoop_finaal_max)
 finaal_max_binair <- terra::ifel(!is.na(leefgebied_max), 1, NA)
 
+
 # ==============================================================================
-# VERWERKING SPOOR 2: WERKELIJKE OPPERVLAKTE
+# VERWERKING SPOOR 2: WERKELIJKE OPPERVLAKTE (FRACTIES)
 # ==============================================================================
 water_buffer100_opp <- terra::buffer(waterbiotoop1_opp, width = 100)
 land_buffer100_opp  <- terra::buffer(landbiotoop_nabij_opp, width = 100)
 
+# 1. Koppel water en nabij landbiotoop (binnen 100m)
 waterbiotoop2_opp <- terra::mask(waterbiotoop1_opp, land_buffer100_opp)
 landbiotoop2_opp  <- terra::mask(landbiotoop_nabij_opp, water_buffer100_opp)
 
-ruim_buffer500_opp        <- terra::buffer(landbiotoop_ruim_opp, width = 500)
-waterbiotoop2_buffer500_opp <- terra::buffer(waterbiotoop2_opp, width = 500)
+# 2. Omgevingsvoorwaarde
+ruim_buffer500_opp <- terra::buffer(landbiotoop_ruim_opp, width = 500)
 
+# Finaal waterbiotoop (opp)
 waterbiotoop_finaal_opp <- terra::mask(waterbiotoop2_opp, ruim_buffer500_opp)
-landbiotoop_finaal_opp  <- terra::mask(landbiotoop_ruim_opp, water_buffer100_opp) # Let op: behoudt de opp-locaties
 
+# CRUCIALE ECO-FIX: Gebruik ook hier 'landbiotoop2_opp' en maskeer deze met de omgevingsbuffer
+landbiotoop_finaal_opp  <- terra::mask(landbiotoop2_opp, ruim_buffer500_opp)
+
+# 3. Voeg water en nabij land samen tot finaal leefgebied (opp)
 leefgebied_opp <- terra::cover(waterbiotoop_finaal_opp, landbiotoop_finaal_opp)
 finaal_opp_binair <- terra::ifel(!is.na(leefgebied_opp), 1, NA)
 
+
 # ==============================================================================
-# AANGEPASTE EINDSCHOONMAAK (Behoud de lagen nodig voor de Leaflet kaart!)
+# AANGEPASTE EINDSCHOONMAAK (De vereiste kaartenlagen blijven in RAM)
 # ==============================================================================
 rm(waterbiotoop1_max, landbiotoop_nabij_max, water_buffer100_max, land_buffer100_max, 
-   waterbiotoop2_max, landbiotoop2_max, ruim_buffer500_max, waterbiotoop2_buffer500_max,
+   waterbiotoop2_max, landbiotoop2_max, ruim_buffer500_max,
    waterbiotoop_finaal_max, landbiotoop_finaal_max, leefgebied_max,
    landbiotoop_nabij_opp, water_buffer100_opp, 
-   waterbiotoop2_opp, landbiotoop2_opp, waterbiotoop2_buffer500_opp,
+   waterbiotoop2_opp, landbiotoop2_opp,
    waterbiotoop_finaal_opp, landbiotoop_finaal_opp, leefgebied_opp)
 gc()
-
-message("-> Parallelle modellering succesvol voltooid! Bestanden opgeslagen in data/output/.")
 
 message("-> Parallelle modellering succesvol voltooid! Bestanden opgeslagen in data/output/.")
 ```

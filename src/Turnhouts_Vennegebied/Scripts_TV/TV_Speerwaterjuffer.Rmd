@@ -324,36 +324,61 @@ land_nabij_clusters_opp <- cluster_filter_compleet(
 ```
 
 ```{r nabij bos}
-# clusters nabij bosdeel (minimaal 5 ha = 50.000 m²)
-bos_nabij_clusters_max <- cluster_filter_compleet(
-  masker       = land_nabij_bos_max,
-  opp_laag     = land_nabij_bos_opp,
-  drempel_m2   = 50000,   
-  dist_m       = 50,       
-  werkelijk    = FALSE      
-)
-
-bos_nabij_clusters_opp <- cluster_filter_compleet(
-  masker       = land_nabij_bos_max,
-  opp_laag     = land_nabij_bos_opp,
-  drempel_m2   = 50000,   
-  dist_m       = 50,       
-  werkelijk    = TRUE      
-)
-
 # ==============================================================================
-# COMBINATIE 1: NABIJ LANDBIOTOOP FILTEREN OP BASIS VAN BOSGRENS (10 METER)
+# ECOLOOGSCH GECORRIGEERD: STRIKTE 50% BOS-MOZAÏEK CHECK OP HET LANDBIOTOOP
 # ==============================================================================
-message("-> Nabij landbiotoop filteren op basis van bosgrens (10m)...")
+message("-> Nabij landbiotoop filteren op basis van netto 50% bos-eis binnenshuis...")
 
-# Maak een zone van 10 meter rondom de boskernen (5 ha)
-bos_buffer_10m <- terra::buffer(bos_nabij_clusters_max$raster, width = 10)
+# We halen de scherpe clusters van het nabije landbiotoop (10 ha) op uit de vorige chunk
+cl_land_nabij_max <- land_nabij_clusters_max$raster
 
-# Het 'nabije landbiotoop' moet binnen deze zone liggen
-land_nabij_finaal_max <- terra::mask(land_nabij_clusters_max$raster, bos_buffer_10m)
-land_nabij_finaal_opp <- terra::mask(land_nabij_clusters_opp$raster, bos_buffer_10m)
+land_nabij_finaal_max <- template_TV * NA
+land_nabij_finaal_opp <- template_TV * NA
 
-rm(bos_buffer_10m)
+if (!all(is.na(terra::values(cl_land_nabij_max, mat=FALSE)))) {
+  
+  # 1. Bereken de netto oppervlakte (ha) van elk nabij landbiotoopcluster zelf
+  l_stats <- terra::freq(cl_land_nabij_max)
+  df_l_stats <- data.frame(ID = l_stats$value, Land_ha = l_stats$count * 0.01)
+  
+  # 2. Creëer de 50m invloedszone rondom deze landbiotoopclusters (de 50m plooirand)
+  w_50m <- terra::focalMat(cl_land_nabij_max, 50, type = 'circle')
+  w_50m[w_50m > 0] <- 1
+  cl_land_buf_max <- terra::focal(cl_land_nabij_max, w = w_50m, fun = "max", na.rm = TRUE)
+  
+  # 3. Tel hoeveel reëel bos (5 ha kernen) er binnen deze 50m zone van elk landcluster ligt
+  # We meten op het OPP (fractie) raster van het bos voor maximale precisie
+  bos_in_zone <- terra::mask(bos_nabij_clusters_opp$raster, cl_land_buf_max)
+  zonal_bos   <- terra::zonal(bos_in_zone, cl_land_buf_max, fun = "sum", na.rm = TRUE)
+  colnames(zonal_bos) <- c("ID", "Bos_Fractie_Sum")
+  zonal_bos$Bos_ha    <- zonal_bos$Bos_Fractie_Sum * 0.01
+  
+  # 4. Koppel de statistieken en bereken het percentage bos binnenshuis
+  df_criteria <- merge(df_l_stats, zonal_bos, by = "ID", all.x = TRUE)
+  df_criteria[is.na(df_criteria)] <- 0
+  df_criteria$Percentage_Bos <- (df_criteria$Bos_ha / df_criteria$Land_ha) * 100
+  
+  # 5. EVALUATIE: Cluster moet >= 10 ha zijn EN het aandeel bos binnen 50m moet >= 50% zijn!
+  goedgekeurde_land_ids <- df_criteria$ID[df_criteria$Land_ha >= 10 & 
+                                          df_criteria$Percentage_Bos >= 50]
+  
+  if (length(goedgekeurde_land_ids) > 0) {
+    message("   [OK] Aantal landbiotoopcomplexen dat voldoet aan de 50% bos-eis: ", length(goedgekeurde_land_ids))
+    masker_land_bin <- cl_land_nabij_max %in% goedgekeurde_land_ids
+    
+    # We behouden het schone landbiotoop binnen de goedgekeurde zones (bos en buffers vallen direct af)
+    land_nabij_finaal_max <- terra::mask(land_nabij_clusters_max$raster, terra::ifel(masker_land_bin == 1, 1, NA))
+    land_nabij_finaal_opp <- terra::mask(land_nabij_clusters_opp$raster, land_nabij_finaal_max)
+  } else {
+    message("⚠️ Waarschuwing: Geen enkel landbiotoopcomplex voldoet aan de 50% bos-eis.")
+  }
+  
+  rm(l_stats, df_l_stats, w_50m, cl_land_buf_max, bos_in_zone, zonal_bos, df_criteria, goedgekeurde_land_ids)
+}
+
+# Verwijder de bos-tussenstap rasters die we niet meer nodig hebben om RAM vrij te maken
+rm(bos_nabij_clusters_max, bos_nabij_clusters_opp)
+gc()
 ```
 
 ```{r ruim land}
@@ -435,12 +460,18 @@ water2_buffer_500m    <- terra::buffer(waterbiotoop2_max, width = 500)
 speerwaterjuffer_waterbiotoop_max <- terra::mask(waterbiotoop2_max, ruim_land_buffer_500m)
 speerwaterjuffer_waterbiotoop_opp <- terra::mask(waterbiotoop2_opp, ruim_land_buffer_500m)
 
-# Finaal landbiotoop: Moet binnen 500m liggen van waterbiotoop2
-speerwaterjuffer_landbiotoop_max <- terra::mask(speerwaterjuffer_land_ruim_max, water2_buffer_500m)
-speerwaterjuffer_landbiotoop_opp <- terra::mask(speerwaterjuffer_land_ruim_opp, water2_buffer_500m)
+# --- CRUCIALE ECO-FIX: GEBRUIK NABIJ LAND IN PLAATS VAN RUIM LAND ---
+# Finaal landbiotoop: Moet binnen 500m liggen van waterbiotoop2.
+# We baseren dit nu op 'landbiotoop2_max' (10 ha oever gekoppeld aan bos) en NIET op de ruime omgeving!
+speerwaterjuffer_landbiotoop_max <- terra::mask(landbiotoop2_max, ruim_land_buffer_500m)
+speerwaterjuffer_landbiotoop_opp <- terra::mask(landbiotoop2_opp, ruim_land_buffer_500m)
+
+# Extra controle: Het goedgekeurde landbiotoop moet uiteraard ook binnen de waterbuffer liggen
+speerwaterjuffer_landbiotoop_max <- terra::mask(speerwaterjuffer_landbiotoop_max, water2_buffer_500m)
+speerwaterjuffer_landbiotoop_opp <- terra::mask(speerwaterjuffer_landbiotoop_opp, water2_buffer_500m)
 
 # ==============================================================================
-# HET FINALE LEEFGEBIED (WATER + LAND)
+# HET FINALE LEEFGEBIED (WATER + LAND) - NU ZONDER RUIME OMGEVINGPIXELS!
 # ==============================================================================
 message("-> Water en land combineren tot finaal leefgebied...")
 
@@ -458,6 +489,8 @@ speerwaterjuffer_leefgebied_opp <- terra::app(
 )
 
 speerwaterjuffer_leefgebied_opp <- terra::ifel(speerwaterjuffer_leefgebied_opp == 0, NA, speerwaterjuffer_leefgebied_opp)
+
+rm(ruim_land_buffer_500m, water2_buffer_500m)
 ```
 
 ```{r waarnemingen inlezen + audit tabel}

@@ -406,12 +406,18 @@ water2_buffer_100m    <- terra::buffer(waterbiotoop2_max, width = 100)
 hoogveenglanslibel_waterbiotoop_max <- terra::mask(waterbiotoop2_max, ruim_land_buffer_500m)
 hoogveenglanslibel_waterbiotoop_opp <- terra::mask(waterbiotoop2_opp, ruim_land_buffer_500m)
 
-# Finaal landbiotoop: Moet binnen 100m liggen van het zojuist goedgekeurde waterbiotoop2
-hoogveenglanslibel_landbiotoop_max <- terra::mask(ruim_land_clusters_max$raster, water2_buffer_100m)
-hoogveenglanslibel_landbiotoop_opp <- terra::mask(ruim_land_clusters_opp$raster, water2_buffer_100m)
+# --- CRUCIALE ECO-FIX: GEBRUIK NABIJ LAND IN PLAATS VAN RUIM LAND ---
+# Finaal landbiotoop: Moet binnen 100m liggen van het zojuist goedgekeurde waterbiotoop2.
+# We baseren dit nu op 'land_nabij_max' (10 ha heide gekoppeld aan bos) en NIET op de ruime omgeving!
+hoogveenglanslibel_landbiotoop_max <- terra::mask(land_nabij_max, water2_buffer_100m)
+hoogveenglanslibel_landbiotoop_opp <- terra::mask(land_nabij_opp, water2_buffer_100m)
+
+# Extra controle: Het goedgekeurde landbiotoop moet natuurlijk ook binnen de ruime omgevingsbuffer (500m) liggen
+hoogveenglanslibel_landbiotoop_max <- terra::mask(hoogveenglanslibel_landbiotoop_max, ruim_land_buffer_500m)
+hoogveenglanslibel_landbiotoop_opp <- terra::mask(hoogveenglanslibel_landbiotoop_opp, ruim_land_buffer_500m)
 
 # ==============================================================================
-# HET FINALE LEEFGEBIED (WATER + LAND)
+# HET FINALE LEEFGEBIED (WATER + LAND) - NU ZONDER RUIME OMGEVINGPIXELS!
 # ==============================================================================
 message("-> Water en land combineren tot finaal leefgebied...")
 
@@ -429,6 +435,8 @@ hoogveenglanslibel_leefgebied_opp <- terra::app(
 )
 
 hoogveenglanslibel_leefgebied_opp <- terra::ifel(hoogveenglanslibel_leefgebied_opp == 0, NA, hoogveenglanslibel_leefgebied_opp)
+
+rm(ruim_land_buffer_500m, water2_buffer_100m)
 ```
 
 ```{r waarnemingen inlezen + audit tabel}
