@@ -72,7 +72,7 @@ for(script in unieke_scripts) {
 # ------------------------------------------------------------------------------
 # 2. TREK DE SOORTENLIJST DYNAMISCH UIT DE EXCEL
 # ------------------------------------------------------------------------------
-excel_data <- read_excel(here("data/input/Soorten_bwk_afstanden.xlsx"))
+excel_data <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
 
 soorten_lijst <- excel_data %>% 
   filter(Script == "Simpel") %>%                # Alleen de simpele wasstraat

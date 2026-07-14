@@ -251,7 +251,7 @@ gc()
 
 ```{r watervogelgebieden filteren}
 # ==============================================================================
-# STAP 1: slobeend - REGIO CLIP EN FILTER OP SEIZOENSTOTAAL GROTER DAN 0
+# STAP 1: SLOBEEND - REGIO CLIP EN FILTER OP SEIZOENSTOTAAL GROTER DAN 0
 # ==============================================================================
 message("-> Universele slobeenddata inlezen...")
 sf_slobeend_vlaanderen <- readRDS(here("data/input/Watervogelgebieden_Ruw/watervogelgebieden_ruw_slobeend.rds"))
@@ -290,76 +290,32 @@ rm(sf_slobeend_vlaanderen, sf_slobeend_regio, locatie_aantallen, gebied_geselect
 ```
 
 
-```{r slobeend stap 2 - waterlopen en clustering met exacte codes}
+```{r slobeend stap 2 - landschapsclustering en kruising}
 # ==============================================================================
-# STAP 2: WATERLOPEN INTEGREREN (EXACTE CODES), FUZZY CLUSTERING EN GEBIEDSKRUISING (5 HA)
+# STAP 2: SLOBEEND - LANDSCHAPSCLUSTERING EN KRUISING (5 HA)
 # ==============================================================================
-message("-> Huetzon-raster inlezen en tabelcategorieën matchen met exacte codes...")
-r_huetzon_raw <- terra::rast(here("data/input/Raster_Vlaanderen/vlaanderen_huetzon_10m.tif"))
-r_huetzon     <- terra::resample(r_huetzon_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
-
-# Haal de categorieëntabel van het Huetzon-raster op
-huetzon_cats <- terra::cats(r_huetzon)[[1]]
-
-# De gewenste waterloopcodes voor de slobeend
-gewenste_water_codes <- c("Mlz", "O1brak", "O1o", "O2zout", "Rg", "Rk")
-
-# We trimmen en negeren hoofdletterverschillen voor maximale betrouwbaarheid
-gewenste_water_clean <- tolower(trimws(gewenste_water_codes))
-
-# We checken de labels in de rastertabel van Huetzon
-ids_waterlopen_ok <- huetzon_cats$value[tolower(trimws(huetzon_cats$Label)) %in% gewenste_water_clean]
-
-# Mocht de tabelkolom anders heten (bvb. 'Code' of 'Naam'), dan doorzoeken we de hele tabelrij
-if (length(ids_waterlopen_ok) == 0) {
-  tabel_rijen_check <- apply(huetzon_cats, 1, function(row) {
-    any(tolower(trimws(row)) %in% gewenste_water_clean)
-  })
-  ids_waterlopen_ok <- huetzon_cats$value[tabel_rijen_check]
-}
-
-# Kogelvrije fallback naar de numerieke klassen (11, 12, 13, 14, 17, 18)
-if (length(ids_waterlopen_ok) == 0) {
-  message("⚠️ Waarschuwing: Gewenste codes niet gevonden in Huetzon-tabel. We vallen terug op klassieke waterloopklassen.")
-  ids_waterlopen_ok <- c(11, 12, 13, 14, 17, 18)
-} else {
-  message(paste("-> Waterloop ID's succesvol gematcht op basis van je codes:", paste(ids_waterlopen_ok, collapse = ", ")))
-}
-
-# Selecteer de waterloop-pixels uit het raster
-r_waterlopen <- r_huetzon %in% ids_waterlopen_ok
-
-# Voeg waterlopen toe aan het foerageerhabitat via logische OF
-foerageer_compleet_max <- (!is.na(foerageer_bwk_max) & foerageer_bwk_max == 1) | (r_waterlopen == 1)
-foerageer_compleet_max <- terra::ifel(foerageer_compleet_max == 1, 1, NA)
-
-# Koppel de oppervlakte-fracties (water krijgt volledige pixelsomming = 1.0)
-r_waterlopen_opp <- terra::ifel(r_waterlopen == 1, 1.0, NA)
-foerageer_compleet_opp <- terra::cover(foerageer_bwk_opp, r_waterlopen_opp)
-
-message("-> Landschapsclustering op hersteld habitat (50m fuzzy, drempel 5 ha)...")
+message("-> Landschapsclustering op foerageerhabitat (50m fuzzy, drempel 5 ha)...")
 drempel_m2 <- oppervlakte_ha * 10000
 
 slobeend_clusters <- cluster_filter_compleet(
-  masker       = foerageer_compleet_max,
-  opp_laag     = foerageer_compleet_opp,
+  masker       = foerageer_bwk_max,
+  opp_laag     = foerageer_bwk_opp,
   drempel_m2   = drempel_m2, 
   dist_m       = 50,
   werkelijk    = FALSE
 )
 
 r_foer_5ha_max <- slobeend_clusters$raster
-r_foer_5ha_opp <- terra::mask(foerageer_compleet_opp, r_foer_5ha_max)
+r_foer_5ha_opp <- terra::mask(foerageer_bwk_opp, r_foer_5ha_max)
 
 message("-> Intersectie: Alleen geschikt habitat BINNEN de gereserveerde watervogelgebieden...")
 slobeend_leefgebied_max <- terra::mask(r_foer_5ha_max, r_watervogelgebied_max) %>% terra::crop(template_TV)
 slobeend_leefgebied_opp <- terra::mask(r_foer_5ha_opp, r_watervogelgebied_max) %>% terra::crop(template_TV)
 
-message("--- slobeend MODEL SUCCESVOL AFGEROND ---")
-cat("Totaal stabiel leefgebied slobeend (ha):", round(calc_ha_exact(slobeend_leefgebied_opp), 2), "\n")
+message("--- SLOBEEND MODEL SUCCESVOL AFGEROND ---")
+cat("Totaal stabiel leefgebied Slobeend (ha):", round(calc_ha_exact(slobeend_leefgebied_opp), 2), "\n")
 
-rm(r_huetzon_raw, r_huetzon, huetzon_cats, ids_waterlopen_ok, r_waterlopen, r_waterlopen_opp, 
-   foerageer_compleet_max, foerageer_compleet_opp, slobeend_clusters, r_foer_5ha_max, r_foer_5ha_opp, r_watervogelgebied_max)
+rm(slobeend_clusters, r_foer_5ha_max, r_foer_5ha_opp, r_watervogelgebied_max)
 gc()
 ```
 

@@ -251,7 +251,7 @@ gc()
 
 ```{r watervogelgebieden filteren}
 # ==============================================================================
-# STAP 1: smient - REGIO CLIP EN FILTER OP SEIZOENSTOTAAL GROTER DAN 0
+# STAP 1: SMIENT - REGIO CLIP EN FILTER OP SEIZOENSTOTAAL GROTER DAN 0
 # ==============================================================================
 message("-> Universele smientdata inlezen...")
 sf_smient_vlaanderen <- readRDS(here("data/input/Watervogelgebieden_Ruw/watervogelgebieden_ruw_smient.rds"))
@@ -269,7 +269,7 @@ locatie_aantallen <- sf_smient_regio %>%
     TotaalGeteld   = sum(seizoenstotaal, na.rm = TRUE)
   )
 
-# Selecteer alle keys waar minstens één smient is geteld (seizoenstotaal > 0)
+# Selecteer alle keys met positieve tellingen
 goedgekeurde_keys <- locatie_aantallen$locationwvkey[
   locatie_aantallen$TotaalGeteld > 0 | locatie_aantallen$MaximaalGeteld > 0
 ]
@@ -290,9 +290,9 @@ rm(sf_smient_vlaanderen, sf_smient_regio, locatie_aantallen, gebied_geselecteerd
 ```
 
 
-```{r smient stap 2 - waterlopen en clustering met exacte codes}
+```{r waterlopen en clustering met exacte codes}
 # ==============================================================================
-# STAP 2: WATERLOPEN INTEGREREN (EXACTE CODES), FUZZY CLUSTERING EN GEBIEDSKRUISING (5 HA)
+# STAP 2: SMIENT - WATERLOPEN INTEGREREN (EXACTE CODES), FUZZY CLUSTERING (5 HA)
 # ==============================================================================
 message("-> Huetzon-raster inlezen en tabelcategorieën matchen met exacte codes...")
 r_huetzon_raw <- terra::rast(here("data/input/Raster_Vlaanderen/vlaanderen_huetzon_10m.tif"))
@@ -301,8 +301,8 @@ r_huetzon     <- terra::resample(r_huetzon_raw, id_raster_TV, method = "near") %
 # Haal de categorieëntabel van het Huetzon-raster op
 huetzon_cats <- terra::cats(r_huetzon)[[1]]
 
-# De gewenste waterloopcodes voor de smient
-gewenste_water_codes <- c("Mlz", "O1brak", "O1o", "O2zout", "Rg", "Rk")
+# De gewenste waterloopcodes voor de smient (Rk weggelaten conform historische klasse 11 t/m 17)
+gewenste_water_codes <- c("Mlz", "O1brak", "O1o", "O2zout", "Rg")
 
 # We trimmen en negeren hoofdletterverschillen voor maximale betrouwbaarheid
 gewenste_water_clean <- tolower(trimws(gewenste_water_codes))
@@ -310,7 +310,7 @@ gewenste_water_clean <- tolower(trimws(gewenste_water_codes))
 # We checken de labels in de rastertabel van Huetzon
 ids_waterlopen_ok <- huetzon_cats$value[tolower(trimws(huetzon_cats$Label)) %in% gewenste_water_clean]
 
-# Mocht de tabelkolom anders heten (bvb. 'Code' of 'Naam'), dan doorzoeken we de hele tabelrij
+# Mocht de tabelkolom anders heten, dan doorzoeken we de hele tabelrij
 if (length(ids_waterlopen_ok) == 0) {
   tabel_rijen_check <- apply(huetzon_cats, 1, function(row) {
     any(tolower(trimws(row)) %in% gewenste_water_clean)
@@ -318,10 +318,10 @@ if (length(ids_waterlopen_ok) == 0) {
   ids_waterlopen_ok <- huetzon_cats$value[tabel_rijen_check]
 }
 
-# Kogelvrije fallback naar de numerieke klassen (11, 12, 13, 14, 17, 18)
+# Kogelvrije fallback naar de numerieke klassen 11 t/m 17
 if (length(ids_waterlopen_ok) == 0) {
   message("⚠️ Waarschuwing: Gewenste codes niet gevonden in Huetzon-tabel. We vallen terug op klassieke waterloopklassen.")
-  ids_waterlopen_ok <- c(11, 12, 13, 14, 17, 18)
+  ids_waterlopen_ok <- c(11, 12, 13, 14, 17)
 } else {
   message(paste("-> Waterloop ID's succesvol gematcht op basis van je codes:", paste(ids_waterlopen_ok, collapse = ", ")))
 }
@@ -329,7 +329,7 @@ if (length(ids_waterlopen_ok) == 0) {
 # Selecteer de waterloop-pixels uit het raster
 r_waterlopen <- r_huetzon %in% ids_waterlopen_ok
 
-# Voeg waterlopen toe aan het foerageerhabitat via logische OF
+# Voeg waterlopen toe aan het foerageer-BWK via logische OF
 foerageer_compleet_max <- (!is.na(foerageer_bwk_max) & foerageer_bwk_max == 1) | (r_waterlopen == 1)
 foerageer_compleet_max <- terra::ifel(foerageer_compleet_max == 1, 1, NA)
 
@@ -355,8 +355,8 @@ message("-> Intersectie: Alleen geschikt habitat BINNEN de gereserveerde watervo
 smient_leefgebied_max <- terra::mask(r_foer_5ha_max, r_watervogelgebied_max) %>% terra::crop(template_TV)
 smient_leefgebied_opp <- terra::mask(r_foer_5ha_opp, r_watervogelgebied_max) %>% terra::crop(template_TV)
 
-message("--- smient MODEL SUCCESVOL AFGEROND ---")
-cat("Totaal stabiel leefgebied smient (ha):", round(calc_ha_exact(smient_leefgebied_opp), 2), "\n")
+message("--- SMIENT MODEL SUCCESVOL AFGEROND ---")
+cat("Totaal stabiel leefgebied Smient (ha):", round(calc_ha_exact(smient_leefgebied_opp), 2), "\n")
 
 rm(r_huetzon_raw, r_huetzon, huetzon_cats, ids_waterlopen_ok, r_waterlopen, r_waterlopen_opp, 
    foerageer_compleet_max, foerageer_compleet_opp, smient_clusters, r_foer_5ha_max, r_foer_5ha_opp, r_watervogelgebied_max)

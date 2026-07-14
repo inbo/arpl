@@ -101,7 +101,7 @@ draai_leefgebied_model <- function(huidige_soort) {
   
   tryCatch({
     rmarkdown::render(
-      input = soorten_script_tv_pad, # Knif de 'Leefgebieden_Simpel_TV.Rmd' uit de Scripts_TV map
+      input = soorten_script_tv_pad, # Knit de 'Leefgebieden_Simpel_TV.Rmd' uit de Scripts_TV map
       output_file = output_file_name,
       output_dir = OUTPUT_DIR,
       params = list(soort_invoer = huidige_soort), # Alleen de soortnaam doorgeven, geen scenario nodig

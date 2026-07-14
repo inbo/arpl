@@ -261,162 +261,281 @@ rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
-```{r grasland-leefgebied}
+```{r regenwulp stap 1a - grasland kwaliteitscheck}
 # ==============================================================================
-# STAP 1: REGENWULP - GRASLAND-LEEFGEBIED MET KWALITEITS- EN SLAAPPLAATSEISEN
+# REGENWULP STAP 1a: GROTE GRASLANDCOMPARTIMENTEN MET MINSTENS 100 HA GOED HABITAT
 # ==============================================================================
-message("-> Spoor 1: Bruto foerageergebied clusteren op 50m en zeven op min. 300 ha...")
-cl_foer_bruto <- cluster_filter_compleet(
-  masker     = foerageer_max,
-  opp_laag   = foerageer_opp,
-  drempel_m2 = 300 * 10000, # 300 hectare
-  dist_m     = 50,
-  werkelijk  = FALSE
-)
-r_foer_300ha_max <- cl_foer_bruto$raster
+message("-> 1. Identificeer aaneengesloten bruto graslandcompartimenten (fuzzy 50m)...")
 
-message("-> Goed foerageergebied clusteren op 50m en zeven op min. 100 ha...")
-cl_foer_goed <- cluster_filter_compleet(
-  masker     = foerageer_goed_max,
-  opp_laag   = foerageer_goed_opp,
-  drempel_m2 = 100 * 10000, # 100 hectare
-  dist_m     = 50,
-  werkelijk  = FALSE
-)
-r_foer_goed_100ha_max <- cl_foer_goed$raster
+# We bufferen bruto foerageergebied om gaten (wegen, houtkanten) van max 50m te overbruggen
+r_temp_foer <- foerageer_max
+r_foer_buffered <- terra::buffer(r_temp_foer, width = 25) # 25m aan weerszijden = 50m overbrugging
 
-message("-> Filteren: Kwalitatief goed gebied moet binnen 50 meter van het bruto gebied liggen...")
-dist_goed_100ha <- terra::distance(terra::ifel(r_foer_goed_100ha_max == 1, 1, NA))
-r_leefgebied_kwaliteit_max <- terra::ifel(dist_goed_100ha <= 50, 1, NA) %>% 
-                              terra::mask(r_foer_300ha_max)
+# Genereer unieke ID's voor de geclusterde graslandeenheden
+cl_bruto_vlakken <- terra::patches(r_foer_buffered, directions = 8, zeroAsNA = TRUE) %>% 
+                    terra::mask(foerageer_max)
 
-# --- SLAAPPLAATS-CHECK: ONDIEPE PLASSEN OF SLIKKEN ---
-message("-> Slaapplaten (plassen) verwerken (min. 0.5 ha)...")
-# Note: de biotoopfiltering levert 'plas_max' / 'plas_opp'
-# We checken de aanwezigheid van 'plas_max' in het geheugen
-if (exists("plas_max")) {
-  r_active_plas <- plas_max
-  r_active_plas_opp <- plas_opp
+# Bereken de bruto oppervlakte per landschapscluster (1 pixel = 100 m2 = 0.01 ha)
+# We gebruiken zonal() om de som van de werkelijke oppervlaktes (foerageer_opp) te nemen.
+opp_per_cluster <- terra::zonal(foerageer_opp, cl_bruto_vlakken, fun = "sum", na.rm = TRUE)
+colnames(opp_per_cluster) <- c("ClusterID", "Bruto_ha")
+
+# Selecteer alleen de grote compartimenten die bruto minstens 300 ha groot zijn
+grote_cluster_ids <- opp_per_cluster$ClusterID[opp_per_cluster$Bruto_ha >= 300]
+
+if (length(grote_cluster_ids) > 0) {
+  message(paste("->", length(grote_cluster_ids), "bruto compartimenten van >= 300 ha gevonden. Kwaliteitscontrole uitvoeren..."))
+  
+  # Filter de bruto patches tot alleen de goedgekeurde reuzen
+  r_grote_compartimenten <- cl_bruto_vlakken %in% grote_cluster_ids
+  r_grote_compartimenten <- terra::ifel(r_grote_compartimenten == 1, cl_bruto_vlakken, NA)
+  
+  # --- DE KWALITEITSCHECK ---
+  # Bereken hoeveel ha GOED foerageergebied (foerageer_goed_opp) er BINNEN elk groot compartiment ligt
+  goed_per_groot_cluster <- terra::zonal(foerageer_goed_opp, r_grote_compartimenten, fun = "sum", na.rm = TRUE)
+  colnames(goed_per_groot_cluster) <- c("ClusterID", "Goed_ha")
+  
+  # Welke grote compartimenten bevatten daadwerkelijk minstens 100 ha kwaliteitsgrasland?
+  kwalitatieve_cluster_ids <- goed_per_groot_cluster$ClusterID[goed_per_groot_cluster$Goed_ha >= 100]
+  
+  if (length(kwalitatieve_cluster_ids) > 0) {
+    # Behoud alleen de graslanden die aan beide eisen voldoen
+    r_grasland_gecertificeerd <- r_grote_compartimenten %in% kwalitatieve_cluster_ids
+    r_grasland_gecertificeerd <- terra::ifel(r_grasland_gecertificeerd == 1, 1, NA)
+    
+    message(paste("-> SUCCES:", length(kwalitatieve_cluster_ids), "grote graslandcompartimenten goedgekeurd (bevatten >= 100 ha goed grasland)."))
+    cat("Resterend gekwalificeerd graslandhabitat:", round(calc_ha_exact(r_grasland_gecertificeerd * foerageer_opp), 2), "ha \n")
+  } else {
+    message("⚠️ Knelpunt: Geen van de grote bruto graslanden bevat cumulatief 100 ha goed grasland!")
+    r_grasland_gecertificeerd <- id_raster_TV * NA
+  }
 } else {
-  # Fallback voor het geval de dictionary-tag 'plas' heet
-  r_active_plas <- foerageer_max * NA
-  r_active_plas_opp <- foerageer_opp * NA
+  message("⚠️ Knelpunt: Geen bruto graslandcompartimenten van >= 300 ha gevonden!")
+  r_grasland_gecertificeerd <- id_raster_TV * NA
 }
 
-cl_plas <- cluster_filter_compleet(
-  masker     = r_active_plas,
-  opp_laag   = r_active_plas_opp,
-  drempel_m2 = 0.5 * 10000, # 0.5 hectare
-  dist_m     = 50,
-  werkelijk  = FALSE
-)
-r_plas_05ha_max <- cl_plas$raster
-
-message("-> Slikken en schorren verwerken (min. 0.25 ha)...")
-# Slikken en schorren komen uit de 'da%' en 'ds%' codes die in de database zitten.
-# Indien niet als aparte match opgevangen, maken we een lege laag om crashes te voorkomen.
-if (exists("slik_max")) {
-  r_active_slik <- slik_max
-  r_active_slik_opp <- slik_opp
-} else {
-  r_active_slik <- foerageer_max * NA
-  r_active_slik_opp <- foerageer_opp * NA
-}
-
-cl_slik <- cluster_filter_compleet(
-  masker     = r_active_slik,
-  opp_laag   = r_active_slik_opp,
-  drempel_m2 = 0.25 * 10000, # 0.25 hectare
-  dist_m     = 50,
-  werkelijk  = FALSE
-)
-r_slik_025ha_max <- cl_slik$raster
-
-# Afstanden berekenen tot slaapplaatsen
-dist_plas <- terra::distance(terra::ifel(r_plas_05ha_max == 1, 1, NA))
-dist_slik <- terra::distance(terra::ifel(r_slik_025ha_max == 1, 1, NA))
-
-# Criterium A: Maximaal 50 meter van een plas
-r_leefgebied_4a <- terra::ifel(dist_plas <= 50, 1, NA) %>% terra::mask(r_leefgebied_kwaliteit_max)
-# Criterium B: Maximaal 100 meter van een slikgebied
-r_leefgebied_4b <- terra::ifel(dist_slik <= 100, 1, NA) %>% terra::mask(r_leefgebied_kwaliteit_max)
-
-# Combineren en herclusteren op minimaal 50 ha
-r_grasland_leefgebied_bruto <- (!is.na(r_leefgebied_4a) & r_leefgebied_4a == 1) | 
-                                (!is.na(r_leefgebied_4b) & r_leefgebied_4b == 1)
-r_grasland_leefgebied_bruto <- terra::ifel(r_grasland_leefgebied_bruto == 1, 1, NA)
-
-cl_grasland_final <- cluster_filter_compleet(
-  masker     = r_grasland_leefgebied_bruto,
-  opp_laag   = foerageer_opp, # Gebruik foerageer_opp als proxy voor de zonal sums
-  drempel_m2 = 50 * 10000, # Minimaal 50 ha
-  dist_m     = 50,
-  werkelijk  = FALSE
-)
-r_grasland_leefgebied_finaal <- cl_grasland_final$raster
-
-rm(cl_foer_bruto, r_foer_300ha_max, cl_foer_goed, r_foer_goed_100ha_max, dist_goed_100ha, 
-   r_leefgebied_kwaliteit_max, cl_plas, r_plas_05ha_max, cl_slik, r_slik_025ha_max, 
-   dist_plas, dist_slik, r_leefgebied_4a, r_leefgebied_4b, r_grasland_leefgebied_bruto, cl_grasland_final)
+# Geheugen opschonen
+rm(r_foer_buffered, cl_bruto_vlakken, opp_per_cluster, grote_cluster_ids, goed_per_groot_cluster, kwalitatieve_cluster_ids)
+gc()
 ```
 
-
-```{r regenwulp stap 2 - heide-leefgebied en eindcombinatie}
+```{r regenwulp stap 1b - grasland slaapplaatstoets}
 # ==============================================================================
-# STAP 2: REGENWULP - HEIDE-LEEFGEBIED, COMBINATIE EN AKKER-EXCLUSIE
+# REGENWULP STAP 1b: GRASLANDCOMPARTIMENTEN KOPPELEN AN SLAAPPLAATSEN (PLASSEN)
 # ==============================================================================
-message("-> Spoor 2: Heide clusteren op 50m en zeven op min. 50 ha...")
-cl_heide <- cluster_filter_compleet(
-  masker     = heide_max,
-  opp_laag   = heide_opp,
-  drempel_m2 = 50 * 10000, # 50 hectare
-  dist_m     = 50,
-  werkelijk  = FALSE
-)
-r_heide_50ha_max <- cl_heide$raster
+message("-> 2. Slaapplaatsen (plassen) clusteren op 50m en zeven op min. 0.5 ha...")
 
-message("-> Heideplas (vennen) clusteren op 50m en zeven op min. 0.5 ha...")
-cl_heideplas <- cluster_filter_compleet(
-  masker     = heideplas_max,
-  opp_laag   = heideplas_opp,
-  drempel_m2 = 0.5 * 10000, # 0.5 hectare
-  dist_m     = 50,
-  werkelijk  = FALSE
-)
-r_heideplas_05ha_max <- cl_heideplas$raster
+r_grasland_slaapplaats <- id_raster_TV * NA
 
-message("-> Filteren: Heideplas moet binnen 100 meter van de heide liggen...")
-dist_heideplas <- terra::distance(terra::ifel(r_heideplas_05ha_max == 1, 1, NA))
-r_heide_leefgebied_finaal <- terra::ifel(dist_heideplas <= 100, 1, NA) %>% 
-                             terra::mask(r_heide_50ha_max)
+if (exists("plas_max") && !all(is.na(terra::values(plas_max, mat=FALSE))) && exists("r_grasland_gecertificeerd") && !all(is.na(terra::values(r_grasland_gecertificeerd, mat=FALSE)))) {
+  
+  # Cluster de plassen (fuzzy 50m)
+  cl_plas <- cluster_filter_compleet(
+    masker     = plas_max,
+    opp_laag   = plas_opp,
+    drempel_m2 = 0.5 * 10000, # 0.5 hectare drempel
+    dist_m     = 50,
+    werkelijk  = FALSE
+  )
+  r_plas_05ha <- cl_plas$raster
+  
+  if (!all(is.na(terra::values(r_plas_05ha, mat=FALSE)))) {
+    message("-> Plassen van >= 0.5 ha gevonden. Bufferen met 50m interactie-afstand...")
+    
+    # Maak een binaire zone van 50 meter rondom deze plassen
+    r_plas_zone <- terra::buffer(r_plas_05ha, width = 50)
+    r_plas_zone <- terra::ifel(!is.na(r_plas_zone), 1, NA)
+    
+    # --- DE INTERSECTIECHECK VIA TABELSTATISTIEK ---
+    # We gebruiken de eerder gemaakte compartimenten (met hun unieke ID's)
+    # om te kijken welke van deze eenheden overlappen met de plas-bufferzone.
+    # We hergebruiken het raster met unieke ID's van de goedgekeurde compartimenten.
+    r_compartimenten_ids <- terra::mask(r_grote_compartimenten, r_grasland_gecertificeerd)
+    
+    # Bereken de maximale aanwezigheid van de plas-zone (1 of NA) binnen elk graslandcompartiment
+    plas_check_per_compartiment <- terra::zonal(r_plas_zone, r_compartimenten_ids, fun = "max", na.rm = TRUE)
+    colnames(plas_check_per_compartiment) <- c("ClusterID", "Heeft_Slaapplaats")
+    
+    # Filter de ID's die overlappen met de plas-zone (waarde moet 1 zijn)
+    compartimenten_met_plas_ids <- plas_check_per_compartiment$ClusterID[plas_check_per_compartiment$Heeft_Slaapplaats == 1]
+    
+    if (length(compartimenten_met_plas_ids) > 0) {
+      r_grasland_slaapplaats <- r_compartimenten_ids %in% compartimenten_met_plas_ids
+      r_grasland_slaapplaats <- terra::ifel(r_grasland_slaapplaats == 1, 1, NA)
+      
+      message(paste("-> SUCCES:", length(compartimenten_met_plas_ids), "graslandcompartimenten gekoppeld aan een geschikte slaapplaats."))
+      cat("Resterend leefgebied na slaapplaatscheck:", round(calc_ha_exact(r_grasland_slaapplaats * foerageer_opp), 2), "ha \n")
+    } else {
+      message("⚠️ Knelpunt: Geen van de gecertificeerde graslanden heeft een plas van >= 0.5 ha binnen 50 meter!")
+    }
+    
+  } else {
+    message("⚠️ Knelpunt: Geen enkele plas haalt de minimale drempel van 0.5 ha!")
+  }
+} else {
+  message("⚠️ Knelpunt: Geen gecertificeerde graslanden of geen plasdata beschikbaar!")
+}
 
-# --- SAMENVOEGEN EN AKKERS EXCLUDEREN ---
-message("-> Beide sporen combineren en akkers uitsluiten...")
-r_leefgebied_gecombineerd <- (!is.na(r_grasland_leefgebied_finaal) & r_grasland_leefgebied_finaal == 1) | 
-                             (!is.na(r_heide_leefgebied_finaal) & r_heide_leefgebied_finaal == 1)
-r_leefgebied_gecombineerd <- terra::ifel(r_leefgebied_gecombineerd == 1, 1, NA)
+# Geheugen opschonen van tijdelijke rasterobjecten
+if (exists("cl_plas")) rm(cl_plas, r_plas_05ha)
+if (exists("r_plas_zone")) rm(r_plas_zone, r_compartimenten_ids, plas_check_per_compartiment)
+gc()
+```
 
-# Akkers resoluut wegsnijden (masker omdraaien)
-r_leefgebied_zonder_akkers <- terra::mask(r_leefgebied_gecombineerd, akkers_max, inverse = TRUE)
+```{r regenwulp stap 1c - grasland eindclustering}
+# ==============================================================================
+# REGENWULP STAP 1c: GRASLAND-LEEFGEBIED FINALE CLUSTERING (>= 50 HA)
+# ==============================================================================
+message("-> 3. Graslanden na slaapplaatscheck definitief clusteren (min. 50 ha)...")
 
-# --- FINALE CLUSTERING OP 50 HA (ANALOG MET DE ECOREGIO-TOETS) ---
-message("-> Finale clustering op minimaal 50 ha...")
-cl_regenwulp_finaal <- cluster_filter_compleet(
-  masker     = r_leefgebied_zonder_akkers,
-  opp_laag   = foerageer_opp, # proxy
-  drempel_m2 = 50 * 10000, # 50 hectare
-  dist_m     = 50,
-  werkelijk  = FALSE
-)
+r_grasland_leefgebied_finaal <- id_raster_TV * NA
 
-regenwulp_leefgebied_max <- cl_regenwulp_finaal$raster %>% terra::crop(template_TV)
-regenwulp_leefgebied_opp <- terra::mask(foerageer_opp, regenwulp_leefgebied_max) %>% terra::crop(template_TV)
+if (exists("r_grasland_slaapplaats") && !all(is.na(terra::values(r_grasland_slaapplaats, mat=FALSE)))) {
+  
+  # Voer de complete cluster- en oppervlaktefilter uit op 50 ha (500.000 m2)
+  # We gebruiken foerageer_opp om de werkelijke oppervlakte exact te sommeren.
+  cl_grasland_final <- cluster_filter_compleet(
+    masker     = r_grasland_slaapplaats,
+    opp_laag   = foerageer_opp, 
+    drempel_m2 = 50 * 10000, # 50 hectare ondergrens
+    dist_m     = 50,         # Fuzzy overbrugging van 50m behouden
+    werkelijk  = FALSE
+  )
+  
+  r_grasland_leefgebied_finaal <- cl_grasland_final$raster
+  
+  if (!all(is.na(terra::values(r_grasland_leefgebied_finaal, mat=FALSE)))) {
+    message("-> SUCCES: Graslandspoor stabiel afgerond.")
+    cat("Definitief grasland leefgebied voor de regenwulp:", round(calc_ha_exact(r_grasland_leefgebied_finaal * foerageer_opp), 2), "ha \n")
+  } else {
+    message("⚠️ Knelpunt: De overgebleven graslanden met slaapplaats halen in de eindclustering nergens de 50 ha grens!")
+  }
+} else {
+  message("⚠️ Knelpunt: Geen graslanden overgekomen uit de slaapplaatscheck.")
+}
 
-message("--- REGENWULP MODEL SUCCESVOL AFGEROND ---")
-cat("Totaal stabiel leefgebied Regenwulp (ha):", round(calc_ha_exact(regenwulp_leefgebied_opp), 2), "\n")
+# Netjes opruimen van de tijdelijke debug-objecten
+if (exists("cl_grasland_final")) rm(cl_grasland_final)
+gc()
+```
 
-rm(cl_heide, r_heide_50ha_max, cl_heideplas, r_heideplas_05ha_max, dist_heideplas, r_heide_leefgebied_finaal,
-   r_grasland_leefgebied_finaal, r_leefgebied_gecombineerd, r_leefgebied_zonder_akkers, cl_regenwulp_finaal)
+```{r regenwulp stap 2 - heide-leefgebied met nieuwe logica}
+# ==============================================================================
+# REGENWULP STAP 2: HEIDE-LEEFGEBIED (INTEGRALE KOPPELING OP COMPARTIMENT-NIVEAU)
+# ==============================================================================
+message("-> 4. Identificeer aaneengesloten heidecompartimenten (fuzzy 50m)...")
+
+r_heide_leefgebied_finaal <- id_raster_TV * NA
+
+if (exists("heide_max") && !all(is.na(terra::values(heide_max, mat=FALSE)))) {
+  
+  # Bufferen om gaten van max 50m te overbruggen
+  r_heide_buffered <- terra::buffer(heide_max, width = 25)
+  
+  # Genereer unieke ID's voor de heide-vlakken
+  cl_heide_vlakken <- terra::patches(r_heide_buffered, directions = 8, zeroAsNA = TRUE) %>% 
+                      terra::mask(heide_max)
+  
+  # Bereken de werkelijke heideoppervlakte per patch
+  opp_heide_per_cluster <- terra::zonal(heide_opp, cl_heide_vlakken, fun = "sum", na.rm = TRUE)
+  colnames(opp_heide_per_cluster) <- c("ClusterID", "Heide_ha")
+  
+  # Filter de heidegebieden die bruto minstens 50 ha groot zijn
+  grote_heide_ids <- opp_heide_per_cluster$ClusterID[opp_heide_per_cluster$Heide_ha >= 50]
+  
+  if (length(grote_heide_ids) > 0) {
+    message(paste("->", length(grote_heide_ids), "heidecompartimenten van >= 50 ha gevonden."))
+    
+    # Maak een laag met uitsluitend de grote heidecompartimenten (en hun ID's!)
+    r_heide_gecertificeerd_ids <- cl_heide_vlakken %in% grote_heide_ids
+    r_heide_gecertificeerd_ids <- terra::ifel(r_heide_gecertificeerd_ids == 1, cl_heide_vlakken, NA)
+    
+    # --- DE SLAAPPLAATSCHECK (VENNEN >= 0.5 HA BINNEN 100M) ---
+    message("-> 5. Heideplassen (vennen) selecteren (min. 0.5 ha) en bufferen met 100m...")
+    
+    if (exists("heideplas_max") && !all(is.na(terra::values(heideplas_max, mat=FALSE)))) {
+      cl_heideplas <- cluster_filter_compleet(heideplas_max, heideplas_opp, 0.5 * 10000, 50, FALSE)
+      r_hplas_05ha <- cl_heideplas$raster
+      
+      if (!all(is.na(terra::values(r_hplas_05ha, mat=FALSE)))) {
+        # Buffer de vennen met 100m
+        r_hplas_zone <- terra::buffer(r_hplas_05ha, width = 100)
+        r_hplas_zone <- terra::ifel(!is.na(r_hplas_zone), 1, NA)
+        
+        # Welke van onze complete heidecompartimenten overlappen met deze 100m zone?
+        ven_check_per_heide <- terra::zonal(r_hplas_zone, r_heide_gecertificeerd_ids, fun = "max", na.rm = TRUE)
+        colnames(ven_check_per_heide) <- c("ClusterID", "Heeft_Ven")
+        
+        heide_met_ven_ids <- ven_check_per_heide$ClusterID[ven_check_per_heide$Heeft_Ven == 1]
+        
+        if (length(heide_met_ven_ids) > 0) {
+          r_heide_leefgebied_finaal <- r_heide_gecertificeerd_ids %in% heide_met_ven_ids
+          r_heide_leefgebied_finaal <- terra::ifel(r_heide_leefgebied_finaal == 1, 1, NA)
+          
+          message(paste("-> SUCCES:", length(heide_met_ven_ids), "complete heidegebieden gekoppeld aan een ven."))
+          cat("Definitief heide leefgebied voor de regenwulp:", round(calc_ha_exact(r_heide_leefgebied_finaal * heide_opp), 2), "ha \n")
+        } else {
+          message("⚠️ Knelpunt: Geen van de 50 ha heidecompartimenten ligt binnen 100m van een ven van >= 0.5 ha!")
+        }
+      } else {
+        message("⚠️ Knelpunt: Geen heideplassen (vennen) van >= 0.5 ha gevonden!")
+      }
+    } else {
+      message("⚠️ Knelpunt: Geen heideplasdata beschikbaar!")
+    }
+  } else {
+    message("⚠️ Knelpunt: Geen aaneengesloten heidegebieden van >= 50 ha gevonden!")
+  }
+} else {
+  message("⚠️ Knelpunt: Geen heidedata beschikbaar!")
+}
+
+# Geheugen opschonen
+if (exists("r_heide_buffered")) rm(r_heide_buffered, cl_heide_vlakken, opp_heide_per_cluster)
+if (exists("cl_heideplas")) rm(cl_heideplas, r_hplas_05ha)
+if (exists("r_hplas_zone")) rm(r_hplas_zone, r_heide_gecertificeerd_ids, ven_check_per_heide)
+gc()
+```
+
+```{r sporen combineren en akker-exclusie}
+# ==============================================================================
+# REGENWULP STAP 3: COMBINATIE VAN DE SPOREN EN EXCLUSIE VAN AKKERS
+# ==============================================================================
+message("-> 6. Combineren van het Grasland- en Heidespoor...")
+
+# Maak een binaire cover van beide gecertificeerde sporen
+r_leefgebied_gecombineerd <- terra::cover(r_grasland_leefgebied_finaal, r_heide_leefgebied_finaal)
+
+# We snijden de akkers resoluut weg met een inverse maskering
+message("-> 7. Akkers uitsluiten van het gecombineerde leefgebied...")
+regenwulp_leefgebied_max <- id_raster_TV * NA
+regenwulp_leefgebied_opp <- id_raster_TV * NA
+
+if (!all(is.na(terra::values(r_leefgebied_gecombineerd, mat=FALSE)))) {
+  
+  if (exists("akkers_max") && !all(is.na(terra::values(akkers_max, mat=FALSE)))) {
+    regenwulp_leefgebied_max <- terra::mask(r_leefgebied_gecombineerd, akkers_max, inverse = TRUE)
+  } else {
+    regenwulp_leefgebied_max <- r_leefgebied_gecombineerd
+  }
+  
+  # Snijd het resultaat netjes bij tot de definitieve mal van het Turnhouts Vennegebied
+  regenwulp_leefgebied_max <- regenwulp_leefgebied_max %>% terra::crop(template_TV)
+  
+  # Koppel de werkelijke oppervlaktes (we nemen foerageer_opp en heide_opp samen)
+  r_tot_opp <- terra::cover(foerageer_opp, heide_opp)
+  regenwulp_leefgebied_opp <- terra::mask(r_tot_opp, regenwulp_leefgebied_max) %>% terra::crop(template_TV)
+  
+  message("--- REGENWULP MODEL MET VERBETERDE LOGICA SUCCESVOL AFGEROND ---")
+  cat("Totaal stabiel leefgebied Regenwulp (ha):", round(calc_ha_exact(regenwulp_leefgebied_opp), 2), "\n")
+  
+} else {
+  message("⚠️ Knelpunt: Gecombineerd leefgebied is volledig leeg!")
+}
+
+# Eindopruiming van de modelonderdelen
+rm(r_leefgebied_gecombineerd, r_grasland_leefgebied_finaal, r_heide_leefgebied_finaal)
+if (exists("r_tot_opp")) rm(r_tot_opp)
 gc()
 ```
 
