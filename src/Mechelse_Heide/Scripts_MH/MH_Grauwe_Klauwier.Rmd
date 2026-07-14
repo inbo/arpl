@@ -326,77 +326,66 @@ voortplanting_gezuiverd_max <- terra::ifel(masker_bebouw_stoor == 1 | masker_weg
 voortplanting_gezuiverd_opp <- terra::mask(voortplanting_bwk_opp, voortplanting_gezuiverd_max)
 
 # Schoonmaken van zware objecten uit het geheugen
-rm(tabel_bebouw_TV, tabel_bebouw_som, tabel_bebouw_mapping, r_bebouwing_raw, 
-   r_bebouw_dik, r_patches, patch_freq, grote_clusters_ids, r_masker_clusters, 
-   r_bebouw_finaal_voor_buffer, dist_bebouw_groot, masker_bebouw_stoor, masker_weg_stoor)
-if (exists("r_wegen_raw")) rm(r_wegen_raw, r_wegen, weg_cats, ids_wegen_ok, r_grote_wegen, dist_wegen)
-gc()
+# rm(tabel_bebouw_TV, tabel_bebouw_som, tabel_bebouw_mapping, r_bebouwing_raw, 
+#    r_bebouw_dik, r_patches, patch_freq, grote_clusters_ids, r_masker_clusters, 
+#    r_bebouw_finaal_voor_buffer, dist_bebouw_groot, masker_bebouw_stoor, masker_weg_stoor)
+# if (exists("r_wegen_raw")) rm(r_wegen_raw, r_wegen, weg_cats, ids_wegen_ok, r_grote_wegen, dist_wegen)
+# gc()
 ```
 
 ```{r grauweklauwier debug - visuele inspectie kaarten}
 # ==============================================================================
-# VISUELE DIAGNOSE: INPUTS EN BUFFER-OVERLAPS INSPECTEREN
+# IMPACTANALYSE FILTER 1: GEREDDE VS. VERLOREN BIOTOOP VISUALISEREN
 # ==============================================================================
-message("-> Debug-kaart voor Stap 1 opbouwen...")
+message("-> Impactanalyse voor Stap 1 opbouwen...")
 
-# 1. Projecteer alle debug-rasters tijdelijk naar Web Mercator (EPSG:4326) voor Leaflet
-r_web_bruto <- terra::project(voortplanting_bwk_max, "EPSG:4326", method = "near")
+# Bereken wat er verloren gaat door bebouwing en wegen binnen de biotoop
+r_verlies_bouw  <- terra::ifel(masker_bebouw_stoor == 1 & voortplanting_bwk_max == 1, 1, NA)
+r_verlies_wegen <- terra::ifel(masker_weg_stoor == 1 & voortplanting_bwk_max == 1, 1, NA)
 
-# Bebouwingsbuffer herprojecteren (als deze bestaat)
-if (exists("bebouwing_max") && !all(is.na(terra::values(bebouwing_max, mat=FALSE)))) {
-  cl_bouw_debug <- cluster_filter_compleet(bebouwing_max, bebouwing_opp, 10 * 10000, 50, FALSE)
-  r_buf_bouw_raw <- terra::buffer(cl_bouw_debug$raster, width = 100)
-  r_web_bouw_buf <- terra::project(r_buf_bouw_raw, "EPSG:4326", method = "near")
-} else {
-  r_web_bouw_buf <- terra::rast(id_raster_TV, vals = NA) %>% terra::project("EPSG:4326")
-}
+# Projecteer de resultaten naar Web Mercator (EPSG:4326) voor Leaflet
+r_web_gered   <- terra::project(voortplanting_gezuiverd_max, "EPSG:4326", method = "near")
+r_web_v_bouw  <- terra::project(r_verlies_bouw, "EPSG:4326", method = "near")
+r_web_v_wegen <- terra::project(r_verlies_wegen, "EPSG:4326", method = "near")
 
-# Wegenbuffer herprojecteren (als deze bestaat)
-if (exists("r_buffer_wegen") && !all(is.na(terra::values(r_buffer_wegen, mat=FALSE)))) {
-  r_web_wegen_buf <- terra::project(r_buffer_wegen, "EPSG:4326", method = "near")
-} else {
-  r_web_wegen_buf <- terra::rast(id_raster_TV, vals = NA) %>% terra::project("EPSG:4326")
-}
-
-# 2. Bepaal de bounds op basis van de studiegebied-grens
+# Bepaal de bounds op basis van de studiegebied-grens
 grens_web <- sf::st_transform(sf::st_as_sf(area_shape_proj), 4326)
 bbox <- sf::st_bbox(grens_web)
 
-# 3. Bouw de interactieve Leaflet-kaart
-debug_map <- leaflet() %>%
+# Bouw de interactieve Leaflet-kaart
+impact_map <- leaflet() %>%
   addTiles(group = "OSM (Wegenkaart)") %>%
   addProviderTiles(providers$Esri.WorldImagery, group = "Satellietbeeld") %>%
   fitBounds(bbox[['xmin']], bbox[['ymin']], bbox[['xmax']], bbox[['ymax']])
 
-# Voeg de bruto voortplantingsbiotoop toe (Blauw)
-if (!all(is.na(terra::values(r_web_bruto, mat=FALSE)))) {
-  debug_map <- debug_map %>%
-    addRasterImage(terra::as.int(r_web_bruto), colors = "#377eb8", opacity = 0.7, group = "0. Bruto Voortp. (Blauw)")
+# 1. Toon de geredde biotoop (Groen)
+if (!all(is.na(terra::values(r_web_gered, mat=FALSE)))) {
+  impact_map <- impact_map %>%
+    addRasterImage(terra::as.int(r_web_gered), colors = "#2ca25f", opacity = 0.8, group = "Geredde Biotoop (Groen)")
 }
 
-# Voeg de bebouwingsbuffer toe (Rood/Oranje)
-if (!all(is.na(terra::values(r_web_bouw_buf, mat=FALSE)))) {
-  debug_map <- debug_map %>%
-    addRasterImage(terra::as.int(r_web_bouw_buf), colors = "#e41a1c", opacity = 0.5, group = "1. Bebouwingsbuffer 100m (Rood)")
+# 2. Toon de verloren biotoop door bebouwing (Rood)
+if (!all(is.na(terra::values(r_web_v_bouw, mat=FALSE)))) {
+  impact_map <- impact_map %>%
+    addRasterImage(terra::as.int(r_web_v_bouw), colors = "#de2d26", opacity = 0.8, group = "Verlies door Bebouwing (Rood)")
 }
 
-# Voeg de wegenbuffer toe (Paars)
-if (!all(is.na(terra::values(r_web_wegen_buf, mat=FALSE)))) {
-  debug_map <- debug_map %>%
-    addRasterImage(terra::as.int(r_web_wegen_buf), colors = "#984ea3", opacity = 0.5, group = "2. Wegenbuffer 100m (Paars)")
+# 3. Toon de verloren biotoop door grote wegen (Paars)
+if (!all(is.na(terra::values(r_web_v_wegen, mat=FALSE)))) {
+  impact_map <- impact_map %>%
+    addRasterImage(terra::as.int(r_web_v_wegen), colors = "#756bb1", opacity = 0.8, group = "Verlies door Wegen (Paars)")
 }
 
 # Toon de grens van je studiegebied (Zwarte lijn)
-debug_map <- debug_map %>%
+impact_map <- impact_map %>%
   addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens Studiegebied") %>%
   addLayersControl(
     baseGroups = c("OSM (Wegenkaart)", "Satellietbeeld"),
-    overlayGroups = c("Grens Studiegebied", "0. Bruto Voortp. (Blauw)", "1. Bebouwingsbuffer 100m (Rood)", "2. Wegenbuffer 100m (Paars)"),
+    overlayGroups = c("Grens Studiegebied", "Geredde Biotoop (Groen)", "Verlies door Bebouwing (Rood)", "Verlies door Wegen (Paars)"),
     options = layersControlOptions(collapsed = FALSE)
   )
 
-# Toon de kaart direct in je RStudio Viewer / RMarkdown output
-debug_map
+impact_map
 ```
 
 ```{r netwerkgrootte kernbiotoop}
@@ -513,9 +502,11 @@ if (!all(is.na(terra::values(r_voortplanting_finaal_max, mat=FALSE)))) {
     }
   }
 }
+```
 
+```{r grauweklauwier diagnose - habitat per stap opgelost}
 # ==============================================================================
-# DIAGNOSTISCHE BOUNDARY-CHECK PER STAP
+# DIAGNOSTISCHE BOUNDARY-CHECK PER STAP (CORRECTE VARIABELEN)
 # ==============================================================================
 message("=== RECONSTRUCTIE EN STATISTIEK PER STAP ===")
 
@@ -524,9 +515,9 @@ calc_ha_binair <- function(r) {
   return(sum(terra::values(r) == 1, na.rm = TRUE) * 0.01)
 }
 
+# We meten hier nu direct de echte modelspecificaties
 ha_stap_0  <- calc_ha_binair(voortplanting_bwk_max)
-r_st1      <- terra::ifel(voortplanting_bwk_max == 1 & !masker_stoor_bouw & !masker_stoor_wegen, 1, NA)
-ha_stap_1  <- calc_ha_binair(r_st1)
+ha_stap_1  <- calc_ha_binair(voortplanting_gezuiverd_max) # Directe meting van de gezuiverde biotoop!
 ha_stap_2  <- calc_ha_binair(r_kern_10ha_max)
 ha_stap_3  <- calc_ha_binair(r_voortplanting_finaal_max)
 ha_stap_4a <- calc_ha_binair(r_leefgebied_bruto_max)
@@ -547,10 +538,6 @@ diagnose_tabel <- data.frame(
 diagnose_tabel %>% 
   knitr::kable(caption = "🔍 Diagnose: Waar verliest de grauwe klauwier zijn leefgebied?") %>% 
   kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
-
-rm(r_st1)
-
-
 ```
 
 ```{r grauweklauwier stap 4 - foerageerkoppeling en graslandfilter}
@@ -629,10 +616,14 @@ cat("Totaal stabiel leefgebied Grauwe Klauwier via Groenkaart (ha):", round(calc
 ```
 
 # Resultaten en Statistiek
+# Resultaten en Statistiek
 ```{r Resultaten en statistiek}
 # ==============================================================================
-# ECOLOOG-MAPPING: BRUG TUSSEN SCRIPT EN STATISTIEK
+# ECOLOOG-MAPPING: BRUG TUSSEN SCRIPT EN STATISTIEK (MET VEILIGE DREMPEL_M2)
 # ==============================================================================
+# Definieer de drempel globaal op basis van de ingelezen Excel-ondergrens (MinOpp_ha)
+drempel_m2 <- oppervlakte_ha * 10000
+
 cl_max    <- grauweklauwier_leefgebied_max
 final_max <- grauweklauwier_leefgebied_max
 bwk_opp   <- grauweklauwier_leefgebied_opp
@@ -857,7 +848,7 @@ map %>%
 ```
 
 ```{r export}
-base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
+base_dir <- here("data/output/Mechelse_Heide/Rasters_Soorten")
 folders <- list(
   potentie     = file.path(base_dir, "01_Maximale_Potentie"),
   werkelijk    = file.path(base_dir, "02_Werkelijke_Oppervlakte"),
