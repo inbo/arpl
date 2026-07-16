@@ -15,12 +15,10 @@ assign(grotezilverreiger_foerageer_bwk, bwk(ae%, 2190%, 3140%, 3150%, aer%, aev%
 // clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het leefgebied - er moet voldoende open gebied zijn!
 
 assign(grotezilverreiger_foerageer1_cluster, fuzzyClusterIdU(grotezilverreiger_foerageer_bwk, 50, meter))
-deleteVariable(grotezilverreiger_foerageer_bwk)
 
 // leefgebiedcluster moeten minimaal 30ha groot zijn
 
 assign(grotezilverreiger_leefgebied1, cFilterGeArea(grotezilverreiger_foerageer1_cluster, 30, hectare))
-deleteVariable(grotezilverreiger_foerageer1_cluster)
 
 assign(grotezilverreiger_leefgebied, and(grotezilverreiger_watervogelgebied1, grotezilverreiger_leefgebied1))
 
@@ -32,14 +30,8 @@ deleteVariable(grotezilverreiger_leefgebied1)
 assign(grotezilverreiger_ecodistrict, ge('ecoregio.asc', 1))
 
 assign(grotezilverreiger_leefgebied_ecodistrict1, and(grotezilverreiger_leefgebied, grotezilverreiger_ecodistrict))
-deleteVariable(grotezilverreiger_ecodistrict)
-
-deleteVariable(grotezilverreiger_leefgebied)
 
 assign(grotezilverreiger_leefgebied_ecodistrict1_cluster, FuzzyClusterIdU(grotezilverreiger_leefgebied_ecodistrict1, 50, meter))
-deleteVariable(grotezilverreiger_leefgebied_ecodistrict1)
 
 assign(grotezilverreiger_leefgebied_ecodistrict, cFilterGeArea(grotezilverreiger_leefgebied_ecodistrict1_cluster, 30, hectare))
 write('ANB2019_GroteZilverreiger2018.asc', IsNonZero(grotezilverreiger_leefgebied_ecodistrict))
-deleteVariable(grotezilverreiger_leefgebied_ecodistrict)
-deleteVariable(grotezilverreiger_leefgebied_ecodistrict1_cluster)

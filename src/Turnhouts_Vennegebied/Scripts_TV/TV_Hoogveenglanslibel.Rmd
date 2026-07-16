@@ -280,7 +280,7 @@ waterbiotoop_opp <- terra::mask(water1_opp, waterbiotoop_max)
 waterbiotoop_clusters_max <- cluster_filter_compleet(
   masker       = waterbiotoop_max,
   opp_laag     = waterbiotoop_opp,
-  drempel_m2   = 400,   # 10 hectare = 100.000 m²
+  drempel_m2   = 100,   # 10 hectare = 100.000 m²
   dist_m       = 50,       # Maximale afstand tussen cellen is 50 meter
   werkelijk    = FALSE      # TRUE omdat je met de werkelijke fracties (opp_laag) wilt rekenen!
 )
@@ -288,7 +288,7 @@ waterbiotoop_clusters_max <- cluster_filter_compleet(
 waterbiotoop_clusters_opp <- cluster_filter_compleet(
   masker       = waterbiotoop_max,
   opp_laag     = waterbiotoop_opp,
-  drempel_m2   = 400,   # 10 hectare = 100.000 m²
+  drempel_m2   = 100,   # 10 hectare = 100.000 m²
   dist_m       = 50,       # Maximale afstand tussen cellen is 50 meter
   werkelijk    = TRUE      # TRUE omdat je met de werkelijke fracties (opp_laag) wilt rekenen!
 )
@@ -303,35 +303,16 @@ landbiotoop_opp <- terra::mask(land1_opp, landbiotoop_max)
 landbiotoop_clusters_max <- cluster_filter_compleet(
   masker       = landbiotoop_max,
   opp_laag     = landbiotoop_opp,
-  drempel_m2   = 100000,   # 10 hectare = 100.000 m²
-  dist_m       = 50,       # Maximale afstand tussen cellen is 50 meter
+  drempel_m2   = 50000,   # 5 hectare = 50.000 m²
+  dist_m       = 10,       # Maximale afstand tussen cellen is 10 meter
   werkelijk    = FALSE      # TRUE omdat je met de werkelijke fracties (opp_laag) wilt rekenen!
 )
 
 landbiotoop_clusters_opp <- cluster_filter_compleet(
   masker       = landbiotoop_max,
   opp_laag     = landbiotoop_opp,
-  drempel_m2   = 100000,   # 10 hectare = 100.000 m²
-  dist_m       = 50,       # Maximale afstand tussen cellen is 50 meter
-  werkelijk    = TRUE      # TRUE omdat je met de werkelijke fracties (opp_laag) wilt rekenen!
-)
-```
-
-```{r bos}
-# clusters
-bos_clusters_max <- cluster_filter_compleet(
-  masker       = bos_max,
-  opp_laag     = bos_opp,
-  drempel_m2   = 50000,   # 10 hectare = 100.000 m²
-  dist_m       = 50,       # Maximale afstand tussen cellen is 50 meter
-  werkelijk    = FALSE      # TRUE omdat je met de werkelijke fracties (opp_laag) wilt rekenen!
-)
-
-bos_clusters_opp <- cluster_filter_compleet(
-  masker       = bos_max,
-  opp_laag     = bos_opp,
-  drempel_m2   = 50000,   # 10 hectare = 100.000 m²
-  dist_m       = 50,       # Maximale afstand tussen cellen is 50 meter
+  drempel_m2   = 50000,   # 5 hectare = 50.000 m²
+  dist_m       = 10,       # Maximale afstand tussen cellen is 10 meter
   werkelijk    = TRUE      # TRUE omdat je met de werkelijke fracties (opp_laag) wilt rekenen!
 )
 ```
@@ -341,7 +322,7 @@ bos_clusters_opp <- cluster_filter_compleet(
 ruim_land_clusters_max <- cluster_filter_compleet(
   masker       = land_ruim_max,
   opp_laag     = land_ruim_opp,
-  drempel_m2   = 350000,   # 10 hectare = 100.000 m²
+  drempel_m2   = 500000,   # 50 hectare = 500.000 m²
   dist_m       = 50,       # Maximale afstand tussen cellen is 50 meter
   werkelijk    = FALSE      # TRUE omdat je met de werkelijke fracties (opp_laag) wilt rekenen!
 )
@@ -349,83 +330,131 @@ ruim_land_clusters_max <- cluster_filter_compleet(
 ruim_land_clusters_opp <- cluster_filter_compleet(
   masker       = land_ruim_max,
   opp_laag     = land_ruim_opp,
-  drempel_m2   = 350000,   # 10 hectare = 100.000 m²
+  drempel_m2   = 500000,   # 50 hectare = 500.000 m²
   dist_m       = 50,       # Maximale afstand tussen cellen is 50 meter
   werkelijk    = TRUE      # TRUE omdat je met de werkelijke fracties (opp_laag) wilt rekenen!
 )
 ```
 
-```{r landbiotoop nabij bos check}
+```{r bos 50 % van landbiotoop}
 # ==============================================================================
-# COMBINATIE 1: LANDBIOTOOP MOET DEEL UITMAKEN VAN / DIRECT GRENZEN AAN BOS
+# GECORRIGEERD: LANDBIOTOOP CLUSTERSAMENSTELLINGSCHECK (MIN 50% BOS)
 # ==============================================================================
-message("-> Nabij landbiotoop filteren op basis van bosgrens (10m)...")
+message("-> Start samenstellingsanalyse van landbiotoopclusters (min. 50% bos)...")
 
-# Maak een zone van 10 meter rondom de boskernen (5 ha)
-bos_buffer_10m <- terra::buffer(bos_clusters_max$raster, width = 10)
+# 1. Kogelvrije NA-zuivering op de invoerkaarten
+r_land_zuiver <- landbiotoop_clusters_max$raster
+r_land_zuiver[is.na(r_land_zuiver) | r_land_zuiver == 0] <- NA
 
-# Het 'nabije landbiotoop' zijn de delen van het 10 ha landbiotoop die binnen deze zone liggen
-land_nabij_max <- terra::mask(landbiotoop_clusters_max$raster, bos_buffer_10m)
-land_nabij_opp <- terra::mask(landbiotoop_clusters_opp$raster, bos_buffer_10m)
+r_bos_zuiver <- bos_max
+r_bos_zuiver[is.na(r_bos_zuiver) | r_bos_zuiver == 0] <- NA
 
-rm(bos_buffer_10m)
+# Revalueer de unieke landbiotoop-cluster IDs op basis van je berekende clusters
+cl_id_land <- terra::patches(r_land_zuiver, directions = 8, zeroAsNA = TRUE)
+
+# 2. Bereken de oppervlaktes (in ha) binnen elk landbiotoop-cluster
+# A) Het totale oppervlak van het landbiotoop binnen elk afzonderlijk cluster
+stats_land_totaal <- terra::zonal(r_land_zuiver * 0.01, cl_id_land, fun = "sum", na.rm = TRUE)
+colnames(stats_land_totaal) <- c("Cluster_ID", "Totaal_Land_ha")
+
+# B) Het oppervlak aan bos dat fysiek binnen de grenzen van elk landbiotoop-cluster valt
+bos_in_land <- terra::mask(r_bos_zuiver, cl_id_land)
+stats_bos_in_land <- terra::zonal(bos_in_land * 0.01, cl_id_land, fun = "sum", na.rm = TRUE)
+colnames(stats_bos_in_land) <- c("Cluster_ID", "Bos_ha")
+
+# 3. Bereken het percentage bos per cluster
+df_samenstelling_land <- merge(stats_land_totaal, stats_bos_in_land, by = "Cluster_ID", all.x = TRUE)
+df_samenstelling_land$Bos_ha[is.na(df_samenstelling_land$Bos_ha)] <- 0
+df_samenstelling_land$Percentage_Bos <- (df_samenstelling_land$Bos_ha / df_samenstelling_land$Totaal_Land_ha) * 100
+
+# Welke Cluster-IDs voldoen aan de eis van minimaal 50% bos?
+valide_land_ids <- df_samenstelling_land$Cluster_ID[df_samenstelling_land$Percentage_Bos >= 50]
+
+# 4. Filters toepassen op het landbiotoop (Het bos zelf wordt hier direct opgeruimd!)
+if(length(valide_land_ids) > 0) {
+  masker_land_valide <- cl_id_land %in% valide_land_ids
+  land_nabij_max <- terra::mask(r_land_zuiver, terra::ifel(masker_land_valide, 1, NA))
+  land_nabij_opp <- terra::mask(landbiotoop_clusters_opp$raster, land_nabij_max)
+} else {
+  message("⚠️ Waarschuwing: Geen enkel landbiotoop-cluster voldoet aan de 50% bos-eis.")
+  land_nabij_max <- template_TV * NA
+  land_nabij_opp <- template_TV * NA
+}
+
+# Tussentijdse rapportage in de console
+message("   - Aantal geëvalueerde landbiotoop-clusters: ", nrow(df_samenstelling_land))
+message("   - Aantal clusters dat voldoet (>= 50% bos): ", length(valide_land_ids))
+
+# Opschonen van zware buffers
+rm(r_land_zuiver, r_bos_zuiver, cl_id_land, stats_land_totaal, bos_in_land, stats_bos_in_land, df_samenstelling_land)
+gc()
 ```
 
 ```{r interactie water en nabij landbiotoop}
 # ==============================================================================
-# COMBINATIE 2: INTERACTIE WATER EN NABIJ LANDBIOTOOP (100 METER)
+# COMBINATIE 2: INTERACTIE WATER EN NABIJ LANDBIOTOOP (10 METER)
 # ==============================================================================
-message("-> Water- en landbiotopen aan elkaar koppelen binnen een straal van 100m...")
+message("-> Water- en landbiotopen aan elkaar koppelen binnen een straal van 10m...")
 
-# 1. Maak de buffers van 100 meter
-water_buffer_100m <- terra::buffer(waterbiotoop_clusters_max$raster, width = 100)
-land_buffer_100m  <- terra::buffer(land_nabij_max, width = 100)
+# 1. Kogelvrije NA-zuivering voor de afstandsberekening
+r_water_src <- waterbiotoop_clusters_max$raster
+r_water_src[is.na(r_water_src) | r_water_src == 0] <- NA
 
-# 2. Filter waterbiotoop2 (water nabij geschikt land)
-waterbiotoop2_max <- terra::mask(waterbiotoop_clusters_max$raster, land_buffer_100m)
-waterbiotoop2_opp <- terra::mask(waterbiotoop_clusters_opp$raster, land_buffer_100m)
+r_land_src <- land_nabij_max
+r_land_src[is.na(r_land_src) | r_land_src == 0] <- NA
 
-# 3. Filter landbiotoop2 (land nabij geschikt water)
-landbiotoop2_max <- terra::mask(land_nabij_max, water_buffer_100m)
-landbiotoop2_opp <- terra::mask(land_nabij_opp, water_buffer_100m)
+# 2. Bereken afstanden onderling om cell-shift fouten te voorkomen
+dist_to_water <- terra::distance(r_water_src)
+dist_to_land  <- terra::distance(r_land_src)
 
-rm(water_buffer_100m, land_buffer_100m)
+# 3. Filter waterbiotoop2 (water nabij geschikt landbiotoop)
+waterbiotoop2_max <- r_water_src == 1 & dist_to_land <= 10
+waterbiotoop2_max <- terra::ifel(waterbiotoop2_max, 1, NA)
+waterbiotoop2_opp <- terra::mask(waterbiotoop_clusters_opp$raster, waterbiotoop2_max)
+
+# 4. Filter landbiotoop2 (land nabij geschikt waterbiotoop)
+landbiotoop2_max <- r_land_src == 1 & dist_to_water <= 10
+landbiotoop2_max <- terra::ifel(landbiotoop2_max, 1, NA)
+landbiotoop2_opp <- terra::mask(land_nabij_opp, landbiotoop2_max)
+
+rm(r_water_src, r_land_src, dist_to_water, dist_to_land)
+gc()
 ```
 
 ```{r ruime omgeving en finale combinatie}
 # ==============================================================================
-# COMBINATIE 3: FINALE FILTERING OP RUIME OMGEVING (500M) EN SAMENSMELTING
+# COMBINATIE 3: RUIME OMGEVING EN FINALE SAMENSMELTING (WATER + NABIJ LAND)
 # ==============================================================================
-message("-> Ruime omgevingsfactor (35 ha complex binnen 500m) toepassen...")
+message("-> Ruime omgevingsfactor (50 ha complex binnen 500m) toepassen op water...")
 
-# Maak de buffers voor de finale ruimtelijke checks
-ruim_land_buffer_500m <- terra::buffer(ruim_land_clusters_max$raster, width = 500)
-water2_buffer_100m    <- terra::buffer(waterbiotoop2_max, width = 100)
+# 1. NA-zuivering voor de ruime omgevingsafstand
+r_ruim_land_src <- ruim_land_clusters_max$raster
+r_ruim_land_src[is.na(r_ruim_land_src) | r_ruim_land_src == 0] <- NA
+dist_to_ruim_land <- terra::distance(r_ruim_land_src)
 
-# Finaal waterbiotoop: Moet binnen 500m van ruim landbiotoop liggen
-hoogveenglanslibel_waterbiotoop_max <- terra::mask(waterbiotoop2_max, ruim_land_buffer_500m)
-hoogveenglanslibel_waterbiotoop_opp <- terra::mask(waterbiotoop2_opp, ruim_land_buffer_500m)
+# 2. Finaal waterbiotoop: Moet binnen 500m van het ruime landbiotoop complex liggen
+hoogveenglanslibel_waterbiotoop_max <- waterbiotoop2_max == 1 & dist_to_ruim_land <= 500
+hoogveenglanslibel_waterbiotoop_max <- terra::ifel(hoogveenglanslibel_waterbiotoop_max, 1, NA)
+hoogveenglanslibel_waterbiotoop_opp <- terra::mask(waterbiotoop2_opp, hoogveenglanslibel_waterbiotoop_max)
 
-# --- CRUCIALE ECO-FIX: GEBRUIK NABIJ LAND IN PLAATS VAN RUIM LAND ---
-# Finaal landbiotoop: Moet binnen 100m liggen van het zojuist goedgekeurde waterbiotoop2.
-# We baseren dit nu op 'land_nabij_max' (10 ha heide gekoppeld aan bos) en NIET op de ruime omgeving!
-hoogveenglanslibel_landbiotoop_max <- terra::mask(land_nabij_max, water2_buffer_100m)
-hoogveenglanslibel_landbiotoop_opp <- terra::mask(land_nabij_opp, water2_buffer_100m)
-
-# Extra controle: Het goedgekeurde landbiotoop moet natuurlijk ook binnen de ruime omgevingsbuffer (500m) liggen
-hoogveenglanslibel_landbiotoop_max <- terra::mask(hoogveenglanslibel_landbiotoop_max, ruim_land_buffer_500m)
-hoogveenglanslibel_landbiotoop_opp <- terra::mask(hoogveenglanslibel_landbiotoop_opp, ruim_land_buffer_500m)
+# 3. Finaal landbiotoop: Dit is het nabije landbiotoop (heide/bos complex) dat gekoppeld is 
+# aan het zojuist goedgekeurde waterbiotoop. Dit hoort wél bij het leefgebied!
+hoogveenglanslibel_landbiotoop_max <- landbiotoop2_max
+hoogveenglanslibel_landbiotoop_opp <- landbiotoop2_opp
 
 # ==============================================================================
-# HET FINALE LEEFGEBIED (WATER + LAND) - NU ZONDER RUIME OMGEVINGPIXELS!
+# HET FINALE LEEFGEBIED: LOGISCHE COMBINATIE (WATER + GOEDGEKEURD NABIJ LAND)
 # ==============================================================================
-message("-> Water en land combineren tot finaal leefgebied...")
+message("-> Water en goedgekeurd nabij landbiotoop combineren tot finaal leefgebied...")
 
-# MAX-spoor: Logische OF
+# MAX-spoor: Logische OF (Water óf land nabij water = Leefgebied)
 hoogveenglanslibel_leefgebied_max <- terra::ifel(!is.na(hoogveenglanslibel_waterbiotoop_max) | 
                                                  !is.na(hoogveenglanslibel_landbiotoop_max), 1, NA)
 
-# OPP-spoor: Tel de fracties netjes bij elkaar op (tot max 100% / 1 per cel)
+# Crop direct naar de grenzen van het studiegebied (TV)
+hoogveenglanslibel_leefgebied_max <- terra::crop(hoogveenglanslibel_leefgebied_max, area_shape_proj, mask = TRUE)
+
+# OPP-spoor: Tel de reële fracties netjes bij elkaar op (tot max 100% / 1 per cel)
 hoogveenglanslibel_leefgebied_opp <- terra::app(
   terra::sds(
     terra::ifel(is.na(hoogveenglanslibel_waterbiotoop_opp), 0, hoogveenglanslibel_waterbiotoop_opp),
@@ -435,8 +464,21 @@ hoogveenglanslibel_leefgebied_opp <- terra::app(
 )
 
 hoogveenglanslibel_leefgebied_opp <- terra::ifel(hoogveenglanslibel_leefgebied_opp == 0, NA, hoogveenglanslibel_leefgebied_opp)
+hoogveenglanslibel_leefgebied_opp <- terra::crop(hoogveenglanslibel_leefgebied_opp, area_shape_proj, mask = TRUE)
 
-rm(ruim_land_buffer_500m, water2_buffer_100m)
+# Hectares berekenen voor de tussentijdse verificatie
+ha_leef_pot  <- calc_ha_exact(hoogveenglanslibel_leefgebied_max)
+ha_leef_werk <- calc_ha_exact(hoogveenglanslibel_leefgebied_opp)
+
+cat("\n=========================================================\n")
+cat("          EINDPOTENTIE LEEFGEBIED HOOGVEENGLANSLIBEL      \n")
+cat("=========================================================\n")
+cat(paste("Finaal Leefgebied (Maximale Potentie):  ", round(ha_leef_pot, 2), "ha\n"))
+cat(paste("Finaal Leefgebied (Werkelijke Fractie): ", round(ha_leef_werk, 2), "ha\n"))
+cat("=========================================================\n\n")
+
+rm(r_ruim_land_src, dist_to_ruim_land)
+gc()
 ```
 
 ```{r waarnemingen inlezen + audit tabel}

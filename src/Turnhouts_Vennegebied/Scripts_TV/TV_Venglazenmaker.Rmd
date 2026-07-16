@@ -321,13 +321,13 @@ land_nabij_filter_max <- (landbiotoop_bwk1_max == 1) & (landbiotoop_notbwk_max =
 land_nabij_filter_max <- terra::ifel(land_nabij_filter_max == 1, 1, NA)
 land_nabij_filter_opp <- terra::mask(landbiotoop_bwk1_opp, land_nabij_filter_max)
 
-message("-> Landbiotoop nabij patches groeperen (50m) en filteren op min. 10 ha...")
+message("-> Landbiotoop nabij patches groeperen (50m) en filteren op min. 5 ha...")
 
-# 1. Maak de initiële patches van het nabije landbiotoop (min. 10 ha)
+# 1. Maak de initiële patches van het nabije landbiotoop (min. 5 ha)
 land_nabij_clusters <- cluster_filter_compleet(
   masker       = land_nabij_filter_max,
   opp_laag     = land_nabij_filter_opp,
-  drempel_m2   = 100000,   
+  drempel_m2   = 50000,   
   dist_m       = 50,       
   werkelijk    = FALSE      
 )
@@ -340,7 +340,7 @@ venglazenmaker_land_nabij_opp <- template_TV * NA
 
 if (!all(is.na(terra::values(r_nabij_patch_ids, mat=FALSE)))) {
   
-  message("-> Zuivere percentage-check uitvoeren: hoeveel % van elke 10 ha patch is bos?")
+  message("-> Zuivere percentage-check uitvoeren: hoeveel % van elke 5 ha patch is bos?")
   
   # 2. Bereken de totale oppervlakte (in ha) per unieke patch via de cellSize-helper
   area_ha_raster_nabij <- r_nabij_patch_ids * terra::cellSize(r_nabij_patch_ids, unit = "ha")
@@ -386,11 +386,11 @@ gc()
 # ==============================================================================
 message("-> Landbiotoop ruime omgeving patches groeperen (50m) en filteren op min. 30 ha...")
 
-# 1. Maak de initiële patches van de ruime omgeving (min. 30 ha)
+# 1. Maak de initiële patches van de ruime omgeving (min. 50 ha)
 land_ruim_clusters <- cluster_filter_compleet(
   masker       = landbiotoop_bwk_ruim_max,
   opp_laag     = landbiotoop_bwk_ruim_opp,
-  drempel_m2   = 300000,   
+  drempel_m2   = 500000,   
   dist_m       = 50,       
   werkelijk    = FALSE      
 )
@@ -444,23 +444,28 @@ gc()
 
 ```{r finale interactie en samensmelting}
 # ==============================================================================
-# COMBINATIE 2: INTERACTIE WATER EN NABIJ LANDBIOTOOP (100 METER)
+# COMBINATIE 2: INTERACTIE WATER EN NABIJ LANDBIOTOOP (20 METER)
 # ==============================================================================
-message("-> Water- en nabije landbiotopen aan elkaar koppelen binnen een straal van 100m...")
+message("-> Water- en nabije landbiotopen aan elkaar koppelen binnen een straal van 20m...")
 
-# 1. Maak de buffers van 100 meter rondom de twee biologische kernen
-water_buffer_100m <- terra::buffer(waterbiotoop_clusters_max$raster, width = 100)
-land_buffer_100m  <- terra::buffer(venglazenmaker_land_nabij_max, width = 100)
+# 1. Isoleer de gecorrigeerde invoerrasters uit de list-elementen van de drempelfuncties
+r_water1_max_clean <- waterbiotoop_clusters_max$raster
+r_water1_opp_clean <- waterbiotoop_clusters_opp$raster
 
-# 2. Filter waterbiotoop2 (water nabij geschikt land)
-waterbiotoop2_max <- terra::mask(waterbiotoop_clusters_max$raster, land_buffer_100m)
-waterbiotoop2_opp <- terra::mask(waterbiotoop_clusters_opp$raster, land_buffer_100m)
+# 2. Maak de buffers van 20 meter rondom de twee biologische kernen
+water_buffer_20m <- terra::buffer(r_water1_max_clean, width = 20)
+land_buffer_20m  <- terra::buffer(venglazenmaker_land_nabij_max, width = 20)
 
-# 3. Filter landbiotoop2 (land nabij geschikt water)
-landbiotoop2_max <- terra::mask(venglazenmaker_land_nabij_max, water_buffer_100m)
-landbiotoop2_opp <- terra::mask(venglazenmaker_land_nabij_opp, water_buffer_100m)
+# 3. Filter waterbiotoop2 (water nabij geschikt land)
+waterbiotoop2_max <- terra::mask(r_water1_max_clean, land_buffer_20m)
+waterbiotoop2_opp <- terra::mask(r_water1_opp_clean, land_buffer_20m)
 
-rm(water_buffer_100m, land_buffer_100m)
+# 4. Filter landbiotoop2 (land nabij geschikt water)
+landbiotoop2_max <- terra::mask(venglazenmaker_land_nabij_max, water_buffer_20m)
+landbiotoop2_opp <- terra::mask(venglazenmaker_land_nabij_opp, water_buffer_20m)
+
+rm(water_buffer_20m, land_buffer_20m)
+
 
 # ==============================================================================
 # COMBINATIE 3: FINALE FILTERING OP RUIME OMGEVING (500M) EN SAMENSMELTING
@@ -468,24 +473,21 @@ rm(water_buffer_100m, land_buffer_100m)
 message("-> Ruime omgevingsfactor (>20% bos-complex binnen 500m) toepassen...")
 
 # Maak de buffers voor de finale ruimtelijke checks (500 meter conform het model)
-ruim_land_buffer_500m <- terra::buffer(venglazenmaker_land_ruim_max, width = 500)
+ruim_buffer500_max <- terra::buffer(venglazenmaker_land_ruim_max, width = 500)
 water2_buffer_500m    <- terra::buffer(waterbiotoop2_max, width = 500)
 
 # Finaal waterbiotoop: Moet binnen 500m van een geschikte ruime patch liggen
-venglazenmaker_waterbiotoop_max <- terra::mask(waterbiotoop2_max, ruim_land_buffer_500m)
-venglazenmaker_waterbiotoop_opp <- terra::mask(waterbiotoop2_opp, ruim_land_buffer_500m)
+venglazenmaker_waterbiotoop_max <- terra::mask(waterbiotoop2_max, ruim_buffer500_max)
+venglazenmaker_waterbiotoop_opp <- terra::mask(waterbiotoop2_opp, ruim_buffer500_max)
 
-# --- CRUCIALE ECO-FIX: GEBRUIK NABIJ LAND IN PLAATS VAN RUIM LAND ---
 # Finaal landbiotoop: Moet binnen 500m liggen van het goedgekeurde water complex.
-# We baseren dit nu op 'landbiotoop2_max' (10 ha oever met >50% bos) en NIET op de ruime omgeving!
-venglazenmaker_landbiotoop_max <- terra::mask(landbiotoop2_max, ruim_land_buffer_500m)
-venglazenmaker_landbiotoop_opp <- terra::mask(landbiotoop2_opp, ruim_land_buffer_500m)
+venglazenmaker_landbiotoop_max <- terra::mask(landbiotoop2_max, ruim_buffer500_max)
+venglazenmaker_landbiotoop_opp <- terra::mask(landbiotoop2_opp, ruim_buffer500_max)
 
 # Extra controle: Het goedgekeurde landbiotoop moet uiteraard ook binnen de waterbuffer liggen
 venglazenmaker_landbiotoop_max <- terra::mask(venglazenmaker_landbiotoop_max, water2_buffer_500m)
 venglazenmaker_landbiotoop_opp <- terra::mask(venglazenmaker_landbiotoop_opp, water2_buffer_500m)
 
-rm(ruim_land_buffer_500m, water2_buffer_500m, waterbiotoop2_max, waterbiotoop2_opp, landbiotoop2_max, landbiotoop2_opp)
 
 # ==============================================================================
 # HET FINALE LEEFGEBIED (WATER + LAND COUPLING) - NU ZONDER RUIME OMGEVINGPIXELS!
@@ -510,6 +512,11 @@ venglazenmaker_leefgebied_opp <- terra::ifel(venglazenmaker_leefgebied_opp == 0,
 # Synchroniseren en croppen naar het studiegebied template
 venglazenmaker_leefgebied_max <- terra::crop(venglazenmaker_leefgebied_max, template_TV)
 venglazenmaker_leefgebied_opp <- terra::crop(venglazenmaker_leefgebied_opp, template_TV)
+
+# REPARATIE: We ruimen hier enkel de zware, niet-herbruikbare buffers op. 
+# We BEHOUDEN venglazenmaker_waterbiotoop_opp en venglazenmaker_waterbiotoop_max in RAM voor Leaflet!
+rm(water2_buffer_500m, waterbiotoop2_max, waterbiotoop2_opp, landbiotoop2_max, landbiotoop2_opp, r_water1_max_clean, r_water1_opp_clean)
+gc()
 ```
 
 ```{r waarnemingen inlezen en ARPL venglazenmaker}
@@ -683,21 +690,17 @@ if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE))
       Popup = paste0(
         "<div style='font-family: Arial; min-width: 220px;'>",
         "<strong>Netwerk Complex ID:</strong> ", Netwerk_ID, "<br>",
-        "<strong>Soort:</strong> venglazenmaker<br><hr>",
+        "<strong>Soort:</strong> Venglazenmaker<br><hr>",
         "<strong>Status:</strong> ", Type, "<br>",
         "</div>"
       )
     )
     
-# 2. DEFINITIEVE FIX: Vectoriseer de 580ha aan water rechtstreeks (gefilterd op de buffers)
-  if (exists("waterbiotoop1_opp") && exists("ruim_buffer500_opp") && exists("land_buffer100_opp")) {
-    
-    # Filter het water analoog aan de ecologische regels: moet binnen 100m land én 500m ruim bos liggen
-    water_finaal_kaart <- terra::mask(waterbiotoop1_opp, land_buffer100_opp)
-    water_finaal_kaart <- terra::mask(water_finaal_kaart, ruim_buffer500_opp)
+  # 2. DEFINITIEVE FIX: We gebruiken direct het goedgekeurde, gefilterde waterbiotoop
+  if (exists("venglazenmaker_waterbiotoop_opp")) {
     
     # Maak er een zuivere, binaire integer mal van (verijdelt alle terra/sf pixel-crashes)
-    water_binair_int <- terra::as.int(terra::ifel(!is.na(water_finaal_kaart) & water_finaal_kaart > 0, 1, NA))
+    water_binair_int <- terra::as.int(terra::ifel(!is.na(venglazenmaker_waterbiotoop_opp) & venglazenmaker_waterbiotoop_opp > 0, 1, NA))
     
     if (!all(is.na(terra::values(water_binair_int, mat=FALSE)))) {
       # Vectoriseer en herstel eventuele corrupte raster-grids via sf
@@ -710,13 +713,14 @@ if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE))
       message(paste("-> [LEAFLET SUCCESS] Er worden nu", nrow(water_poly), "blauwe vennen getekend op de kaart!"))
     } else {
       has_water_layer <- FALSE
-      message("⚠️ [LEAFLET WARN] Geen van de waterpixels overleefde de combinatie met de land-buffers.")
+      message("⚠️ [LEAFLET WARN] Geen van de waterpixels overleefde de ecologische selectie.")
     }
   } else {
     has_water_layer <- FALSE
-    message("⚠️ [LEAFLET WARN] Een van de vereiste biotooplasten of buffers ontbreekt in het geheugen.")
+    message("⚠️ [LEAFLET WARN] Het vereiste finale waterbiotoop ontbreekt in het geheugen.")
   }
 }  
+
 # Projecties naar WGS84 voor overige lagen
 r_web_status <- terra::project(r_status, "EPSG:4326", method = "near")
 bbox         <- st_bbox(grens_web)
@@ -870,9 +874,13 @@ for(item in export_config) {
   message(paste("   [OK] Geëxporteerd naar schijf:", basename(file_path)))
 }
 
-# Grote eindschoonmaak van de export-gerelateerde objecten
-rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast,
-   waterbiotoop1_opp, land_buffer100_opp, ruim_buffer500_opp) # <- HIER DEFINITIEF OPGERUIMD
+# --- STABIELE EINDSCHOONMAAK: Verwijder de layers pas op de allerlaatste regel van het script ---
+suppressWarnings(
+  rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast,
+     venglazenmaker_waterbiotoop_max, venglazenmaker_waterbiotoop_opp, venglazenmaker_landbiotoop_max, venglazenmaker_landbiotoop_opp, ruim_buffer500_max)
+)
 gc()
+
+message("🏁 SCRIPT EN EXPORT VOLLEDIG EN SUCCESVOL AFGEROND VOOR VENGLAZENMAKER!")
 ```
 

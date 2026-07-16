@@ -33,13 +33,8 @@ deleteVariable(slobeend_leefgebied1)
 assign(slobeend_ecodistrict, ge('ecoregio.asc', 1))
 
 assign(slobeend_leefgebied_ecodistrict1, and(slobeend_leefgebied, slobeend_ecodistrict))
-deleteVariable(slobeend_ecodistrict)
-deleteVariable(slobeend_leefgebied)
 
 assign(slobeend_leefgebied_ecodistrict1_cluster, FuzzyClusterIdU(slobeend_leefgebied_ecodistrict1, 50, meter))
-deleteVariable(slobeend_leefgebied_ecodistrict1)
 
 assign(slobeend_leefgebied_ecodistrict, cFilterGeArea(slobeend_leefgebied_ecodistrict1_cluster, 5, hectare))
-deleteVariable(slobeend_leefgebied_ecodistrict1_cluster)
 write('ANB2019_Slobeend2018.asc', IsNonZero(slobeend_leefgebied_ecodistrict))
-deleteVariable(slobeend_leefgebied_ecodistrict)

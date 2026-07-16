@@ -118,7 +118,7 @@ filter(Soort == soort) %>%
 select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
 
 # Variabelen definiëren
-buffer_m <- 1000 #resultaat$Dispersiecap_m
+buffer_m <- resultaat$Dispersiecap_m[1]
 
 print(resultaat)
 rm(df, resultaat)

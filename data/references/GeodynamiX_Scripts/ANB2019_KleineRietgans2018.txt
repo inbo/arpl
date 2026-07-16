@@ -10,7 +10,7 @@ deleteVariable(kleinerietgans_watervogelgebieden)
 
 // baken de foerageergebieden binnen de telgebieden af
 
-assign(kleinerietgans_foerageer_bwk, bwk(ae%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, bu%, da%, 1310%, 1330%, hp%, hp+%, rbbkam%, rbbzil%, hpr%, hpr+%, hx%))
+assign(kleinerietgans_foerageer_bwk, bwk(ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, bu%, da%, 1310%, 1320%, 1330%, hp%, hp+%, rbbkam%, rbbzil%, hpr%, hpr+%, hx%))
 
 assign(kleinerietgans_foerageer_epr, OrEq('epr2013.asc', 6, 38, 100, 18, 8, 4, 89, 40, 120, 7, 1))
 

@@ -2,7 +2,7 @@ vlaanderen_20m_met_maas.asc
 
 // baken potentieel foerageergebied in graslanden af
 
-assign(regenwulp_foerageer, bwk(ha, 2330%, 6230_ha%, ha+, hc, 2190%, 6410%, rbbhc%, hc+, hj, hj+, hp%, hp+%, rbbkam%, rbbzil%, hpr%, hpr+%, hx%, ku%, 6430%))
+assign(regenwulp_foerageer, bwk(ha, 2330%, 6230_ha%, ha+, hc, 2190%, 6410%, rbbhc%, hc+, hj, hj+, hp%, hp+%, rbbkam%, rbbzil%, hpr%, hpr+%, hx%, ku%, 3270%, 6430%))
 
 // clustering: indien geschikte cel binnen 20 meter, dan hoort die cel bij het leefgebied - er moet voldoende open gebied zijn!
 
@@ -40,7 +40,7 @@ deleteVariable(regenwulp_foerageer2)
 
 // in het foerageergebied er moet ook een ondiepe plas in liggen als slaapplaats
 
-assign(regenwulp_plas, bwk(ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, ao%, 3160%, 7140%, 7150%, aom%, 3110%, 3130%, apo%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%))
+assign(regenwulp_plas, bwk(ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, ao%, 3160%, 7140%, 7150%, aom%, 3110%, 3130%, apo%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%))
 
 // clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het plasgebied
 
@@ -146,13 +146,8 @@ deleteVariable(regenwulp_akkers)
 assign(regenwulp_ecodistrict, ge('ecoregio.asc', 1))
 
 assign(regenwulp_leefgebied_ecodistrict1, and(regenwulp_leefgebied, regenwulp_ecodistrict))
-deleteVariable(regenwulp_leefgebied)
-deleteVariable(regenwulp_ecodistrict)
 
 assign(regenwulp_leefgebied_ecodistrict1_cluster, FuzzyClusterIdU(regenwulp_leefgebied_ecodistrict1, 50, meter))
-deleteVariable(regenwulp_leefgebied_ecodistrict1)
 
 assign(regenwulp_leefgebied_ecodistrict, cFilterGeArea(regenwulp_leefgebied_ecodistrict1_cluster, 50, hectare))
-deleteVariable(regenwulp_leefgebied_ecodistrict1_cluster)
 write('ANB2019_Regenwulp2018.asc', IsNonZero(regenwulp_leefgebied_ecodistrict))
-deleteVariable(regenwulp_leefgebied_ecodistrict)

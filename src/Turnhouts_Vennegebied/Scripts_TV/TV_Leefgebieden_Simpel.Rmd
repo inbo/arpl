@@ -8,7 +8,7 @@ output:
     toc: true
     theme: flatly
 params:
-  soort_invoer: "gentiaanblauwtje" # Dit is de standaardwaarde als je handmatig test
+  soort_invoer: "geleanemoon" # Dit is de standaardwaarde als je handmatig test
 ---
 
 ```{r setup, include = FALSE}
@@ -202,13 +202,27 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
 lijst_matches      <- purrr::compact(lijst_matches)
 lijst_oppervlaktes <- purrr::compact(lijst_oppervlaktes)
 
-masker_bron <- lijst_matches[[1]]
-opp_bron    <- lijst_oppervlaktes[[1]]
+# ==============================================================================
+# DE NULHABITAT-FAILSAFE: GEEN ENKELE DOELCODE GEVONDEN IN HET STUDIEGEBIED
+# ==============================================================================
+if (length(lijst_matches) == 0 || length(lijst_oppervlaktes) == 0) {
+  message("⚠️ KRIJT: Geen enkele doel-BWK code voor '", soort, "' aangetroffen in de database. Failsafe ingeschakeld.")
+  
+  # We maken lege bron-rasters aan op basis van de mastergrid structuur
+  masker_bron <- template_TV * NA
+  opp_bron    <- template_TV * NA
+  
+} else {
+  # Normaal verloop: codes zijn wél gevonden
+  masker_bron <- lijst_matches[[1]]
+  opp_bron    <- lijst_oppervlaktes[[1]]
+}
 
 names(masker_bron) <- "Match"
 names(opp_bron)    <- "Oppervlakte"
 
-rm(tabel_vlaanderen, vertaal_df, lijst_matches, lijst_oppervlaktes)
+# Veilige opruimactie (vermijdt object not found waarschuwingen)
+suppressWarnings(rm(tabel_vlaanderen, vertaal_df, lijst_matches, lijst_oppervlaktes))
 gc()
 ```
 
@@ -216,7 +230,10 @@ gc()
 ```{r Cluster}
 drempel_m2 <- oppervlakte_ha * 10000
 
-masker_bron[masker_bron == 0] <- NA
+# Veilig binaire enen afdwingen
+if(!all(is.na(terra::values(masker_bron, mat=FALSE)))) {
+  masker_bron[masker_bron == 0] <- NA
+}
 
 # 1. Bereken de clusters op basis van de maximale binaire potentie
 res_max <- cluster_filter_compleet(masker_bron, opp_bron, drempel_m2, afstand_m, werkelijk = FALSE)
@@ -224,16 +241,12 @@ res_max <- cluster_filter_compleet(masker_bron, opp_bron, drempel_m2, afstand_m,
 final_max <- res_max$raster
 cl_max    <- res_max$clusters
 
-# 2. FIX: In plaats van een tweede onafhankelijke cluster_filter_compleet te draaien 
-# (wat voor fragmentatie zorgt), evalueren we de werkelijke oppervlakte binnen de zojuist gemaakte cl_max clusters.
+# 2. Evalueer de werkelijke oppervlakte binnen de cl_max clusters (indien aanwezig)
 if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
-  # Bereken de werkelijke oppervlakte (som van fracties) per uniek cluster uit cl_max
   zonal_werkelijk <- terra::zonal(opp_bron, cl_max, fun = "sum", na.rm = TRUE)
   colnames(zonal_werkelijk) <- c("ID", "Werk_m2")
-  # De fractie-som * 100 geeft de oppervlakte in m2
   zonal_werkelijk$Werk_m2 <- zonal_werkelijk$Werk_m2 * 100
   
-  # Welke cluster-IDs voldoen aan de werkelijke drempel?
   ids_werkelijk_voldoet <- zonal_werkelijk$ID[zonal_werkelijk$Werk_m2 >= drempel_m2]
   
   if(length(ids_werkelijk_voldoet) > 0) {
@@ -252,8 +265,8 @@ grens_merged <- terra::aggregate(area_shape_proj)
 buffer_lijn  <- terra::buffer(grens_merged, width = buffer_m)
 binnen_masker <- terra::rasterize(grens_merged, template_TV, field = 1)
 
-# Statusraster opbouwen op basis van de gecorrigeerde lagen
-if (terra::global(is.na(final_max), "sum")[[1]] != terra::ncell(final_max)) {
+# Statusraster stabiel opbouwen
+if (!all(is.na(terra::values(final_max, mat=FALSE)))) {
   is_loss   <- !is.na(final_max) & is.na(final_opp)
   is_kept   <- !is.na(final_opp)
   is_inside <- !is.na(binnen_masker)
@@ -262,16 +275,16 @@ if (terra::global(is.na(final_max), "sum")[[1]] != terra::ncell(final_max)) {
   r_status <- terra::cover(r_status, terra::ifel(is_loss & !is_inside, 2, NA))
   r_status <- terra::cover(r_status, terra::ifel(is_kept & is_inside, 3, NA))
   r_status <- terra::cover(r_status, terra::ifel(is_kept & !is_inside, 4, NA))
+  
+  r_status <- terra::as.factor(r_status)
+  status_labels <- data.frame(ID = c(1, 2, 3, 4), 
+                              Label = c("Maximale Potentie (Binnen)", "Maximale Potentie (Buiten)", 
+                                        "Werkelijk Habitat (Binnen)", "Werkelijk Habitat (Buiten)"))
+  levels(r_status) <- status_labels
 } else {
   r_status <- terra::rast(template_TV, vals = NA)
   message("Let op: Geen geschikte clusters gevonden voor deze soort.")
 }
-
-r_status <- terra::as.factor(r_status)
-status_labels <- data.frame(ID = c(1, 2, 3, 4), 
-                            Label = c("Maximale Potentie (Binnen)", "Maximale Potentie (Buiten)", 
-                                      "Werkelijk Habitat (Binnen)", "Werkelijk Habitat (Buiten)"))
-levels(r_status) <- status_labels
 ```
 
 # Resultaten en Statistiek
@@ -310,27 +323,28 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   # 1. Haal de binaire frequenties/oppervlaktes op
   stats_max_raw <- terra::freq(cl_max)
   stats_max_raw <- as.data.frame(stats_max_raw)
-  colnames(stats_max_raw) <- c("layer", "ID", "count") # terra freq standaard namen opvangen
+  colnames(stats_max_raw) <- c("layer", "ID", "count")
   stats_max_raw$Pot_ha <- stats_max_raw$count * 0.01
   
   # 2. Haal de werkelijke habitat-oppervlaktes op
   zonal_raw <- terra::zonal(opp_bron, cl_max, fun = "sum", na.rm = TRUE)
   zonal_raw <- as.data.frame(zonal_raw)
   colnames(zonal_raw) <- c("ID", "Werk_ha_raw")
-  zonal_raw$Werk_ha <- zonal_raw$Werk_ha_raw * 0.01 # Omzetten naar ha
+  zonal_raw$Werk_ha <- zonal_raw$Werk_ha_raw * 0.01
   
-  # CRUCIALE BEVEILIGING: Koppel de tabellen op basis van de ECHTE ID's via een merge!
-  # Dit voorkomt dat rijen verschuiven en onmogelijke combinaties (1ha pot vs 75ha werk) ontstaan.
+  # Koppel de tabellen op basis van de ECHTE ID's via een merge
   stats_gecombineerd <- merge(stats_max_raw, zonal_raw, by = "ID", all.x = TRUE)
   stats_gecombineerd$Werk_ha[is.na(stats_gecombineerd$Werk_ha)] <- 0
-  
-  # Zorg voor een extra wiskundige sanity check: Werk_ha mag NOOIT groter zijn dan Pot_ha
   stats_gecombineerd$Werk_ha <- pmin(stats_gecombineerd$Werk_ha, stats_gecombineerd$Pot_ha)
 
-  # 3. Filter nu pas op basis van de gekoppelde ID's
-  ids_potentieel_totaal <- stats_gecombineerd$ID[stats_gecombineerd$Pot_ha >= oppervlakte_ha]
-  # Vervang in de statistiek chunk de filterregel door:
-ids_werkelijk_totaal <- stats_gecombineerd$ID[(stats_gecombineerd$Werk_ha * 10000) >= drempel_m2]
+  # 3. FIX: Schone en eenduidige if/else toewijzing van de cluster-IDs
+  if(nrow(stats_gecombineerd) > 0) {
+    ids_potentieel_totaal <- stats_gecombineerd$ID[stats_gecombineerd$Pot_ha >= oppervlakte_ha]
+    ids_werkelijk_totaal  <- stats_gecombineerd$ID[(stats_gecombineerd$Werk_ha * 10000) >= drempel_m2]
+  } else {
+    ids_potentieel_totaal <- c()
+    ids_werkelijk_totaal  <- c()
+  }
   
   # 4. Bepaal welke clusters het Turnhouts Vennegebied (binnen) raken
   zonal_zone <- terra::zonal(binnen_masker, cl_max, fun = "max", na.rm = TRUE)
@@ -370,22 +384,7 @@ ids_werkelijk_totaal <- stats_gecombineerd$ID[(stats_gecombineerd$Werk_ha * 1000
     verspreiding_netwerk_count <- length(ids_verspreiding_clusters)
   }
 
-  # --- GEBRUIK DE VOLLEDIGE CLUSTER-OPPERVLAKTES ---
-  calc_ha <- function(ids, mode = "pot") {
-    if(length(ids) == 0) return(0)
-    masker_ids <- terra::match(cl_max, ids)
-    if(mode == "pot") {
-      r_binair <- terra::ifel(!is.na(masker_ids), 1, NA)
-      return(round(calc_ha_exact(r_binair), 2))
-    } else {
-      r_werkelijk <- terra::mask(opp_bron, masker_ids)
-      return(round(calc_ha_exact(r_werkelijk), 2))
-    }
-  }
-
-  # --- GEFIXT VOOR PUNT 5: GEBRUIK DE DIRECTE EN INTACTE TABEL-OPPERVLAKTES ---
-  # We berekenen de hectares nu door simpelweg de vooraf berekende totale 
-  # cluster-hectares uit stats_gecombineerd te sommeren op basis van de gefilterde ID's.
+  # Bereken de ha-statistieken stabiel vanuit stats_gecombineerd
   ha_pot_bin      <- round(sum(stats_gecombineerd$Pot_ha[stats_gecombineerd$ID %in% ids_pot_bin]), 2)
   ha_pot_buit     <- round(sum(stats_gecombineerd$Pot_ha[stats_gecombineerd$ID %in% ids_pot_buit]), 2)
   ha_werk_bin     <- round(sum(stats_gecombineerd$Werk_ha[stats_gecombineerd$ID %in% ids_werk_bin]), 2)
@@ -393,7 +392,6 @@ ids_werkelijk_totaal <- stats_gecombineerd$ID[(stats_gecombineerd$Werk_ha * 1000
   ha_arpl         <- round(sum(stats_gecombineerd$Werk_ha[stats_gecombineerd$ID %in% ids_actueel_relevant]), 2)
   ha_verspreiding <- round(sum(stats_gecombineerd$Werk_ha[stats_gecombineerd$ID %in% ids_verspreiding_clusters]), 2)
 
-  # De opbouw van het arpl_raster blijft functioneel hetzelfde
   if(length(ids_actueel_relevant) > 0) {
     arpl_raster <- terra::match(cl_max, ids_actueel_relevant)
     arpl_raster <- (!is.na(arpl_raster)) * 1
@@ -402,8 +400,11 @@ ids_werkelijk_totaal <- stats_gecombineerd$ID[(stats_gecombineerd$Werk_ha * 1000
   }
 
 } else {
-  # Dit is de 'else' opvangbak voor als er helemaal geen clusters zijn
+  # Nulhabitat-opvangbak: alles netjes op 0 zetten
   ids_pot_bin <- ids_pot_buit <- ids_werk_bin <- ids_werk_buit <- ids_actueel_relevant <- c()
+  ids_werkelijk_totaal <- c() # Failsafe initialisatie voor Leaflet
+  zonal_zone <- data.frame(ID = numeric(), In_TV = numeric()) # Failsafe voor Leaflet
+  stats_gecombineerd <- data.frame(ID = numeric(), Pot_ha = numeric(), Werk_ha = numeric()) # Failsafe voor Leaflet
   ha_pot_bin <- ha_pot_buit <- ha_werk_bin <- ha_werk_buit <- ha_arpl <- ha_verspreiding <- 0
   arpl_raster <- terra::rast(template_TV, vals = NA)
 }
@@ -540,7 +541,7 @@ folders <- list(
 # Zorg dat de mappenstructuur bestaat
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-# Robuuste opbouw van ARPL-raster (voorkomt matching errors)
+# Robuuste opbouw van ARPL-raster
 if(length(ids_actueel_relevant) > 0) {
   arpl_export_rast <- cl_max %in% ids_actueel_relevant
   arpl_export_rast <- terra::ifel(arpl_export_rast, 1, NA)
@@ -557,7 +558,7 @@ if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
 
 # Configuratielijst voor de loop
 export_config <- list(
-  list(rast = final_max,             naam = "Maximale_Potentie",       folder = folders$potentie,     type = "INT1U"),
+  list(rast = final_max,              naam = "Maximale_Potentie",       folder = folders$potentie,     type = "INT1U"),
   list(rast = werkelijk_export_rast, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
   list(rast = arpl_export_rast,      naam = "ARPL",                    folder = folders$arpl,         type = "INT1U"),
   list(rast = verspreiding_raster,   naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
@@ -570,8 +571,7 @@ for(item in export_config) {
   export_rast <- terra::deepcopy(item$rast)
   export_rast <- terra::mask(export_rast, area_buffer_fix)
   
-  # GEFIXT: Als het raster volledig leeg (NA) is, vul het met 0 binnen de buffer 
-  # Dit voorkomt corrupte/onleesbare TIF-bestanden in GIS-software bij nulresultaten.
+  # Als het raster volledig leeg (NA) is, vul het met 0 binnen de buffer 
   if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
     export_rast <- terra::ifel(is.na(export_rast), 0, 0)
     export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
@@ -579,11 +579,16 @@ for(item in export_config) {
     export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
   }
   
-  # Schrijf weg met LZW-compressie (bespaart veel schijfruimte bij binaire rasters)
   writeRaster(export_rast, 
               filename = file_path, 
               overwrite = TRUE, 
               gdal = c("COMPRESS=LZW"), 
               datatype = item$type)
 }
+
+# CLEAN REPARATIE: Alleen de daadwerkelijk actieve export-rasters uit het RAM wissen
+suppressWarnings(rm(arpl_export_rast, werkelijk_export_rast, export_config, export_rast, masker_bron, opp_bron))
+gc()
+
+message("🏁 ALGEMENE WASSTRAAT VOLLEDIG EN SUCCESVOL AFGEROND!")
 ```

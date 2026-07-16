@@ -42,13 +42,10 @@ deleteVariable(smient_leefgebied1)
 assign(smient_ecodistrict, ge('ecoregio.asc', 1))
 
 assign(smient_leefgebied_ecodistrict1, and(smient_leefgebied, smient_ecodistrict))
-deleteVariable(smient_leefgebied)
+
 deleteVariable(smient_ecodistrict)
 
 assign(smient_leefgebied_ecodistrict1_cluster, FuzzyClusterIdU(smient_leefgebied_ecodistrict1, 50, meter))
-deleteVariable(smient_leefgebied_ecodistrict1)
 
 assign(smient_leefgebied_ecodistrict, cFilterGeArea(smient_leefgebied_ecodistrict1_cluster, 5, hectare))
-deleteVariable(smient_leefgebied_ecodistrict1_cluster)
 write('ANB2019_Smient2018.asc', IsNonZero(smient_leefgebied_ecodistrict))
-deleteVariable(smient_leefgebied_ecodistrict)

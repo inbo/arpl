@@ -10,7 +10,7 @@ deleteVariable(bergeend_watervogelgebieden)
 
 // baken de foerageergebieden binnen de telgebieden af
 
-assign(bergeend_foerageer_bwk, bwk(ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, ap%, bu%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, dz%, hp+%, rbbkam%, rbbzil%, hpr%, hpr+%, kn%, ku%, kz%))
+assign(bergeend_foerageer_bwk, bwk(ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, ap%, bu%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, dz%, hp+%, rbbkam%, rbbzil%, hpr%, hpr+%, kn%, ku%, 6430%, kz%))
 
 // waterlopen
 

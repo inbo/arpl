@@ -1,0 +1,38 @@
+vlaanderen_20m.asc
+
+// lees de shape file in uit de vogelgebiedendatabank met minstens ?? wulpen
+
+assign(wulp_watervogelgebieden, 'leefgebied_wulp_20m.asc')
+
+assign(wulp_watervogelgebied1, and(ge(wulp_watervogelgebieden, 1), le(wulp_watervogelgebieden, 88)))
+
+deleteVariable(wulp_watervogelgebieden)
+
+// baken de foerageergebieden binnen de telgebieden af
+
+assign(wulp_foerageer_bwk, bwk(aer%, 2190%, 3140%, 3150%, aev%, ah%, rbbah%, apo%, aom%, 3110%, 3130%, aoo%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, hp%, hp+%, hpr%, hpr+%, rbbkam%, rbbzil%, ku%, 6430%, kz%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het leefgebied - er moet voldoende open gebied zijn!
+
+assign(wulp_foerageer1_cluster, fuzzyClusterIdU(wulp_foerageer_bwk, 50, meter))
+
+// leefgebiedcluster moeten minimaal 30ha groot zijn
+
+assign(wulp_leefgebied0, cFilterGeArea(wulp_foerageer1_cluster, 30, hectare))
+
+assign(wulp_leefgebied1, and(wulp_watervogelgebied1, wulp_leefgebied0))
+
+deleteVariable(wulp_watervogelgebied1)
+deleteVariable(wulp_leefgebied0)
+
+assign(wulp_ecodistrict, ge('ecoregio.asc', 1))
+
+assign(wulp_leefgebied_ecodistrict1, and(wulp_leefgebied1, wulp_ecodistrict))
+
+deleteVariable(wulp_leefgebied1)
+deleteVariable(wulp_ecodistrict)
+
+assign(wulp_leefgebied_ecodistrict1_cluster, FuzzyClusterIdU(wulp_leefgebied_ecodistrict1, 50,meter))
+
+assign(wulp_leefgebied_ecodistrict, cFilterGearea(wulp_leefgebied_ecodistrict1_cluster, 30, hectare))
+write('ANB2019_Wulp_ow2018.asc', IsNonZero(wulp_leefgebied_ecodistrict))

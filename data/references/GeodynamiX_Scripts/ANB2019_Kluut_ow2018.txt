@@ -1,0 +1,39 @@
+vlaanderen_20m.asc
+
+// lees de shape file in uit de vogelgebiedendatabank met minstens ?? kluuten
+
+assign(kluut_watervogelgebieden, 'leefgebied_kluut_20m.asc')
+
+//check met data base, stond op 24, nu proberen met 2
+
+assign(kluut_watervogelgebied1, and(ge(kluut_watervogelgebieden, 1), le(kluut_watervogelgebieden, 1)))
+
+deleteVariable(kluut_watervogelgebieden)
+
+// baken de foerageergebieden binnen de telgebieden af
+
+assign(kluut_foerageer_bwk, bwk(ad%, ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, hpr%, hpr+%, rbbkam%, rbbzil%, kz%))
+
+// clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het leefgebied - er moet voldoende open gebied zijn!
+
+assign(kluut_foerageer1_cluster, fuzzyClusterIdU(kluut_foerageer_bwk, 50, meter))
+
+// leefgebiedcluster moeten minimaal 30ha groot zijn
+
+assign(kluut_leefgebied1, cFilterGeArea(kluut_foerageer1_cluster, 30, hectare))
+
+assign(kluut_leefgebied, and(kluut_watervogelgebied1, kluut_leefgebied1))
+
+deleteVariable(kluut_watervogelgebied1)
+
+assign(kluut_ecodistrict, ge('ecoregio.asc', 1))
+
+assign(kluut_leefgebied_ecodistrict1, and(kluut_leefgebied1, kluut_ecodistrict))
+
+deleteVariable(kluut_leefgebied1)
+
+assign(kluut_leefgebied_ecodistrict1_cluster, FuzzyClusterIdU(kluut_leefgebied_ecodistrict1, 50, meter))
+
+assign(kluut_leefgebied_ecodistrict, cFilterGeArea(kluut_leefgebied_ecodistrict1_cluster, 30, hectare))
+write('ANB2019_Kluut_ow2018.asc', IsNonZero(kluut_leefgebied_ecodistrict))
+

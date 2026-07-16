@@ -286,8 +286,8 @@ waterbiotoop_bwk_basis <- terra::ifel(!is.na(waterbiotoop_bwk1_max) & is.na(wate
 waterbiotoop1_max_list <- cluster_filter_compleet(
   masker = waterbiotoop_bwk_basis, 
   opp_laag = waterbiotoop_bwk1_max, # Gebruikt binaire pixelcounts
-  drempel_m2 = 400,                 # 0.04 ha = 400 m²
-  dist_m = 50, 
+  drempel_m2 = 200,                 # 0.02 ha = 200 m²
+  dist_m = 10, 
   werkelijk = FALSE
 )
 waterbiotoop1_max <- waterbiotoop1_max_list$raster
@@ -296,8 +296,8 @@ waterbiotoop1_max <- waterbiotoop1_max_list$raster
 waterbiotoop1_opp_list <- cluster_filter_compleet(
   masker = waterbiotoop_bwk_basis, 
   opp_laag = waterbiotoop_bwk1_opp, # Gebruikt de werkelijke fracties
-  drempel_m2 = 400, 
-  dist_m = 50, 
+  drempel_m2 = 200, 
+  dist_m = 10, 
   werkelijk = TRUE
 )
 waterbiotoop1_opp <- waterbiotoop1_opp_list$raster
@@ -307,7 +307,7 @@ cl_id_opp <- waterbiotoop1_opp_list$clusters
 ```
 
 ```{r landbiotoop nabije omgeving}
-message("-> Landbiotoop nabije omgeving berekenen (Spoor Max & Opp)...")
+message("-> Landbiotoop nabije omgeving berekenen (Minimaal 50% bosconditie per cluster)...")
 
 # Basisbepaling totaal landbiotoop
 landbiotoop_bwk_basis <- terra::ifel(!is.na(landbiotoop_bwk1_max) & is.na(landbiotoop_notbwk_max), 1, NA)
@@ -315,37 +315,60 @@ landbiotoop_bwk_basis <- terra::ifel(!is.na(landbiotoop_bwk1_max) & is.na(landbi
 # --- SPOOR 1: MAXIMALE POTENTIE ---
 landbiotoop1_max_list <- cluster_filter_compleet(
   masker = landbiotoop_bwk_basis, opp_laag = landbiotoop_bwk1_max, 
-  drempel_m2 = 100000, dist_m = 50, werkelijk = FALSE
-)
-landbiotoop1_max <- landbiotoop1_max_list$raster
-
-landbiotoop_bos1_max_list <- cluster_filter_compleet(
-  masker = landbiotoop_bos_max, opp_laag = landbiotoop_bos_max, 
   drempel_m2 = 50000, dist_m = 50, werkelijk = FALSE
 )
-landbiotoop_bos1_max <- landbiotoop_bos1_max_list$raster
+r_land_max_src <- landbiotoop1_max_list$raster
+r_land_max_src[is.na(r_land_max_src) | r_land_max_src == 0] <- NA
 
-# Bos-voorwaarde koppelen (binnen 10m)
-bos_buffer10_max <- terra::buffer(landbiotoop_bos1_max, width = 10)
-landbiotoop_nabij_max <- terra::mask(landbiotoop1_max, bos_buffer10_max)
+r_bos_max_src <- landbiotoop_bos_max
+r_bos_max_src[is.na(r_bos_max_src) | r_bos_max_src == 0] <- NA
+
+# Maak unieke cluster-IDs van de heidekernen
+cl_id_land_max <- terra::patches(r_land_max_src, directions = 8, zeroAsNA = TRUE)
+
+# Bereken de oppervlaktes binnen de heideclusters (Spoor A)
+stats_land_totaal_max <- terra::zonal(r_land_max_src * 0.01, cl_id_land_max, fun = "sum", na.rm = TRUE)
+colnames(stats_land_totaal_max) <- c("Cluster_ID", "Totaal_Land_ha")
+
+bos_in_land_max <- terra::mask(r_bos_max_src, cl_id_land_max)
+stats_bos_in_land_max <- terra::zonal(bos_in_land_max * 0.01, cl_id_land_max, fun = "sum", na.rm = TRUE)
+colnames(stats_bos_in_land_max) <- c("Cluster_ID", "Bos_ha")
+
+df_samenstelling_max <- merge(stats_land_totaal_max, stats_bos_in_land_max, by = "Cluster_ID", all.x = TRUE)
+df_samenstelling_max$Bos_ha[is.na(df_samenstelling_max$Bos_ha)] <- 0
+df_samenstelling_max$Percentage_Bos <- (df_samenstelling_max$Bos_ha / df_samenstelling_max$Totaal_Land_ha) * 100
+
+valide_land_ids_max <- df_samenstelling_max$Cluster_ID[df_samenstelling_max$Percentage_Bos >= 50]
+
+if(length(valide_land_ids_max) > 0) {
+  masker_land_max <- cl_id_land_max %in% valide_land_ids_max
+  landbiotoop_nabij_max <- terra::mask(r_land_max_src, terra::ifel(masker_land_max, 1, NA))
+} else {
+  message("⚠️ Waarschuwing: Geen enkel landbiotoop-cluster voldoet aan de 50% bos-eis in Spoor A.")
+  landbiotoop_nabij_max <- template_TV * NA
+}
 
 
 # --- SPOOR 2: WERKELIJKE OPPERVLAKTE ---
 landbiotoop1_opp_list <- cluster_filter_compleet(
   masker = landbiotoop_bwk_basis, opp_laag = landbiotoop_bwk1_opp, 
-  drempel_m2 = 100000, dist_m = 50, werkelijk = TRUE
-)
-landbiotoop1_opp <- landbiotoop1_opp_list$raster
-
-landbiotoop_bos1_opp_list <- cluster_filter_compleet(
-  masker = landbiotoop_bos_max, opp_laag = landbiotoop_bos_opp, 
   drempel_m2 = 50000, dist_m = 50, werkelijk = TRUE
 )
-landbiotoop_bos1_opp <- landbiotoop_bos1_opp_list$raster
 
-# Bos-voorwaarde koppelen (binnen 10m)
-bos_buffer10_opp <- terra::buffer(landbiotoop_bos1_opp, width = 10)
-landbiotoop_nabij_opp <- terra::mask(landbiotoop1_opp, bos_buffer10_opp)
+if(!all(is.na(terra::values(landbiotoop_nabij_max, mat=FALSE)))) {
+  landbiotoop_nabij_opp <- terra::mask(landbiotoop1_opp_list$raster, landbiotoop_nabij_max)
+} else {
+  landbiotoop_nabij_opp <- template_TV * NA
+}
+
+# Tussentijdse rapportage in de console
+message("   - Aantal geëvalueerde landbiotoop-clusters: ", nrow(df_samenstelling_max))
+message("   - Aantal clusters dat voldoet (>= 50% bos): ", length(valide_land_ids_max))
+
+# Schoonmaken van zware tijdelijke lagen
+rm(landbiotoop_bwk_basis, landbiotoop1_max_list, r_land_max_src, r_bos_max_src, cl_id_land_max,
+   stats_land_totaal_max, bos_in_land_max, stats_bos_in_land_max, df_samenstelling_max, landbiotoop1_opp_list)
+gc()
 ```
 
 ```{r landbiotoop ruime omgeving}
@@ -354,14 +377,14 @@ message("-> Landbiotoop ruimere omgeving berekenen (Spoor Max & Opp)...")
 # --- SPOOR 1: MAXIMALE POTENTIE ---
 landbiotoop_ruim_max_list <- cluster_filter_compleet(
   masker = landbiotoop_bwk_ruim_max, opp_laag = landbiotoop_bwk_ruim_max, 
-  drempel_m2 = 250000, dist_m = 50, werkelijk = FALSE
+  drempel_m2 = 400000, dist_m = 50, werkelijk = FALSE
 )
 landbiotoop_ruim_max <- landbiotoop_ruim_max_list$raster
 
 # --- SPOOR 2: WERKELIJKE OPPERVLAKTE ---
 landbiotoop_ruim_opp_list <- cluster_filter_compleet(
   masker = landbiotoop_bwk_ruim_max, opp_laag = landbiotoop_bwk_ruim_opp, 
-  drempel_m2 = 250000, dist_m = 50, werkelijk = TRUE
+  drempel_m2 = 400000, dist_m = 50, werkelijk = TRUE
 )
 landbiotoop_ruim_opp <- landbiotoop_ruim_opp_list$raster
 ```
@@ -372,24 +395,21 @@ message("-> Ruimtelijke interacties en eindsynthese per spoor uitvoeren...")
 # ==============================================================================
 # VERWERKING SPOOR 1: MAXIMALE POTENTIE
 # ==============================================================================
-water_buffer100_max <- terra::buffer(waterbiotoop1_max, width = 100)
-land_buffer100_max  <- terra::buffer(landbiotoop_nabij_max, width = 100)
+water_buffer20_max <- terra::buffer(waterbiotoop1_max, width = 20)
+land_buffer20_max  <- terra::buffer(landbiotoop_nabij_max, width = 20)
 
-# 1. Koppel water en nabij landbiotoop (binnen 100m)
-waterbiotoop2_max <- terra::mask(waterbiotoop1_max, land_buffer100_max)
-landbiotoop2_max  <- terra::mask(landbiotoop_nabij_max, water_buffer100_max)
+# 1. Koppel water en nabij landbiotoop (binnen 20m)
+waterbiotoop2_max <- terra::mask(waterbiotoop1_max, land_buffer20_max)
+landbiotoop2_max  <- terra::mask(landbiotoop_nabij_max, water_buffer20_max)
 
 # 2. Omgevingsvoorwaarde: Er moet binnen 500m een ruim biotoop van 25 ha liggen
 ruim_buffer500_max <- terra::buffer(landbiotoop_ruim_max, width = 500)
 
-# Finaal waterbiotoop (max)
+# Finaal waterbiotoop en landbiotoop (max)
 waterbiotoop_finaal_max <- terra::mask(waterbiotoop2_max, ruim_buffer500_max)
-
-# CRUCIALE ECO-FIX: We maskeren 'landbiotoop2_max' (het nabije land) met de omgevingsbuffer 
-# in plaats van de ruime omgeving zelf mee te nemen!
 landbiotoop_finaal_max  <- terra::mask(landbiotoop2_max, ruim_buffer500_max)
 
-# 3. Voeg water en nabij land samen tot finaal leefgebied (nu zonder ruime omgeving!)
+# 3. Voeg water en nabij land samen tot finaal leefgebied
 leefgebied_max <- terra::cover(waterbiotoop_finaal_max, landbiotoop_finaal_max)
 finaal_max_binair <- terra::ifel(!is.na(leefgebied_max), 1, NA)
 
@@ -397,20 +417,18 @@ finaal_max_binair <- terra::ifel(!is.na(leefgebied_max), 1, NA)
 # ==============================================================================
 # VERWERKING SPOOR 2: WERKELIJKE OPPERVLAKTE (FRACTIES)
 # ==============================================================================
-water_buffer100_opp <- terra::buffer(waterbiotoop1_opp, width = 100)
-land_buffer100_opp  <- terra::buffer(landbiotoop_nabij_opp, width = 100)
+water_buffer20_opp <- terra::buffer(waterbiotoop1_opp, width = 20)
+land_buffer20_opp  <- terra::buffer(landbiotoop_nabij_opp, width = 20)
 
-# 1. Koppel water en nabij landbiotoop (binnen 100m)
-waterbiotoop2_opp <- terra::mask(waterbiotoop1_opp, land_buffer100_opp)
-landbiotoop2_opp  <- terra::mask(landbiotoop_nabij_opp, water_buffer100_opp)
+# 1. Koppel water en nabij landbiotoop (binnen 20m)
+waterbiotoop2_opp <- terra::mask(waterbiotoop1_opp, land_buffer20_opp)
+landbiotoop2_opp  <- terra::mask(landbiotoop_nabij_opp, water_buffer20_opp)
 
 # 2. Omgevingsvoorwaarde
 ruim_buffer500_opp <- terra::buffer(landbiotoop_ruim_opp, width = 500)
 
-# Finaal waterbiotoop (opp)
+# Finaal waterbiotoop en landbiotoop (opp)
 waterbiotoop_finaal_opp <- terra::mask(waterbiotoop2_opp, ruim_buffer500_opp)
-
-# CRUCIALE ECO-FIX: Gebruik ook hier 'landbiotoop2_opp' en maskeer deze met de omgevingsbuffer
 landbiotoop_finaal_opp  <- terra::mask(landbiotoop2_opp, ruim_buffer500_opp)
 
 # 3. Voeg water en nabij land samen tot finaal leefgebied (opp)
@@ -419,17 +437,15 @@ finaal_opp_binair <- terra::ifel(!is.na(leefgebied_opp), 1, NA)
 
 
 # ==============================================================================
-# AANGEPASTE EINDSCHOONMAAK (De vereiste kaartenlagen blijven in RAM)
+# CLEAN FIX: Enkel niet-relevante objecten opruimen om crashes te voorkomen
 # ==============================================================================
-rm(waterbiotoop1_max, landbiotoop_nabij_max, water_buffer100_max, land_buffer100_max, 
-   waterbiotoop2_max, landbiotoop2_max, ruim_buffer500_max,
+rm(water_buffer20_max, land_buffer20_max, waterbiotoop2_max, landbiotoop2_max, 
    waterbiotoop_finaal_max, landbiotoop_finaal_max, leefgebied_max,
-   landbiotoop_nabij_opp, water_buffer100_opp, 
-   waterbiotoop2_opp, landbiotoop2_opp,
+   water_buffer20_opp, waterbiotoop2_opp, landbiotoop2_opp,
    waterbiotoop_finaal_opp, landbiotoop_finaal_opp, leefgebied_opp)
 gc()
 
-message("-> Parallelle modellering succesvol voltooid! Bestanden opgeslagen in data/output/.")
+message("-> Parallelle modellering succesvol voltooid! Lagen opgeslagen in RAM.")
 ```
 
 ```{r waarnemingen inlezen en ARPL maanwaterjuffer}
@@ -805,9 +821,13 @@ for(item in export_config) {
   message(paste("   [OK] Geëxporteerd naar schijf:", basename(file_path)))
 }
 
-# Grote eindschoonmaak van de export-gerelateerde objecten
-rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast,
-   waterbiotoop1_opp, land_buffer100_opp, ruim_buffer500_opp) # <- HIER DEFINITIEF OPGERUIMD
+# --- FINALE CRASH-FIX: Verwijder de lagen pas aan het ALLERLAATSTE eind van de wasstraat ---
+suppressWarnings(
+  rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast,
+     waterbiotoop1_opp, land_buffer100_opp, ruim_buffer500_opp)
+)
 gc()
+
+message("🏁 SCRIPT EN EXPORT VOLLEDIG EN SUCCESVOL AFGEROND VOOR MAANWATERJUFFER!")
 ```
 

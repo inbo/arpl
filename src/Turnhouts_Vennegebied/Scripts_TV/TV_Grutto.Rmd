@@ -1064,7 +1064,9 @@ if(!is.null(resB_strikt) && !all(is.na(terra::values(resB_strikt$kern, mat=FALSE
 ```
 
 ```{r Export}
-# --- EXPORT SECTIE (VOLLEDIG CONSISTENT BINAIR / INT1U LOGICA MET NUL-OPVULLING) ---
+# ==============================================================================
+# GECORRIGEERD: EXPORT SECTIE (UNIFORME INT1U LOGICA MET JUISTE VARIABELEN)
+# ==============================================================================
 base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
 folders <- list(
   potentie      = file.path(base_dir, "01_Maximale_Potentie"),
@@ -1075,35 +1077,39 @@ folders <- list(
 
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-# 1. Spoor A: Maximale Potentie formatteren naar 1/NA
-if(!all(is.na(terra::values(final_max_export, mat=FALSE)))) {
-  potentie_export_rast <- terra::ifel(final_max_export > 0, 1, NA)
+# --- STAP 1: VARIABELEN KLAARETZEN EN FORMATTEREN NAAR 1/NA ---
+
+# 1. Spoor A: Maximale Potentie (Combinatie van kern + bouw via grutto_kaart_A)
+if(exists("grutto_kaart_A") && !all(is.na(terra::values(grutto_kaart_A, mat=FALSE)))) {
+  potentie_export_rast <- terra::ifel(grutto_kaart_A > 0, 1, NA)
 } else {
   potentie_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# 2. Spoor B: Werkelijke Oppervlakte formatteren naar 1/NA
-if(!all(is.na(terra::values(werkelijk_export_rast, mat=FALSE)))) {
-  werkelijk_export_rast_clean <- terra::ifel(werkelijk_export_rast > 0, 1, NA)
+# 2. Spoor B: Werkelijke Oppervlakte (Combinatie van de resB_strikt lagen)
+if(!is.null(resB_strikt) && (!all(is.na(terra::values(resB_strikt$kern, mat=FALSE))) || !all(is.na(terra::values(resB_strikt$bouw, mat=FALSE))))) {
+  r_net_totaal_opp <- max(c(resB_strikt$kern, resB_strikt$bouw), na.rm = TRUE)
+  werkelijk_export_rast_clean <- terra::ifel(r_net_totaal_opp > 0, 1, NA)
 } else {
   werkelijk_export_rast_clean <- terra::rast(template_TV, vals = NA)
 }
 
-# 3. ARPL: Formatteren naar een zuivere 1/NA structuur (GEFIXT tegen zwart-wit inversie)
-if(!all(is.na(terra::values(final_arpl_export, mat=FALSE)))) {
-  arpl_export_rast <- terra::ifel(final_arpl_export > 0, 1, NA)
+# 3. ARPL: Gekoppeld aan de werkelijke grutto_arpl_opp laag
+if(exists("grutto_arpl_opp") && !all(is.na(terra::values(grutto_arpl_opp, mat=FALSE)))) {
+  arpl_export_rast <- terra::ifel(grutto_arpl_opp > 0, 1, NA)
 } else {
   arpl_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# 4. Actuele Verspreiding: Formatteren naar een zuivere 1/NA structuur (GEFIXT tegen zwart-wit inversie)
-if(!all(is.na(terra::values(final_verspreiding_export, mat=FALSE)))) {
-  verspreiding_export_rast <- terra::ifel(final_verspreiding_export > 0, 1, NA)
+# 4. Actuele Verspreiding: Gekoppeld aan de werkelijke grutto_verspreiding_bin laag
+if(exists("grutto_verspreiding_bin") && !all(is.na(terra::values(grutto_verspreiding_bin, mat=FALSE)))) {
+  verspreiding_export_rast <- terra::ifel(grutto_verspreiding_bin > 0, 1, NA)
 } else {
   verspreiding_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# 5. Bundel de gecorrigeerde configuratie (Uniforme INT1U spoortoewijzing)
+
+# --- STAP 2: BUNDEL DE CONFIGURATIE EN SCHRIJF NAAR SCHIJF ---
 export_config <- list(
   list(rast = potentie_export_rast,        naam = "Maximale_Potentie",       folder = folders$potentie,     type = "INT1U"),
   list(rast = werkelijk_export_rast_clean, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
@@ -1111,21 +1117,21 @@ export_config <- list(
   list(rast = verspreiding_export_rast,    naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 
-# 6. Schrijven naar schijf met automatische nul-opvulling via updatevalue
+# De export-loop voegt netjes de nullen-omranding toe op de bufferzone via updatevalue
 for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
-  # Maak een diepe, losgekoppelde kopie in het RAM om cross-chunk corruptie te vermijden
+  # Maak een diepe kopie in het RAM om interferentie tussen de loops te vermijden
   export_rast <- terra::deepcopy(item$rast)
   export_rast <- terra::mask(export_rast, area_buffer_fix)
   
   if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
-    # Is de kaart helemaal leeg? Vul de bufferzone met harde nullen (0/0 kaart)
+    # Is de kaart leeg? Vul de bufferzone met harde nullen (0/0 kaart)
     export_rast <- terra::ifel(is.na(export_rast), 0, 0)
     export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
   } else {
     # Bevat de kaart data? Forceer de NA-achtergrond strak naar een stabiele 0 (1/0 kaart)
-    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+    export_rast = terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
   }
   
   writeRaster(export_rast, 
@@ -1133,7 +1139,14 @@ for(item in export_config) {
               overwrite = TRUE, 
               gdal = c("COMPRESS=LZW"), 
               datatype = item$type)
+  
+  message(paste("   [OK] Geëxporteerd:", basename(file_path)))
 }
+
+# Opschonen van de tijdelijke exportrasters uit het geheugen
+rm(potentie_export_rast, werkelijk_export_rast_clean, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
+if(exists("r_net_totaal_opp")) rm(r_net_totaal_opp)
+gc()
 
 message("✓ Grutto-kaarten succesvol geëxporteerd! Alle bestanden zijn uniform opgebouwd als stabiele binaire INT1U rasters.")
 ```

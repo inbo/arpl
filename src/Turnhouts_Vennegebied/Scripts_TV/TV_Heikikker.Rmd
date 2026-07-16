@@ -120,7 +120,7 @@ select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
 # Variabelen definiëren
 oppervlakte_ha <- resultaat$MinOpp_ha
 afstand_m <- resultaat$AfstandBiotopen_m
-buffer_m <- 1000 #resultaat$Dispersiecap_m
+buffer_m <- resultaat$Dispersiecap_m
 
 print(resultaat)
 rm(df, resultaat)
@@ -435,68 +435,121 @@ gc()
 
 ```{r landbiotoop koppeling 1}
 # ==============================================================================
-# 5. RUIMTELIJKE RELATIE WATER- EN LANDBIOTOOP (Cluster-gebaseerde 500m eis)
+# 5. RUIMTELIJKE RELATIE WATER- EN LANDBIOTOOP (Robuuste Vector-Overlapping)
 # ==============================================================================
-message("-> Connectiviteit tussen water- en landbiotoop controleren op CLUSTERNIVEAU (500m)...")
+message("-> Connectiviteit tussen water- en landbiotoop controleren op VOLLEDIG CLUSTERNIVEAU (500m)...")
 
-# 1. Maak eerst unieke clusters van het landbiotoop (analoog aan water)
-r_land_clusters <- terra::patches(landbiotoop1_max, directions = 8, zeroAsNA = TRUE)
+# 1. Kogelvrije NA-zuivering op de invoerkaarten om afstands- en patchesfouten te voorkomen
+r_land_zuiver <- landbiotoop1_max
+r_land_zuiver[is.na(r_land_zuiver) | r_land_zuiver == 0] <- NA
 
-# 2. Bereken de binaire zones (buffers van 500m)
-message("-> 500 meter invloedszones berekenen...")
-water_buffer_500m <- terra::distance(heikikker_waterbiotoop1_finaal_max) <= 500
-land_buffer_500m  <- terra::distance(landbiotoop1_max) <= 500
+# Maak unieke clusters van het gezuiverde landbiotoop
+r_land_clusters <- terra::patches(r_land_zuiver, directions = 8, zeroAsNA = TRUE)
 
-# 3. IDENTIFICEER WELKE CLUSTERS OVERLAPPEN MET DE BUFFERS
-# We kijken welke unieke cluster-IDs aanwezig zijn binnen de 500m buffer van het andere type
-goedgekeurde_land_cluster_ids  <- terra::unique(r_land_clusters[water_buffer_500m == 1])[[1]]
-goedgekeurde_water_cluster_ids <- terra::unique(cl_id_max[land_buffer_500m == 1])
+# 2. Vectoriseer beide clusters (bliksemsnel en topologisch zuiver)
+message("   - Clusters omzetten naar vectoren voor nauwkeurige ruimtelijke selectie...")
+water_poly <- terra::as.polygons(cl_id_max, dissolve = TRUE)
+land_poly  <- terra::as.polygons(r_land_clusters, dissolve = TRUE)
 
-# Filter eventuele NA's eruit
+# Initialiseer de ID-vectoren als leeg voor de failsafe
+goedgekeurde_land_cluster_ids  <- c()
+goedgekeurde_water_cluster_ids <- c()
+
+if (!is.null(water_poly) && nrow(water_poly) > 0 && !is.null(land_poly) && nrow(land_poly) > 0) {
+  
+  # Maak geometrieën wiskundig schoon
+  water_poly_clean <- terra::makeValid(water_poly)
+  land_poly_clean  <- terra::makeValid(land_poly)
+  
+  # 3. Trek een exacte geografische buffer van 500 meter rond de waterpolygonen
+  message("   - 500m fysieke vector-buffers berekenen...")
+  water_buffer_500m <- terra::buffer(water_poly_clean, width = 500)
+  water_buffer_500m <- terra::makeValid(water_buffer_500m)
+  
+  # 4. Check welke clusters elkaar in de ruimte overlappen
+  intersect_matrix <- terra::is.related(land_poly_clean, water_buffer_500m, "intersects")
+  intersect_matrix <- matrix(intersect_matrix, nrow = nrow(land_poly_clean), ncol = nrow(water_buffer_500m))
+  
+  # Haal de unieke kolomnamen op (automatisch gegenereerd door terra)
+  id_col_land  <- names(land_poly_clean)[1]
+  id_col_water <- names(water_poly_clean)[1]
+  
+  land_indices  <- which(rowSums(intersect_matrix) > 0)
+  water_indices <- which(colSums(intersect_matrix) > 0)
+  
+  if (length(land_indices) > 0) {
+    goedgekeurde_land_cluster_ids <- as.numeric(land_poly_clean[[id_col_land]][land_indices, 1])
+  }
+  if (length(water_indices) > 0) {
+    goedgekeurde_water_cluster_ids <- as.numeric(water_poly_clean[[id_col_water]][water_indices, 1])
+  }
+}
+
+# Eventuele NA-waarden uit de vector filteren
 goedgekeurde_land_cluster_ids  <- goedgekeurde_land_cluster_ids[!is.na(goedgekeurde_land_cluster_ids)]
 goedgekeurde_water_cluster_ids <- goedgekeurde_water_cluster_ids[!is.na(goedgekeurde_water_cluster_ids)]
 
-# 4. RUIMTELIJKE FILTERS TOEPASSEN OP VOLLEDIGE CLUSTERS (Alles-of-niets)
-# Als het cluster-ID in de goedgekeurde lijst staat, behouden we het VOLLEDIGE cluster
-heikikker_landbiotoop1_max <- r_land_clusters %in% goedgekeurde_land_cluster_ids
-heikikker_landbiotoop1_max <- terra::ifel(heikikker_landbiotoop1_max == 1, 1, NA)
+message("   - Gekoppelde landbiotoop-clusters: ", length(goedgekeurde_land_cluster_ids))
+message("   - Gekoppelde waterbiotoop-clusters: ", length(goedgekeurde_water_cluster_ids))
 
-heikikker_waterbiotoop3_max   <- cl_id_max %in% goedgekeurde_water_cluster_ids
-heikikker_waterbiotoop3_max   <- terra::ifel(heikikker_waterbiotoop3_max == 1, 1, NA)
+# ==============================================================================
+# 5. RASTER-FILTERS TOEPASSEN (Alles-of-niets per cluster)
+# ==============================================================================
+# Filter voor het Landbiotoop
+if (length(goedgekeurde_land_cluster_ids) > 0) {
+  heikikker_landbiotoop1_max <- r_land_clusters %in% goedgekeurde_land_cluster_ids
+  heikikker_landbiotoop1_max <- terra::ifel(heikikker_landbiotoop1_max == 1, 1, NA)
+  heikikker_landbiotoop1_opp <- terra::mask(landbiotoop1_opp, heikikker_landbiotoop1_max)
+} else {
+  message("⚠️ Waarschuwing: Geen enkel landbiotoop-cluster voldoet aan de 500m connectiviteitseis.")
+  heikikker_landbiotoop1_max <- template_TV * NA
+  heikikker_landbiotoop1_opp <- template_TV * NA
+}
 
-# 5. PARALLEL: WERKELIJKE OPPERVLAKTES MASKEREN (_opp)
-# Nu snijden we de opp-lagen netjes uit met de opgeschoonde, hele clusters
-heikikker_landbiotoop1_opp <- terra::mask(landbiotoop1_opp, heikikker_landbiotoop1_max)
-heikikker_waterbiotoop3_opp   <- terra::mask(heikikker_waterbiotoop1_finaal_opp, heikikker_waterbiotoop3_max)
+# Filter voor het Waterbiotoop
+if (length(goedgekeurde_water_cluster_ids) > 0) {
+  heikikker_waterbiotoop3_max <- cl_id_max %in% goedgekeurde_water_cluster_ids
+  heikikker_waterbiotoop3_max <- terra::ifel(heikikker_waterbiotoop3_max == 1, 1, NA)
+  heikikker_waterbiotoop3_opp <- terra::mask(heikikker_waterbiotoop1_finaal_opp, heikikker_waterbiotoop3_max)
+} else {
+  message("⚠️ Waarschuwing: Geen enkel waterbiotoop-cluster voldoet aan de 500m connectiviteitseis.")
+  heikikker_waterbiotoop3_max <- template_TV * NA
+  heikikker_waterbiotoop3_opp <- template_TV * NA
+}
+
+# CRUCIALE FIX VOOR DE NETWERKSTAPPEN (Stap 12 en 14):
+# Genereer de unieke heikikker-waterclusterkaart op basis van wat er nu écht overblijft
+cl_id_max_heikikker <- terra::mask(cl_id_max, heikikker_waterbiotoop3_max)
 
 # 6. GEHEUGEN SCHOONMAKEN
-rm(r_land_clusters, water_buffer_500m, land_buffer_500m, goedgekeurde_land_cluster_ids, goedgekeurde_water_cluster_ids)
+suppressWarnings(
+  rm(r_land_clusters, water_poly, land_poly, water_poly_clean, land_poly_clean, 
+     water_buffer_500m, intersect_matrix, r_land_zuiver)
+)
 gc()
 ```
 
 
 ```{r landbiotoop koppeling 2}
 # ==============================================================================
-# 6. FINALE COMBINATIE: LEEFGEBIED heikikker
+# 6. FINALE COMBINATIE: LEEFGEBIED HEIKIKKER
 # ==============================================================================
-message("-> Finaal leefgebied heikikker samenstellen...")
+message("-> Finaal leefgebied heikikker samenstellen (OR-combinatie)...")
 
 # Maximale Potentie (Binaire kaart)
 heikikker_leefgebied1_max <- heikikker_waterbiotoop3_max | heikikker_landbiotoop1_max
 heikikker_leefgebied1_max <- terra::ifel(heikikker_leefgebied1_max == 1, 1, NA)
 
-# Werkelijke Oppervlakte (Veilige optelsom van fracties)
-# Vervang NA door 0 voor de berekening
+# Werkelijke Oppervlakte (Veilige optelsom van reële fracties)
 water_fractie_clean <- terra::ifel(is.na(heikikker_waterbiotoop3_opp), 0, heikikker_waterbiotoop3_opp)
 land_fractie_clean  <- terra::ifel(is.na(heikikker_landbiotoop1_opp), 0, heikikker_landbiotoop1_opp)
 
 som_fracties <- water_fractie_clean + land_fractie_clean
 
-# Top af op max 1.0 (100% van een cel)
+# Top af op max 1.0 (100% van de celcapaciteit)
 som_gemedieerd <- terra::clamp(som_fracties, upper = 1.0)
 
-# CRUCIALE CORRECTIE: Maskeer het resultaat met de binaire kaart. 
-# Alles wat buiten de max-potentie valt, wordt hierdoor onmiddellijk weer NA!
+# Maskeer het resultaat met de binaire kaart om data buiten de potentie te filteren
 heikikker_leefgebied1_opp <- terra::mask(som_gemedieerd, heikikker_leefgebied1_max)
 
 # ==============================================================================
@@ -506,7 +559,7 @@ ha_leefgebied_pot  <- calc_ha_exact(heikikker_leefgebied1_max)
 ha_leefgebied_werk <- calc_ha_exact(heikikker_leefgebied1_opp)
 
 cat("\n=========================================================\n")
-cat("            EINDPOTENTIE LEEFGEBIED heikikker           \n")
+cat("            EINDPOTENTIE LEEFGEBIED HEIKIKKER             \n")
 cat("=========================================================\n")
 cat(paste("Totale Leefgebied (Maximale Potentie):  ", round(ha_leefgebied_pot, 2), "ha\n"))
 cat(paste("Totale Leefgebied (Werkelijke Fractie): ", round(ha_leefgebied_werk, 2), "ha\n"))
@@ -515,9 +568,7 @@ cat("=========================================================\n\n")
 # Netjes opruimen van alle zware tussenrasters uit deze en de vorige stappen
 suppressWarnings(
   rm(
-    heikikker_waterbiotoop3_max, heikikker_landbiotoop1_max,
-    heikikker_waterbiotoop3_opp, heikikker_landbiotoop1_opp,
-    water_fractie_clean, land_fractie_clean, som_fracties
+    water_fractie_clean, land_fractie_clean, som_fracties, som_gemedieerd
   )
 )
 gc()

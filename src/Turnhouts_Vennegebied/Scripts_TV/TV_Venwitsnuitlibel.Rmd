@@ -275,7 +275,7 @@ gc()
 
 ```{r waterbiotoop venwitsnuitlibel}
 # ==============================================================================
-# BEREIDING WATERBIOTOOP VENWITSNUITLIBEL (Minimaal 400 m²)
+# BEREIDING WATERBIOTOOP VENWITSNUITLIBEL (Minimaal 100 m²)
 # ==============================================================================
 message("-> Waterbiotoop filteren (inclusief uitsluitingen)...")
 
@@ -283,13 +283,13 @@ water_max <- (waterbiotoop_bwk1_max == 1) & (waterbiotoop_notbwk_max == 0 | is.n
 water_max <- terra::ifel(water_max == 1, 1, NA)
 water_opp <- terra::mask(waterbiotoop_bwk1_opp, water_max)
 
-message("-> Waterbiotoop patches groeperen (50m fuzzy) en filteren op min. 400 m²...")
+message("-> Waterbiotoop patches groeperen (50m fuzzy) en filteren op min. 100 m²...")
 
-# Biologische correctie: min 400 m²
+# Biologische correctie: min 100 m²
 waterbiotoop_clusters_max <- cluster_filter_compleet(
   masker       = water_max,
   opp_laag     = water_opp,
-  drempel_m2   = 400,   
+  drempel_m2   = 100,   
   dist_m       = 50,       
   werkelijk    = FALSE      
 )
@@ -297,7 +297,7 @@ waterbiotoop_clusters_max <- cluster_filter_compleet(
 waterbiotoop_clusters_opp <- cluster_filter_compleet(
   masker       = water_max,
   opp_laag     = water_opp,
-  drempel_m2   = 400,   
+  drempel_m2   = 100,   
   dist_m       = 50,       
   werkelijk    = TRUE      
 )
@@ -307,7 +307,7 @@ rm(water_max, water_opp)
 
 ```{r Landbiotoop nabij}
 # ==============================================================================
-# BEREIDING LANDBIOTOOP NABIJ (Minimaal 5 ha)
+# VOORBEREIDING LANDBIOTOOP NABIJ (Minimaal 5 ha)
 # ==============================================================================
 message("-> Landbiotoop nabij patches groeperen (50m) en filteren op min. 5 ha (50.000 m²)...")
 
@@ -316,7 +316,7 @@ land_nabij_clusters_max <- cluster_filter_compleet(
   masker       = landbiotoop_bwk_max,
   opp_laag     = landbiotoop_bwk_opp,
   drempel_m2   = 50000,   
-  dist_m       = 50,       
+  dist_m       = 20,       
   werkelijk    = FALSE      
 )
 
@@ -324,7 +324,7 @@ land_nabij_clusters_opp <- cluster_filter_compleet(
   masker       = landbiotoop_bwk_max,
   opp_laag     = landbiotoop_bwk_opp,
   drempel_m2   = 50000,   
-  dist_m       = 50,       
+  dist_m       = 20,       
   werkelijk    = TRUE      
 )
 
@@ -344,7 +344,7 @@ message("-> Landbiotoop ruime omgeving patches groeperen (50m) en filteren op mi
 land_ruim_clusters <- cluster_filter_compleet(
   masker       = landbiotoop_bwk_ruim_max,
   opp_laag     = landbiotoop_bwk_ruim_opp,
-  drempel_m2   = 200000,   
+  drempel_m2   = 400000,   
   dist_m       = 50,       
   werkelijk    = FALSE      
 )
@@ -357,7 +357,7 @@ venwitsnuitlibel_land_ruim_opp <- template_TV * NA
 
 if (!all(is.na(terra::values(r_patch_ids, mat=FALSE)))) {
   
-  message("-> Zuivere percentage-check uitvoeren: hoeveel % van elke 20 ha patch is bos?")
+  message("-> Zuivere percentage-check uitvoeren: hoeveel % van elke 40 ha patch is bos?")
   
   # 2. Bereken de totale oppervlakte (in ha) per unieke patch via de cellSize-helper
   area_ha_raster <- r_patch_ids * terra::cellSize(r_patch_ids, unit = "ha")
@@ -396,21 +396,21 @@ gc()
 
 ```{r finale interactie en samensmelting venwitsnuitlibel}
 # ==============================================================================
-# COMBINATIE 2: INTERACTIE WATER EN NABIJ LANDBIOTOOP (100 METER)
+# COMBINATIE 2: INTERACTIE WATER EN NABIJ LANDBIOTOOP (10 METER)
 # ==============================================================================
-message("-> Water- en nabije landbiotopen aan elkaar koppelen binnen een straal van 100m...")
+message("-> Water- en nabije landbiotopen aan elkaar koppelen binnen een straal van 10m...")
 
-# 1. Maak de buffers van 100 meter rondom de twee biologische kernen
-water_buffer_100m <- terra::buffer(waterbiotoop_clusters_max$raster, width = 100)
-land_buffer_100m  <- terra::buffer(venwitsnuitlibel_land_nabij_max, width = 100)
+# 1. Maak de buffers van 10 meter rondom de twee biologische kernen
+water_buffer_10m <- terra::buffer(waterbiotoop_clusters_max$raster, width = 10)
+land_buffer_10m  <- terra::buffer(venwitsnuitlibel_land_nabij_max, width = 10)
 
-waterbiotoop2_max <- terra::mask(waterbiotoop_clusters_max$raster, land_buffer_100m)
-waterbiotoop2_opp <- terra::mask(waterbiotoop_clusters_opp$raster, land_buffer_100m)
+waterbiotoop2_max <- terra::mask(waterbiotoop_clusters_max$raster, land_buffer_10m)
+waterbiotoop2_opp <- terra::mask(waterbiotoop_clusters_opp$raster, land_buffer_10m)
 
-landbiotoop2_max  <- terra::mask(venwitsnuitlibel_land_nabij_max, water_buffer_100m)
-landbiotoop2_opp  <- terra::mask(venwitsnuitlibel_land_nabij_opp, water_buffer_100m)
+landbiotoop2_max  <- terra::mask(venwitsnuitlibel_land_nabij_max, water_buffer_10m)
+landbiotoop2_opp  <- terra::mask(venwitsnuitlibel_land_nabij_opp, water_buffer_10m)
 
-rm(water_buffer_100m, land_buffer_100m)
+rm(water_buffer_10m, land_buffer_10m)
 
 # ==============================================================================
 # COMBINATIE 3: FINALE FILTERING OP RUIME OMGEVING (500M) EN SAMENSMELTING
