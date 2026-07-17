@@ -51,6 +51,9 @@ rsconnect/
 # Raster kaart Vlaanderen 10x10 m
 /data/input/Raster_Vlaanderen/BWK_TidyTabel_Smal_Vlaanderen_2025.rds
 
+# Raster Vlaanderen parquet 10x10 m
+/data/input/Raster_vlaanderen/BWK_TidyTabel_Smal_Vlaanderen_2025.parquet
+
 # Raster kaart Turnhouts Vennegebied + 50 km buffer 10x10 m
 /data/input/Raster_Vlaanderen/BWK_Tabel_Turnhout_Plus_50km.rds
 

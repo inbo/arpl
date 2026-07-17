@@ -8,7 +8,7 @@ output:
     toc: true
     theme: flatly
 params:
-  soort_invoer: "geleanemoon" # Dit is de standaardwaarde als je handmatig test
+  soort_invoer: "aardbeivlinder" # Dit is de standaardwaarde als je handmatig test
 ---
 
 ```{r setup, include = FALSE}
