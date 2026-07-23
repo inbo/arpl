@@ -112,7 +112,7 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
 # Soort informatie ophalen
 ```{r Soort informatie}
 df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
-soort <- "sierlijkewitsnuitlibel"
+soort <- "zwarteheidelibel"
 
 resultaat <- df %>%
 filter(Soort == soort) %>%
@@ -255,333 +255,225 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
 }
 
 # Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
-voortplanting_bwk_max <- lijst_matches[["voortplanting_bwk"]]
-voortplanting_bwk_opp <- lijst_oppervlaktes[["voortplanting_bwk"]]
-foerageer0_max <- lijst_matches[["foerageer0"]]
-foerageer0_notbwk_opp <- lijst_oppervlaktes[["foerageer0"]]
-struweel1_max <- lijst_matches[["struweel1"]]
-struweel1_opp <- lijst_oppervlaktes[["struweel1"]]
+waterbiotoop_bwk1_max <- lijst_matches[["waterbiotoop_bwk1"]]
+waterbiotoop_bwk1_opp <- lijst_oppervlaktes[["waterbiotoop_bwk1"]]
+waterbiotoop_notbwk_max <- lijst_matches[["waterbiotoop_notbwk"]]
+waterbiotoop_notbwk_opp <- lijst_oppervlaktes[["waterbiotoop_notbwk"]]
+landbiotoop_bwk_max <- lijst_matches[["landbiotoop_bwk"]]
+landbiotoop_bwk_opp <- lijst_oppervlaktes[["landbiotoop_bwk"]]
+landbiotoop_bwk_ruim_max <- lijst_matches[["landbiotoop_bwk_ruim"]]
+landbiotoop_bwk_ruim_opp <- lijst_oppervlaktes[["landbiotoop_bwk_ruim"]]
+landbiotoop_bwk_ruim_bos_max <- lijst_matches[["landbiotoop_bwk_ruim_bos"]]
+landbiotoop_bwk_ruim_bos_opp <- lijst_oppervlaktes[["landbiotoop_bwk_ruim_bos"]]
 
-# [1] "voortplanting_bwk" "foerageer0"        "struweel1"  
+# [1] "waterbiotoop_bwk1"        "waterbiotoop_notbwk"      "landbiotoop_bwk"         [4] "landbiotoop_bwk_ruim"     "landbiotoop_bwk_ruim_bos"
 
 # Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
 rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
-```{r Watervlakken en Kleine Waters}
-message("-> Watervlakken shapefile lokaal inlezen en opschonen...")
-
-# 1. Lees en projecteer de shapefile van de watervlakken
-watervlakken_v <- vect(here("data/input/ASCI Files/watervlakken2024.shp"))
-watervlakken_proj <- project(watervlakken_v, crs(template_TV))
-
-# Opschonen van geometrieën om topologische crashes te vermijden
-area_buffer_clean <- aggregate(makeValid(area_buffer_fix))
-watervlakken_clean <- makeValid(watervlakken_proj)
-
-# Geografische uitsnijding op het studiegebied complex
-watervlakken_TV <- crop(watervlakken_clean, area_buffer_clean)
-
+```{r waterbiotoop zwarteheidelibel}
 # ==============================================================================
-# VECTOR FUZZY CLUSTERING (10m plooirand) VOOR KLEINE WATERS
+# BEREIDING WATERBIOTOOP zwarteheidelibel (Minimaal 100 m²)
 # ==============================================================================
-message("-> Kleine waters identificeren (<= 0.4 ha)...")
-watervlakken_buffered <- buffer(watervlakken_TV, width = 5)
-watervlakken_fuzzy_clusters <- aggregate(watervlakken_buffered, by = NULL)
-watervlakken_fuzzy_clusters$fuzzy_area_m2 <- terra::expanse(watervlakken_fuzzy_clusters)
+message("-> Waterbiotoop filteren (inclusief uitsluitingen)...")
 
-# Filter de clusters die in totaal kleiner of gelijk zijn aan 0.4 ha (4000 m2)
-kleine_clusters_v <- watervlakken_fuzzy_clusters[watervlakken_fuzzy_clusters$fuzzy_area_m2 <= 4000, ]
+water_max <- (waterbiotoop_bwk1_max == 1) & (waterbiotoop_notbwk_max == 0 | is.na(waterbiotoop_notbwk_max))
+water_max <- terra::ifel(water_max == 1, 1, NA)
+water_opp <- terra::mask(waterbiotoop_bwk1_opp, water_max)
 
-# ==============================================================================
-# RASTERISATIE & CORES COMBINEREN (OR-RELATIE FIX!)
-# ==============================================================================
-message("-> Filterresultaat verrasteren en harmoniseren met de BWK-vennen...")
+message("-> Waterbiotoop patches groeperen (50m fuzzy) en filteren op min. 100 m²...")
 
-if (nrow(kleine_clusters_v) > 0) {
-  kleine_watervlakken_finaal <- crop(watervlakken_TV, kleine_clusters_v)
-  
-  if (nrow(kleine_watervlakken_finaal) > 0) {
-    r_kleinwater <- terra::rasterize(kleine_watervlakken_finaal, template_TV, field = 1, background = NA)
-    
-    # ECO-FIX: We gebruiken cover (OR) in plaats van and om data-verlies te voorkomen!
-    r_witsnuit_waterbiotoop1     <- terra::cover(voortplanting_bwk_max, r_kleinwater)
-    r_witsnuit_waterbiotoop1_opp <- terra::cover(voortplanting_bwk_opp, r_kleinwater)
-  } else {
-    r_witsnuit_waterbiotoop1     <- voortplanting_bwk_max
-    r_witsnuit_waterbiotoop1_opp <- voortplanting_bwk_opp
-  }
-} else {
-  r_witsnuit_waterbiotoop1     <- voortplanting_bwk_max
-  r_witsnuit_waterbiotoop1_opp <- voortplanting_bwk_opp
-}
-
-suppressWarnings(
-  rm(watervlakken_v, watervlakken_proj, area_buffer_clean, watervlakken_clean, watervlakken_TV, 
-     watervlakken_buffered, watervlakken_fuzzy_clusters, kleine_clusters_v, kleine_watervlakken_finaal, r_kleinwater)
-)
-gc()
-```
-
-```{r Poelennetwerk Connectiviteit}
-message("=== STAP 2: Voortplantingsbiotoop filteren op netwerkconnectiviteit (3 buren binnen 500m) ===")
-
-# 1. Identificeer de unieke poel-patches (de clusters)
-r_water_clusters <- terra::patches(r_witsnuit_waterbiotoop1, directions = 8, zeroAsNA = TRUE)
-
-# Initialiseer de uitgang als blanco template
-witsnuit_water_finaal_max <- template_TV * NA
-
-if (!all(is.na(terra::values(r_water_clusters, mat=FALSE)))) {
-  
-  message("-> Start kogelvrije Raster-Distance netwerkanalyse...")
-  
-  # --- STAP A: REDUCEER ELK PLASJE TOT EXACT 1 CORRESPONDERENDE PIXEL ---
-  # Dit zorgt ervoor dat we dadelijk discrete entiteiten (plassen) tellen, niet losse pixels.
-  r_poel_kernen <- r_water_clusters * NA
-  
-  df_cells <- terra::as.data.frame(r_water_clusters, cells = TRUE)
-  colnames(df_cells) <- c("cell", "ID")
-  
-  # Pak de eerste pixel per uniek Cluster-ID
-  df_kernen <- df_cells %>% dplyr::group_by(ID) %>% dplyr::summarise(cell = dplyr::first(cell))
-  r_poel_kernen[df_kernen$cell] <- df_kernen$ID
-  
-  # --- STAP B: BEREKEN HET AANTAL BUREN VIA MATRIX EXTRACTIE ---
-  # Omdat we 1056 ha aan water hebben, is het aantal unieke plassen (n_plassen) relatief klein.
-  # We halen de xy-coördinaten van alle unieke poelkernen op.
-  message("   [Coords] Coördinaten van alle discrete poelkernen verzamelen...")
-  xy_kernen <- terra::xyFromCell(r_poel_kernen, df_kernen$cell)
-  
-  # Bepaal het aantal unieke plassen
-  n_plassen <- nrow(xy_kernen)
-  message("   [Info] Er zijn in totaal ", n_plassen, " afzonderlijke poelclusters gedetecteerd.")
-  
-  if (n_plassen >= 4) {
-    
-    # Bereken de onderlinge geografische afstanden tussen de punten.
-    # Dit levert een loepzuivere NxN matrix op die direct in het RAM-geheugen past.
-    message("   [Matrix] Onderlinge afstandsmatrix berekenen tussen poel-knooppunten...")
-    dist_matrix <- stats::dist(xy_kernen, method = "euclidean") %>% as.matrix()
-    
-    # Tel hoeveel poelen er binnen 500 meter van elkaar liggen (inclusief zichzelf)
-    message("   [Filter] Buren tellen binnen de 500m netwerk-straal...")
-    cluster_counts <- rowSums(dist_matrix <= 500)
-    
-    # Koppel de buren-scores aan de Cluster-IDs
-    df_scores <- data.table(
-      ID = df_kernen$ID,
-      Buren_Count = cluster_counts
-    )
-    
-    # Selecteer de ID's die voldoen (eigen plas + minstens 3 buren = score >= 4)
-    goedgekeurde_poel_ids <- df_scores[Buren_Count >= 4, ID]
-    
-    if (length(goedgekeurde_poel_ids) > 0) {
-      message("   [Raster] ", length(goedgekeurde_poel_ids), " clusters goedgekeurd. Terugschrijven naar grid...")
-      masker_water_bin <- r_water_clusters %in% goedgekeurde_poel_ids
-      witsnuit_water_finaal_max <- terra::ifel(masker_water_bin == 1, 1, NA)
-    } else {
-      message("⚠️ Waarschuwing: Geen enkel waterbiotoop voldoet aan de connectiviteitseis van 3 buren binnen 500m.")
-    }
-    
-    rm(dist_matrix, df_scores, goedgekeurde_poel_ids, cluster_counts)
-    
-  } else {
-    message("⚠️ Waarschuwing: Er zijn te weinig afzonderlijke poelen (", n_plassen, ") om een netwerk te vormen.")
-  }
-  
-  rm(r_poel_kernen, df_cells, df_kernen, xy_kernen)
-} else {
-  message("⚠️ Waarschuwing: Geen initiële waterbiotopen gevonden om de connectiviteitscheck op uit te voeren.")
-}
-
-# ==============================================================================
-# 2. PARALLEL: WERKELIJKE OPPERVLAKTE BEREKENEN (_opp)
-# ==============================================================================
-message("-> Werkelijke oppervlakte filteren op basis van de connectiviteitscheck...")
-witsnuit_water_finaal_opp <- terra::mask(
-  r_witsnuit_waterbiotoop1_opp, 
-  witsnuit_water_finaal_max
+# Biologische correctie: min 100 m²
+waterbiotoop_clusters_max <- cluster_filter_compleet(
+  masker       = water_max,
+  opp_laag     = water_opp,
+  drempel_m2   = 100,   
+  dist_m       = 50,       
+  werkelijk    = FALSE      
 )
 
-cl_water_ids_gefilterd <- terra::mask(r_water_clusters, witsnuit_water_finaal_max)
+waterbiotoop_clusters_opp <- cluster_filter_compleet(
+  masker       = water_max,
+  opp_laag     = water_opp,
+  drempel_m2   = 100,   
+  dist_m       = 50,       
+  werkelijk    = TRUE      
+)
 
-# ==============================================================================
-# 3. HECTAREBEREKENING & PRINTEN
-# ==============================================================================
-ha_potentie  <- calc_ha_exact(witsnuit_water_finaal_max)
-ha_werkelijk <- calc_ha_exact(witsnuit_water_finaal_opp)
-
-cat("\n=========================================================\n")
-cat("          RESULTATEN WATERBIOTOOP sierlijkewitsnuitlibel  \n")
-cat("=========================================================\n")
-cat(paste("Geschikt gebied (Maximale Potentie):  ", round(ha_potentie, 2), "ha\n"))
-cat(paste("Geschikt gebied (Werkelijke Fractie): ", round(ha_werkelijk, 2), "ha\n"))
-cat("=========================================================\n\n")
-
-rm(r_water_clusters)
-gc()
+rm(water_max, water_opp)
 ```
 
-```{r Foerageergebied en Struweelweging}
-message("=== STAP 3: Foerageergebieden filteren en struweel-aandeel wegen (Netto 70% Check) ===")
+```{r Landbiotoop nabij}
+# ==============================================================================
+# VOORBEREIDING LANDBIOTOOP NABIJ (Minimaal 5 ha)
+# ==============================================================================
+message("-> Landbiotoop nabij patches groeperen (50m) en filteren op min. 5 ha (50.000 m²)...")
 
-# --- STAP 1: IDENTIFICEER DE FOERAGEERCLUSTERS (50M PLOOIRAND) ---
-# Groepeer de foerageerbiotopen via de gedefinieerde 50m plooirand (width = 25m buffer)
-foerageer_buffered <- terra::buffer(foerageer0_max, width = 25)
-cl_foerageer <- terra::patches(foerageer_buffered, directions = 8, zeroAsNA = TRUE) %>% terra::mask(foerageer0_max)
+# Dit biotoop vereist geen extra binnengrenzen of bos-percentages, enkel een absolute minimumoppervlakte van 5 ha
+land_nabij_clusters_max <- cluster_filter_compleet(
+  masker       = landbiotoop_bwk_max,
+  opp_laag     = landbiotoop_bwk_opp,
+  drempel_m2   = 50000,   
+  dist_m       = 50,       
+  werkelijk    = FALSE      
+)
 
-witsnuit_foerageer_finaal_max <- template_TV * NA
-witsnuit_foerageer_finaal_opp <- template_TV * NA
+land_nabij_clusters_opp <- cluster_filter_compleet(
+  masker       = landbiotoop_bwk_max,
+  opp_laag     = landbiotoop_bwk_opp,
+  drempel_m2   = 50000,   
+  dist_m       = 50,       
+  werkelijk    = TRUE      
+)
 
-if (!all(is.na(terra::values(cl_foerageer, mat=FALSE)))) {
+zwarteheidelibel_land_nabij_max <- land_nabij_clusters_max$raster
+zwarteheidelibel_land_nabij_opp <- land_nabij_clusters_opp$raster
+
+rm(land_nabij_clusters_max, land_nabij_clusters_opp)
+```
+
+```{r ruime omgeving}
+# ==============================================================================
+# BEREIDING RUIME OMGEVING & ZUIVERE PERCENTAGE-CHECK (>40% BOS BINNEN DE PATCH)
+# ==============================================================================
+message("-> Landbiotoop ruime omgeving patches groeperen (50m) en filteren op min. 20 ha...")
+
+# 1. Maak de ruime patches van minimaal 20 ha (200.000 m²)
+land_ruim_clusters <- cluster_filter_compleet(
+  masker       = landbiotoop_bwk_ruim_max,
+  opp_laag     = landbiotoop_bwk_ruim_opp,
+  drempel_m2   = 400000,   
+  dist_m       = 50,       
+  werkelijk    = FALSE      
+)
+
+r_patch_ids <- land_ruim_clusters$clusters
+
+# Failsafe initialisatie van de finale rasters voor de ruime omgeving
+zwarteheidelibel_land_ruim_max <- template_TV * NA
+zwarteheidelibel_land_ruim_opp <- template_TV * NA
+
+if (!all(is.na(terra::values(r_patch_ids, mat=FALSE)))) {
   
-  # 1. Bereken de netto oppervlakte (ha) van elk foerageercluster zelf
-  f_stats <- terra::freq(cl_foerageer)
-  df_stats <- data.frame(ID = f_stats$value, Foerageer_ha = f_stats$count * 0.01)
+  message("-> Zuivere percentage-check uitvoeren: hoeveel % van elke 40 ha patch is bos?")
   
-  # 2. Creëer de 50m invloedszone rondom de foerageerclusters (de 50m zoekbuffer uit LARCH)
-  w_50m <- terra::focalMat(cl_foerageer, 50, type = 'circle')
-  w_50m[w_50m > 0] <- 1
-  cl_foerageer_buf <- terra::focal(cl_foerageer, w = w_50m, fun = "max", na.rm = TRUE)
+  # 2. Bereken de totale oppervlakte (in ha) per unieke patch via de cellSize-helper
+  area_ha_raster <- r_patch_ids * terra::cellSize(r_patch_ids, unit = "ha")
+  totale_opp_per_patch <- terra::zonal(area_ha_raster, r_patch_ids, fun = "sum", na.rm = TRUE)
+  colnames(totale_opp_per_patch) <- c("Patch_ID", "Totaal_ha")
   
-  # 3. Tel hoeveel reëel struweel/bos er binnen deze 50m zone van elk cluster ligt
-  # We meten dit op het OPP (fractie) raster van struweel voor maximale precisie
-  struweel_in_zone <- terra::mask(struweel1_opp, cl_foerageer_buf)
-  zonal_struweel <- terra::zonal(struweel_in_zone, cl_foerageer_buf, fun = "sum", na.rm = TRUE)
-  colnames(zonal_struweel) <- c("ID", "Struweel_Fractie_Sum")
-  zonal_struweel$Struweel_ha <- zonal_struweel$Struweel_Fractie_Sum * 0.01
+  # 3. Bereken hoeveel bos (fractie) er binnen elke unieke patch ligt
+  bos_opp_raster <- terra::mask(landbiotoop_bwk_ruim_bos_opp, r_patch_ids)
+  bos_ha_raster  <- bos_opp_raster * terra::cellSize(bos_opp_raster, unit = "ha")
+  
+  bos_opp_per_patch <- terra::zonal(bos_ha_raster, r_patch_ids, fun = "sum", na.rm = TRUE)
+  colnames(bos_opp_per_patch) <- c("Patch_ID", "Bos_ha")
   
   # 4. Koppel de data en bereken het zuivere percentage
-  df_criteria <- merge(df_stats, zonal_struweel, by = "ID", all.x = TRUE)
-  df_criteria[is.na(df_criteria)] <- 0
-  df_criteria$Percentage_Struweel <- (df_criteria$Struweel_ha / df_criteria$Foerageer_ha) * 100
+  patch_stats <- merge(totale_opp_per_patch, bos_opp_per_patch, by = "Patch_ID", all.x = TRUE)
+  patch_stats$Bos_ha[is.na(patch_stats$Bos_ha)] <- 0
+  patch_stats$Percentage_Bos <- (patch_stats$Bos_ha / patch_stats$Totaal_ha) * 100
   
-  # 5. DUBBELE CRITERIA EVALUATIE: 
-  # Het foerageercluster moet >= 50 ha zijn EN het aandeel struweel binnen 50m moet >= 70% zijn!
-  goedgekeurde_foerageer_ids <- df_criteria$ID[df_criteria$Foerageer_ha >= 50 & 
-                                                df_criteria$Percentage_Struweel >= 70]
+  # 5. Selecteer alleen de Patch-ID's die écht aan de >40% bos-eis voldoen
+  goedgekeurde_patch_ids <- patch_stats$Patch_ID[patch_stats$Percentage_Bos >= 40]
   
-  if (length(goedgekeurde_foerageer_ids) > 0) {
-    message("   [OK] Aantal clusters dat voldoet aan de 70% struweeleis: ", length(goedgekeurde_foerageer_ids))
-    masker_foerageer_bin <- cl_foerageer %in% goedgekeurde_foerageer_ids
+  if (length(goedgekeurde_patch_ids) > 0) {
+    message(paste("->", length(goedgekeurde_patch_ids), "patches voldoen aan de >40% bos-eis."))
     
-    # CRUCIALE ECO-FIX: We filteren de open foerageer-omgeving eruit!
-    # Als landbiotoop behouden we uitsluitend het werkelijke struweel/bos binnen de goedgekeurde netwerken.
-    witsnuit_foerageer_finaal_max <- terra::mask(struweel1_max, terra::ifel(masker_foerageer_bin == 1, 1, NA))
-    witsnuit_foerageer_finaal_opp <- terra::mask(struweel1_opp, witsnuit_foerageer_finaal_max)
+    # Filter het binaire en het oppervlakte-raster op basis van de goedgekeurde ID's
+    zwarteheidelibel_land_ruim_max <- terra::ifel(r_patch_ids %in% goedgekeurde_patch_ids, 1, NA)
+    zwarteheidelibel_land_ruim_opp <- terra::mask(land_ruim_clusters$raster, zwarteheidelibel_land_ruim_max)
   } else {
-    message("⚠️ Waarschuwing: Geen enkel foerageercluster voldoet aan de 70% mozaïek-eis.")
+    message("⚠️ Waarschuwing: Geen enkele ruime patch haalt het minimum van 40% bos.")
   }
-  
-  rm(f_stats, df_stats, cl_foerageer_buf, struweel_in_zone, zonal_struweel, df_criteria, goedgekeurde_foerageer_ids, w_50m)
 }
 
-cat("Oppervlakte functioneel beschuttingshabitat (struweel/bos):", calc_ha_exact(witsnuit_foerageer_finaal_max), "ha\n")
-
-rm(foerageer_buffered, cl_foerageer, foerageer0_max, foerageer0_notbwk_opp, struweel1_max, struweel1_opp)
+rm(land_ruim_clusters, r_patch_ids, area_ha_raster, totale_opp_per_patch, bos_opp_raster, bos_ha_raster, bos_opp_per_patch, patch_stats)
 gc()
 ```
 
-```{r Ruimtelijke Relatie en Dispersie}
-message("=== STAP 4: Ruimtelijke relatie tussen water en foerageergebied controleren (800m) ===")
+```{r finale interactie en samensmelting zwarteheidelibel}
+# ==============================================================================
+# COMBINATIE 2: INTERACTIE WATER EN NABIJ LANDBIOTOOP (20 METER)
+# ==============================================================================
+message("-> Water- en nabije landbiotopen aan elkaar koppelen binnen een straal van 20m...")
 
-# Initialiseer de objecten vooraf als blanco
-witsnuit_water_relatie_max <- template_TV * NA
-witsnuit_foer_relatie_max  <- template_TV * NA
+# 1. Maak de buffers van 20 meter rondom de twee biologische kernen
+water_buffer_20m <- terra::buffer(waterbiotoop_clusters_max$raster, width = 20)
+land_buffer_20m  <- terra::buffer(zwarteheidelibel_land_nabij_max, width = 20)
 
-if (!all(is.na(terra::values(witsnuit_water_finaal_max, mat=FALSE))) && 
-    !all(is.na(terra::values(witsnuit_foerageer_finaal_max, mat=FALSE)))) {
-  
-  # Bereken de binaire 800m invloedszones
-  water_buffer_800m <- terra::distance(witsnuit_water_finaal_max) <= 800
-  foer_buffer_800m  <- terra::distance(witsnuit_foerageer_finaal_max) <= 800
-  
-  # Filter de elementen die binnen elkaars invloedszone liggen
-  witsnuit_water_relatie_max <- terra::mask(witsnuit_water_finaal_max, foer_buffer_800m, maskvalues = FALSE)
-  witsnuit_foer_relatie_max  <- terra::mask(witsnuit_foerageer_finaal_max, water_buffer_800m, maskvalues = FALSE)
-  
-  rm(water_buffer_800m, foer_buffer_800m)
-}
+waterbiotoop2_max <- terra::mask(waterbiotoop_clusters_max$raster, land_buffer_20m)
+waterbiotoop2_opp <- terra::mask(waterbiotoop_clusters_opp$raster, land_buffer_20m)
 
-# Parallelle fractionele inrichting
-witsnuit_water_relatie_opp <- terra::mask(witsnuit_water_finaal_opp, witsnuit_water_relatie_max)
-witsnuit_foer_relatie_opp  <- terra::mask(witsnuit_foerageer_finaal_opp, witsnuit_foer_relatie_max)
+landbiotoop2_max  <- terra::mask(zwarteheidelibel_land_nabij_max, water_buffer_20m)
+landbiotoop2_opp  <- terra::mask(zwarteheidelibel_land_nabij_opp, water_buffer_20m)
 
-rm(witsnuit_water_finaal_max, witsnuit_water_finaal_opp, witsnuit_foerageer_finaal_max, witsnuit_foerageer_finaal_opp)
-gc()
+rm(water_buffer_20m, land_buffer_20m)
+
+# ==============================================================================
+# COMBINATIE 3: FINALE FILTERING OP RUIME OMGEVING (500M) EN SAMENSMELTING
+# ==============================================================================
+message("-> Ruime omgevingsfactor (>40% bos-complex binnen 500m) toepassen...")
+
+# Maak de buffers voor de finale ruimtelijke checks (500 meter conform het model)
+ruim_land_buffer_500m <- terra::buffer(zwarteheidelibel_land_ruim_max, width = 500)
+water2_buffer_500m    <- terra::buffer(waterbiotoop2_max, width = 500)
+
+# Finaal waterbiotoop: Moet binnen 500m van een geschikte ruime patch liggen
+zwarteheidelibel_waterbiotoop_max <- terra::mask(waterbiotoop2_max, ruim_land_buffer_500m)
+zwarteheidelibel_waterbiotoop_opp <- terra::mask(waterbiotoop2_opp, ruim_land_buffer_500m)
+
+# --- CRUCIALE ECO-FIX: GEBRUIK NABIJ LAND IN PLAATS VAN RUIM LAND ---
+# Finaal landbiotoop: Moet binnen 500m liggen van het goedgekeurde water complex.
+# We baseren dit nu op 'landbiotoop2_max' (5 ha nabij landbiotoop) en NIET op de ruime omgeving!
+zwarteheidelibel_landbiotoop_max <- terra::mask(landbiotoop2_max, ruim_land_buffer_500m)
+zwarteheidelibel_landbiotoop_opp <- terra::mask(landbiotoop2_opp, ruim_land_buffer_500m)
+
+# Extra controle: Het goedgekeurde landbiotoop moet uiteraard ook binnen de waterbuffer liggen
+zwarteheidelibel_landbiotoop_max <- terra::mask(zwarteheidelibel_landbiotoop_max, water2_buffer_500m)
+zwarteheidelibel_landbiotoop_opp <- terra::mask(zwarteheidelibel_landbiotoop_opp, water2_buffer_500m)
+
+rm(ruim_land_buffer_500m, water2_buffer_500m, waterbiotoop2_max, waterbiotoop2_opp, landbiotoop2_max, landbiotoop2_opp)
+
+# ==============================================================================
+# HET FINALE LEEFGEBIED (WATER + LAND COUPLING) - NU ZONDER RUIME OMGEVINGPIXELS!
+# ==============================================================================
+message("-> Water en land combineren tot finaal leefgebied...")
+
+# MAX-spoor: Logische OF
+zwarteheidelibel_leefgebied_max <- terra::ifel(!is.na(zwarteheidelibel_waterbiotoop_max) | 
+                                               !is.na(zwarteheidelibel_landbiotoop_max), 1, NA)
+
+# OPP-spoor: Tel de deelfracties netjes op (tot max 100% / 1.0 per cel)
+zwarteheidelibel_leefgebied_opp <- terra::app(
+  terra::sds(
+    terra::ifel(is.na(zwarteheidelibel_waterbiotoop_opp), 0, zwarteheidelibel_waterbiotoop_opp),
+    terra::ifel(is.na(zwarteheidelibel_landbiotoop_opp), 0, zwarteheidelibel_landbiotoop_opp)
+  ),
+  fun = function(x) pmin(sum(x, na.rm = TRUE), 1)
+)
+
+zwarteheidelibel_leefgebied_opp <- terra::ifel(zwarteheidelibel_leefgebied_opp == 0, NA, zwarteheidelibel_leefgebied_opp)
+
+# Croppen naar het studiegebied template
+zwarteheidelibel_leefgebied_max <- terra::crop(zwarteheidelibel_leefgebied_max, template_TV)
+zwarteheidelibel_leefgebied_opp <- terra::crop(zwarteheidelibel_leefgebied_opp, template_TV)
 ```
 
-```{r Finaal Leefgebied en Einddrempel}
-message("=== STAP 5: Finaal leefgebied complex samenstellen en filteren op 35 hectare ===")
-
-drempel_35ha_m2 <- 35 * 10000
-
-# 1. Combineer water en het geselecteerde struweelbiotoop (Binaire OR)
-witsnuit_leefgebied1_max <- witsnuit_water_relatie_max | witsnuit_foer_relatie_max
-witsnuit_leefgebied1_max <- terra::ifel(witsnuit_leefgebied1_max == 1, 1, NA)
-
-# 2. Parallelle fractionele optelsom (Spoor 2)
-water_frac_clean <- terra::ifel(is.na(witsnuit_water_relatie_opp), 0, witsnuit_water_relatie_opp)
-foer_frac_clean  <- terra::ifel(is.na(witsnuit_foer_relatie_opp), 0, witsnuit_foer_relatie_opp)
-som_fracties     <- water_frac_clean + foer_frac_clean
-som_gemedieerd   <- terra::clamp(som_fracties, upper = 1.0)
-witsnuit_leefgebied1_opp <- terra::mask(som_gemedieerd, witsnuit_leefgebied1_max)
-
-# 3. FINALE CLUSTERING OP 35 HECTARE
-leefgebied_buffered   <- terra::buffer(witsnuit_leefgebied1_max, width = 25)
-r_leefgebied_clusters <- terra::patches(leefgebied_buffered, directions = 8)
-r_scherpe_clusters    <- terra::mask(r_leefgebied_clusters, witsnuit_leefgebied1_max)
-
-# Bereken oppervlakte van de netwerkwolken
-cluster_freq <- terra::freq(r_scherpe_clusters)
-cluster_freq$area_ha <- cluster_freq$count * 0.01
-goedgekeurde_cluster_ids <- cluster_freq$value[cluster_freq$area_ha >= 35]
-
-if (length(goedgekeurde_cluster_ids) > 0) {
-  sierlijkewitsnuitlibel_leefgebied_max <- r_scherpe_clusters %in% goedgekeurde_cluster_ids
-  sierlijkewitsnuitlibel_leefgebied_max <- terra::ifel(sierlijkewitsnuitlibel_leefgebied_max == 1, 1, NA)
-  
-  sierlijkewitsnuitlibel_leefgebied_opp <- terra::mask(witsnuit_leefgebied1_opp, sierlijkewitsnuitlibel_leefgebied_max)
-} else {
-  message("⚠️ Waarschuwing: Geen enkel leefgebied-cluster voldoet aan de minimale grootte van 35 ha.")
-  sierlijkewitsnuitlibel_leefgebied_max <- template_TV * NA
-  sierlijkewitsnuitlibel_leefgebied_opp <- template_TV * NA
-}
-
-# Universele overdracht
-sierlijkewitsnuitlibel_finaal_max <- sierlijkewitsnuitlibel_leefgebied_max
-sierlijkewitsnuitlibel_finaal_opp <- sierlijkewitsnuitlibel_leefgebied_opp
-
-# --- EINDOUTPUT REPORTING ---
-cat("\n==================================================\n")
-cat("    DEFINITIEVE RESULTATEN SIERLIJKE WITSNUITLIBEL \n")
-cat("==================================================\n")
-cat("Finaal Leefgebied Spoor 1 (Max Potentie):  ", calc_ha_exact(sierlijkewitsnuitlibel_leefgebied_max), "ha\n")
-cat("Finaal Leefgebied Spoor 2 (Werkelijke Opp): ", calc_ha_exact(sierlijkewitsnuitlibel_leefgebied_opp), "ha\n")
-cat("==================================================\n")
-
-# CLEANUP FIX: Verwijder de objecten die daadwerkelijk in het RAM-geheugen zitten
-rm(witsnuit_water_relatie_max, witsnuit_foer_relatie_max, witsnuit_water_relatie_opp, witsnuit_foer_relatie_opp,
-   witsnuit_leefgebied1_max, witsnuit_leefgebied1_opp, water_frac_clean, foer_frac_clean, som_fracties, som_gemedieerd,
-   leefgebied_buffered, r_leefgebied_clusters, r_scherpe_clusters, cluster_freq, goedgekeurde_cluster_ids)
-gc()
-```
-
-```{r waarnemingen inlezen en ARPL sierlijkewitsnuitlibel}
+```{r waarnemingen inlezen en ARPL zwarteheidelibel}
 # ==============================================================================
 # STAP 6: ACTUELE VERSPREIDING & ARPL OP BASIS VAN WERKLIJKE OPPERVLAKTES (OPP)
 # ==============================================================================
-message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor sierlijkewitsnuitlibel...")
+message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor zwarteheidelibel...")
 
 # CORRECTIE NAAMGEVING: Synchroniseren met de exacte namen uit Stap 5!
-finaal_max_binair <- sierlijkewitsnuitlibel_finaal_max
-finaal_opp_binair <- sierlijkewitsnuitlibel_finaal_opp
+finaal_max_binair <- zwarteheidelibel_leefgebied_max
+finaal_opp_binair <- zwarteheidelibel_leefgebied_opp
 
-# 1. Pad naar het waarnemingsbestand van de sierlijkewitsnuitlibel
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_SierlijkeWitsnuitlibel.csv")
+# 1. Pad naar het waarnemingsbestand van de zwarteheidelibel
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_ZwarteHeidelibel.csv")
 
 # 2. Inlezen van waarnemingen
 if (file.exists(waarnemingen_path)) {
@@ -602,8 +494,8 @@ if (file.exists(waarnemingen_path)) {
 }
 
 # Initialiseer finale rasters
-sierlijkewitsnuitlibel_arpl_opp        <- terra::rast(template_TV, vals = NA)
-sierlijkewitsnuitlibel_verspr_opp      <- terra::rast(template_TV, vals = NA)
+zwarteheidelibel_arpl_opp        <- terra::rast(template_TV, vals = NA)
+zwarteheidelibel_verspr_opp      <- terra::rast(template_TV, vals = NA)
 
 # Metrics initialisatie
 ids_binnen <- ids_buiten <- ids_actueel_relevant <- c()
@@ -642,8 +534,8 @@ if (!all(is.na(terra::values(finaal_max_binair, mat=FALSE)))) {
   if(length(ids_actueel_relevant) > 0) {
     m_arpl <- r_opp_net_ids %in% ids_actueel_relevant
     m_arpl_tv <- terra::crop(terra::ifel(m_arpl == 1, 1, NA), template_TV)
-    sierlijkewitsnuitlibel_arpl_opp <- terra::mask(terra::crop(finaal_opp_binair, template_TV), m_arpl_tv)
-    ha_arpl_opp <- calc_ha_exact(sierlijkewitsnuitlibel_arpl_opp)
+    zwarteheidelibel_arpl_opp <- terra::mask(terra::crop(finaal_opp_binair, template_TV), m_arpl_tv)
+    ha_arpl_opp <- calc_ha_exact(zwarteheidelibel_arpl_opp)
     arpl_netwerk_count <- length(ids_actueel_relevant)
   }
   
@@ -658,7 +550,7 @@ if (!all(is.na(terra::values(finaal_max_binair, mat=FALSE)))) {
     m_verspr <- r_opp_net_ids %in% ids_verspreiding_clusters
     m_verspr_tv <- terra::crop(terra::ifel(m_verspr == 1, 1, NA), template_TV)
     clusters_actueel_tv <- terra::crop(terra::mask(finaal_opp_binair, m_verspr_tv), template_TV)
-    sierlijkewitsnuitlibel_verspr_opp <- terra::ifel(!is.na(clusters_actueel_tv) & clusters_actueel_tv > 0, 1, NA)
+    zwarteheidelibel_verspr_opp <- terra::ifel(!is.na(clusters_actueel_tv) & clusters_actueel_tv > 0, 1, NA)
     ha_vers_opp <- calc_ha_exact(clusters_actueel_tv)
     verspreiding_netwerk_count <- length(ids_verspreiding_clusters)
   }
@@ -720,13 +612,13 @@ tabel_totaal %>%
   kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
-```{r Interactieve kaart sierlijkewitsnuitlibel}
+```{r Interactieve kaart zwarteheidelibel}
 # ==============================================================================
 # STAP 8: INTERACTIEVE KAART (LEAFLET) - MET APARTE BLAUWE WATERBIOTOOPLAAG
 # ==============================================================================
 if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE)))) {
   
-  message("-> Clusterstatistieken en polygonen genereren voor sierlijkewitsnuitlibel...")
+  message("-> Clusterstatistieken en polygonen genereren voor zwarteheidelibel...")
   
   # 1. Netwerkwolken polygonen (Basis leefgebied)
   cl_poly <- terra::as.polygons(r_net_ids_tv, aggregate = TRUE) %>% 
@@ -741,7 +633,7 @@ if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE))
       Popup = paste0(
         "<div style='font-family: Arial; min-width: 220px;'>",
         "<strong>Netwerk Complex ID:</strong> ", Netwerk_ID, "<br>",
-        "<strong>Soort:</strong> sierlijkewitsnuitlibel<br><hr>",
+        "<strong>Soort:</strong> zwarteheidelibel<br><hr>",
         "<strong>Status:</strong> ", Type, "<br>",
         "</div>"
       )
@@ -854,11 +746,11 @@ map %>%
   )
 ```
 
-```{r export sierlijkewitsnuitlibel}
+```{r export zwarteheidelibel}
 # ==============================================================================
-# STAP 7: EXPORT MET KOGELVRIJE NUL-OPVULLING EN SCHRIJFACTIE VOOR sierlijkewitsnuitlibel
+# STAP 7: EXPORT MET KOGELVRIJE NUL-OPVULLING EN SCHRIJFACTIE VOOR zwarteheidelibel
 # ==============================================================================
-message("-> Start geformatteerde export met nul-opvulling voor sierlijkewitsnuitlibel...")
+message("-> Start geformatteerde export met nul-opvulling voor zwarteheidelibel...")
 
 base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
 folders <- list(
@@ -884,15 +776,15 @@ if(!all(is.na(terra::values(finaal_opp_binair, mat=FALSE)))) {
 }
 
 # 3. ARPL (Gebaseerd op OPP) formatteren naar 1/NA
-if(exists("sierlijkewitsnuitlibel_arpl_opp") && !all(is.na(terra::values(sierlijkewitsnuitlibel_arpl_opp, mat=FALSE)))) {
-  arpl_export_rast <- terra::ifel(sierlijkewitsnuitlibel_arpl_opp > 0, 1, NA)
+if(exists("zwarteheidelibel_arpl_opp") && !all(is.na(terra::values(zwarteheidelibel_arpl_opp, mat=FALSE)))) {
+  arpl_export_rast <- terra::ifel(zwarteheidelibel_arpl_opp > 0, 1, NA)
 } else {
   arpl_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
 # 4. Actuele Verspreiding (Gebaseerd op OPP) formatteren naar 1/NA
-if(exists("sierlijkewitsnuitlibel_verspr_opp") && !all(is.na(terra::values(sierlijkewitsnuitlibel_verspr_opp, mat=FALSE)))) {
-  verspreiding_export_rast <- terra::ifel(sierlijkewitsnuitlibel_verspr_opp > 0, 1, NA)
+if(exists("zwarteheidelibel_verspr_opp") && !all(is.na(terra::values(zwarteheidelibel_verspr_opp, mat=FALSE)))) {
+  verspreiding_export_rast <- terra::ifel(zwarteheidelibel_verspr_opp > 0, 1, NA)
 } else {
   verspreiding_export_rast <- terra::rast(template_TV, vals = NA)
 }

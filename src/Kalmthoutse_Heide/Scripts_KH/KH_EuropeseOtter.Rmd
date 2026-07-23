@@ -188,7 +188,7 @@ tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
 lijst_matches      <- list()
 lijst_oppervlaktes <- list()
 
-# 3. VERWERK ELK HABITAT-TYPE DYNAMISCH VIA DATA.TABLE
+# 3. VERWERK ELK HABITAT-TYPE DYNAMISCH EN GEHEUGENZUINIG
 for(i in 1:nrow(resultaten_gegroepeerd)) {
   h_type <- resultaten_gegroepeerd$Type[i]
   h_data <- resultaten_gegroepeerd$Data[[i]]
@@ -197,26 +197,18 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   bevat_codes <- tolower(trimws(h_data$Code[h_data$Match == "bevat"]))
   
   if(length(bevat_codes) > 0) {
-    # 1. Ontsnap speciale regex-tekens (zoals haakjes) om syntaxfouten te voorkomen
-    bevat_codes_escaped <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
-    
-    # 2. CRUCIALE FIX: Plak een '^' voor elke individuele code. 
-    # Dit dwingt grepl() om alleen te matchen als de BWK-code BEGINT met deze letters.
+    bevat_codes_escaped  <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
     bevat_codes_anchored <- paste0("^", bevat_codes_escaped)
-    regex_term <- paste0(bevat_codes_anchored, collapse = "|")
+    regex_term           <- paste0(bevat_codes_anchored, collapse = "|")
     
-    # Filteren: EXACT-matches (geen letters voor/na) OF codes die BEGINNEN met de bevat-termen
     tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes | grepl(regex_term, CODE)]
   } else {
     tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes]
   }
   
   # Filter op studiegebied
-  tabel_KH <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
+  tabel_KH      <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
   tabel_cel_som <- tabel_KH[, .(Oppervlakte = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
-  
-  r_match_type <- id_raster_KH * NA
-  r_opp_type   <- id_raster_KH * NA
   
   if(nrow(tabel_cel_som) > 0) {
     tabel_cel_som[, Oppervlakte := pmin(Oppervlakte, 1)]
@@ -227,11 +219,20 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
     tabel_finaal_mapping <- tabel_finaal_mapping[!is.na(lokale_id)]
     
     if(nrow(tabel_finaal_mapping) > 0) {
+      
+      # ROBUUSTE & GEHEUGENZUINIGE METHODE:
+      # Maak lege basabrasters aan
+      r_match_type <- template_KH * NA
+      r_opp_type   <- template_KH * NA
+      
+      # 1. Vul het oppervlakte-raster via snelle vervanging op celindex
+      r_opp_type[tabel_finaal_mapping$lokale_id] <- tabel_finaal_mapping$Oppervlakte
+      
+      # 2. Vul het match-raster voor cellen die aan de drempel voldoen
       tabel_matches_clean <- tabel_finaal_mapping[Match == 1]
       if(nrow(tabel_matches_clean) > 0) {
         r_match_type[tabel_matches_clean$lokale_id] <- tabel_matches_clean$Match
       }
-      r_opp_type[tabel_finaal_mapping$lokale_id] <- tabel_finaal_mapping$Oppervlakte
       
       # Sla de gegenereerde rasters op
       lijst_matches[[h_type]]      <- r_match_type
@@ -240,28 +241,18 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   }
 }
 
-# Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
-d_max <- lijst_matches[["d"]]
-d_opp <- lijst_oppervlaktes[["d"]]
-h_max <- lijst_matches[["h"]]
-h_opp <- lijst_oppervlaktes[["h"]]
-k_max <- lijst_matches[["k"]]
-k_opp <- lijst_oppervlaktes[["k"]]
-m_max <- lijst_matches[["m"]]
-m_opp <- lijst_oppervlaktes[["m"]]
-r_max <- lijst_matches[["r"]]
-r_opp <- lijst_oppervlaktes[["r"]]
-s_max <- lijst_matches[["s"]]
-s_opp <- lijst_oppervlaktes[["s"]]
-t_max <- lijst_matches[["t"]]
-t_opp <- lijst_oppervlaktes[["t"]]
-v_max <- lijst_matches[["v"]]
-v_opp <- lijst_oppervlaktes[["v"]]
+# Uitpakken naar de exacte losse variabelen
+d_max <- lijst_matches[["d"]]; d_opp <- lijst_oppervlaktes[["d"]]
+h_max <- lijst_matches[["h"]]; h_opp <- lijst_oppervlaktes[["h"]]
+k_max <- lijst_matches[["k"]]; k_opp <- lijst_oppervlaktes[["k"]]
+m_max <- lijst_matches[["m"]]; m_opp <- lijst_oppervlaktes[["m"]]
+r_max <- lijst_matches[["r"]]; r_opp <- lijst_oppervlaktes[["r"]]
+s_max <- lijst_matches[["s"]]; s_opp <- lijst_oppervlaktes[["s"]]
+t_max <- lijst_matches[["t"]]; t_opp <- lijst_oppervlaktes[["t"]]
+v_max <- lijst_matches[["v"]]; v_opp <- lijst_oppervlaktes[["v"]]
 
-# "d" "h" "k" "m" "r" "s" "t" "v"
-
-# Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
-rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
+# Grote eindschoonmaak
+rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes, tabel_vlaanderen)
 gc()
 ```
 

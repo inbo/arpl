@@ -562,10 +562,12 @@ if(length(valide_mozaiek_ids_max) > 0) {
 # --- SPOOR B: WERKELIJKE OPPERVLAKTE (Reële Fracties) ---
 message("-> Verwerken Spoor B (Reële Fracties met 30% samenstellingscheck)...")
 
-# We gebruiken de goedgekeurde ruimtelijke clusterstructuur van Spoor A om de fracties te maskeren
 if(!all(is.na(terra::values(gevlektewitsnuitlibel_foerageer3_max, mat=FALSE)))) {
-  gevlektewitsnuitlibel_foerageer3_opp <- terra::mask(foerageer0_opp, gevlektewitsnuitlibel_foerageer3_max)
-  gevlektewitsnuitlibel_foerageer3_opp <- terra::crop(gevlektewitsnuitlibel_foerageer3_opp, area_shape_proj, mask = TRUE)
+  # 1. Snijd foerageer0_opp EERST af naar de omvang van het studiegebied
+  foer0_opp_tv <- terra::crop(foerageer0_opp, area_shape_proj, mask = TRUE)
+  
+  # 2. Maskeer nu veilig met het goedgekeurde ruimtelijke masker uit Spoor A
+  gevlektewitsnuitlibel_foerageer3_opp <- terra::mask(foer0_opp_tv, gevlektewitsnuitlibel_foerageer3_max)
 } else {
   gevlektewitsnuitlibel_foerageer3_opp <- template_TV * NA
 }
@@ -715,9 +717,9 @@ cat("=========================================================\n\n")
 
 ```{r Tabel}
 # ==============================================================================
-# DIAGNOSE EN OUTPUT PRINTS (AUDIT VAN DE 800M CLUSTERKOPPELING)
+# DIAGNOSE EN OUTPUT PRINTS (AUDIT VAN DE 500M CLUSTERKOPPELING)
 # ==============================================================================
-cat("\n--- AUDIT: EFFECT VAN DE ECOLOOGSCHE 800M CLUSTERKOPPELING ---\n")
+cat("\n--- AUDIT: EFFECT VAN DE ECOLOOGSCHE 500M CLUSTERKOPPELING ---\n")
 
 # 1. Breng de componenten van VÓÓR de koppeling naar het studiegebied om eerlijk te vergelijken
 vpt_voor_crop  <- terra::crop(gevlektewitsnuitlibel_voortplanting_max, area_shape_proj, mask = TRUE)
@@ -729,9 +731,9 @@ leefgebied_voor_max <- terra::cover(vpt_voor_crop, foer_voor_crop)
 ha_max_voor <- calc_ha_exact(leefgebied_voor_max)
 ha_max_na   <- calc_ha_exact(gevlektewitsnuitlibel_leefgebied_max)
 
-cat("Spoor A (Max Potentie) VOOR 800m koppeling (binnen TV):", round(ha_max_voor, 2), "ha\n")
-cat("Spoor A (Max Potentie) NA 800m koppeling (binnen TV):  ", round(ha_max_na, 2), "ha\n")
-cat("-> Netto afgevallen habitat door 800m grens (Spoor A):   ", round(ha_max_voor - ha_max_na, 2), "ha\n\n")
+cat("Spoor A (Max Potentie) VOOR 500m koppeling (binnen TV):", round(ha_max_voor, 2), "ha\n")
+cat("Spoor A (Max Potentie) NA 500m koppeling (binnen TV):  ", round(ha_max_na, 2), "ha\n")
+cat("-> Netto afgevallen habitat door 500m grens (Spoor A):   ", round(ha_max_voor - ha_max_na, 2), "ha\n\n")
 
 
 # 2. Spoor B (Werkelijke Oppervlakte)
@@ -743,9 +745,9 @@ leefgebied_voor_opp <- terra::cover(vpt_voor_opp_crop, foer_voor_opp_crop)
 ha_opp_voor <- calc_ha_exact(leefgebied_voor_opp)
 ha_opp_na   <- calc_ha_exact(gevlektewitsnuitlibel_leefgebied_opp)
 
-cat("Spoor B (Werkelijke Opp) VOOR 800m koppeling (binnen TV):", round(ha_opp_voor, 2), "ha\n")
-cat("Spoor B (Werkelijke Opp) NA 800m koppeling (binnen TV):  ", round(ha_opp_na, 2), "ha\n")
-cat("-> Netto afgevallen habitat door 800m grens (Spoor B):   ", round(ha_opp_voor - ha_opp_na, 2), "ha\n")
+cat("Spoor B (Werkelijke Opp) VOOR 500m koppeling (binnen TV):", round(ha_opp_voor, 2), "ha\n")
+cat("Spoor B (Werkelijke Opp) NA 500m koppeling (binnen TV):  ", round(ha_opp_na, 2), "ha\n")
+cat("-> Netto afgevallen habitat door 500m grens (Spoor B):   ", round(ha_opp_voor - ha_opp_na, 2), "ha\n")
 
 # GEFIXT: De cruciale model-rasters zijn hier uit de rm() lijst gehaald om crashes in de volgende chunk te voorkomen!
 suppressWarnings(
