@@ -204,6 +204,8 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
 # Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
 voortplanting_bwk_max <- lijst_matches[["voortplanting_bwk"]]
 voortplanting_bwk_opp <- lijst_oppervlaktes[["voortplanting_bwk"]]
+bosranden_max <- lijst_matches[["bosranden"]]
+bosranden_opp <- lijst_oppervlaktes[["bosranden"]]
 water_bwk_max <- lijst_matches[["Waterbwk"]]
 water_bwk_opp <- lijst_oppervlaktes[["Waterbwk"]]
 foerageer_bwk_max <- lijst_matches[["foerageer_bwk"]]

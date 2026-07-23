@@ -2,7 +2,7 @@ vlaanderen_20m.asc
 
 // baken de eiafzetgebieden af
 
-assign(bruineeikenpage_eiafzet_bwk, bwk(cmb%, cgb%, hab%, hrb%, pa%, pi%, pmb%, pmh%, pms%, ppmb%, ppmh%, ppms%, ppa%, ppi%, qb%, 9120%, qe%, se%))
+assign(bruineeikenpage_eiafzet_bwk, bwk(cmb%, cgb%, hab%, hrb%), pa%, pi%, pmb%, pmh%, pms%, ppmb%, ppmh%, ppms%, ppa%, ppi%, qb%, 9120%, qe%, se%))
 
 // voortplantingsplekken moeten minstens 10 ha groot zijn
 
@@ -30,7 +30,7 @@ deleteVariable(bruineeikenpage_eiafzet)
 
 // baken de nectargebieden af
 
-assign(bruineeikenpage_nectar_bwk, bwk(cd%, 2310%, 4030%, ce%, 4010%, 7150%, cg%, cm%, ha%, 2330%, 6230_ha%, pmb, ppmb, rbbppm%))
+assign(bruineeikenpage_nectar_bwk, bwk(cd%, 2310%, 4030%, ce%, 4010%, 7150%, cg%, cm%, ha%, 2330%, 6230_ha%), pmb, ppmb, rbbppm%))
 
 // nectarplekken moeten minstens 10 ha groot zijn
 

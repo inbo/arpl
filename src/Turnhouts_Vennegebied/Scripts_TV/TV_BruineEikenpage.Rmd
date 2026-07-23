@@ -220,6 +220,8 @@ eiafzet_max <- lijst_matches[["eiafzet_bwk"]]
 eiafzet_opp <- lijst_oppervlaktes[["eiafzet_bwk"]]
 eiafzet_lin_max <- lijst_matches[["eiafzet_lineair"]]
 eiafzet_lin_opp <- lijst_oppervlaktes[["eiafzet_lineair"]]
+bosranden_max <- lijst_matches[["bosranden"]]
+bosranden_opp <- lijst_oppervlaktes[["bosranden"]]
 nectar_max <- lijst_matches[["nectar_bwk"]]
 nectar_opp <- lijst_oppervlaktes[["nectar_bwk"]]
 
@@ -270,63 +272,126 @@ res_max <- cluster_filter_compleet(eiafzet_max, eiafzet_opp, drempel_m2, afstand
 res_opp <- cluster_filter_compleet(eiafzet_max, eiafzet_opp, drempel_m2, afstand_m, werkelijk = TRUE)
 ```
 
-```{r combinatie eiafzet}
-message("-> Combineren van BWK eiafzet en lineaire eiafzet via optelling (capped op 1)...")
+```{r combinatie eiafzet en bosranden}
+message("-> Stap 1: Eiafzet basislagen (BWK + lineair) samenvoegen...")
 
-# Haal de gefilterde rasters RECHTSTREEKS uit de resultaat-lijsten
-ei_bwk_filter_max <- res_max$raster
-ei_bwk_filter_opp <- res_opp$raster
-
-# --- SPOOR A: MAXIMALE POTENTIE (Binair: 1 of NA) ---
-if (!is.null(ei_bwk_filter_max) && !is.null(eiafzet_lin_max)) {
-  ei_combo_max <- terra::cover(ei_bwk_filter_max, eiafzet_lin_max)
-} else {
-  ei_combo_max <- terra::cover(ei_bwk_filter_max, template_TV)
-}
-
-# --- SPOOR B: WERKELIJKE OPPERVLAKTE (FRACTIES OPTELLEN) ---
-ei_bwk_nul <- terra::ifel(is.na(ei_bwk_filter_opp), 0, ei_bwk_filter_opp)
+# --- A. BASISEIAFZET COMBINEREN ---
+ei_bwk_nul <- terra::ifel(is.na(eiafzet_opp), 0, eiafzet_opp)
 ei_lin_nul <- terra::ifel(is.na(eiafzet_lin_opp), 0, eiafzet_lin_opp)
 
-# Tel de fracties cel-voor-cel bij elkaar op
-ei_som <- ei_bwk_nul + ei_lin_nul
+ei_basis_max <- terra::cover(eiafzet_max, eiafzet_lin_max)
+ei_basis_opp <- terra::clamp(ei_bwk_nul + ei_lin_nul, upper = 1)
+ei_basis_opp <- terra::ifel(ei_basis_opp == 0, NA, ei_basis_opp)
 
-# Zorg dat de waarde nooit groter kan worden dan 1 (100% van de pixel)
-ei_combo_opp <- terra::clamp(ei_som, upper = 1)
-ei_combo_opp <- terra::ifel(ei_combo_opp == 0, NA, ei_combo_opp)
+# --- B. BOSRANDEN FILTEREN (MAX 20M VAN EIAFZET) ---
+message("-> Stap 2: Bosranden beperken tot max 20m afstand van eiafzet...")
 
-# Geef de gecombineerde rasters een heldere naam
-names(ei_combo_max) <- "Ei_Combo_Max"
-names(ei_combo_opp) <- "Ei_Combo_Opp"
+if (terra::hasValues(ei_basis_max) && terra::global(ei_basis_max, "notNA")$notNA > 0 &&
+    terra::hasValues(bosranden_max) && terra::global(bosranden_max, "notNA")$notNA > 0) {
+  
+  # Afstand berekenen vanaf de basiseiafzet
+  dist_naar_eiafzet <- terra::distance(ei_basis_max)
+  zone_20m <- terra::ifel(dist_naar_eiafzet <= 20, 1, NA)
+  
+  # Bosranden afsnijden op 20m zone
+  bosranden_20m_max <- terra::mask(bosranden_max, zone_20m)
+  bosranden_20m_opp <- terra::mask(bosranden_opp, zone_20m)
+  
+} else {
+  bosranden_20m_max <- template_TV
+  bosranden_20m_opp <- template_TV
+}
 
-# ==============================================================================
-# CRUCIALE FIX: Genereer de cluster-ID rasters voor de gecombineerde eiafzet!
-# ==============================================================================
-message("-> Berekenen van gecombineerde eiafzet-clusters...")
+# --- C. TOTAAL EIAFZET-COMPLEX OPBOUWEN (EIAFZET + 20M BOSRANDEN) ---
+message("-> Stap 3: Samenvoegen tot één gecombineerde eiafzet-laag...")
 
-# Net zoals in je cluster_filter_compleet functie, overbruggen we de afstand_m via een buffer
-temp_mask_combo <- ei_combo_max
-if(afstand_m > 0) temp_mask_combo <- terra::buffer(ei_combo_max, width = afstand_m / 2)
+ei_combo_raw_max <- terra::cover(ei_basis_max, bosranden_20m_max)
 
-# Genereer de unieke cluster-ID's en maskeer ze terug naar de juiste voetafdruk
-cl_max <- terra::patches(temp_mask_combo, directions = 8, zeroAsNA = TRUE) %>% terra::mask(ei_combo_max)
+# Fracties optellen voor de werkelijke oppervlakte
+ei_basis_nul    <- terra::ifel(is.na(ei_basis_opp), 0, ei_basis_opp)
+bosrand_20m_nul <- terra::ifel(is.na(bosranden_20m_opp), 0, bosranden_20m_opp)
 
-# Doe hetzelfde voor het werkelijke spoor
-temp_mask_combo_opp <- terra::ifel(ei_combo_opp > 0, 1, NA)
-if(afstand_m > 0) temp_mask_combo_opp <- terra::buffer(temp_mask_combo_opp, width = afstand_m / 2)
-cl_opp <- terra::patches(temp_mask_combo_opp, directions = 8, zeroAsNA = TRUE) %>% terra::mask(ei_combo_opp)
+ei_combo_raw_opp <- terra::clamp(ei_basis_nul + bosrand_20m_nul, upper = 1)
+ei_combo_raw_opp <- terra::ifel(ei_combo_raw_opp == 0, NA, ei_combo_raw_opp)
+
+# --- D. DE 5 HA CLUSTER-FILTER TOEPASSEN OP HET EIAFZET-COMPLEX ---
+message("-> Stap 4: 5 ha clusterfilter toepassen op het gecombineerde eiafzet-complex...")
+
+drempel_m2 <- oppervlakte_ha * 10000
+
+res_ei_max <- cluster_filter_compleet(ei_combo_raw_max, ei_combo_raw_opp, drempel_m2, afstand_m, werkelijk = FALSE)
+res_ei_opp <- cluster_filter_compleet(ei_combo_raw_max, ei_combo_raw_opp, drempel_m2, afstand_m, werkelijk = TRUE)
+
+ei_combo_max <- res_ei_max$raster
+ei_combo_opp <- res_ei_opp$raster
+cl_max       <- res_ei_max$clusters
+cl_opp       <- res_ei_opp$clusters
 ```
 
-```{r nectarclusters}
-# Voer het filter uit en sla het op in een unieke resultaat-lijst (res_nectar_max)
-res_nectar_max <- cluster_filter_compleet(nectar_max, nectar_opp, drempel_m2, afstand_m, werkelijk = FALSE)
-res_nectar_opp <- cluster_filter_compleet(nectar_max, nectar_opp, drempel_m2, afstand_m, werkelijk = TRUE)
+```{r nectarclusters en afstandsfilter}
+message("-> NECTAR: Samenvoegen met 20m bosranden & 5 ha filter toepassen...")
 
-# Pak daarna pas de schone rasters uit de lijst
+# --- A. BOSRANDEN FILTEREN (MAX 20M VAN NECTAR) ---
+if (terra::hasValues(nectar_max) && terra::global(nectar_max, "notNA")$notNA > 0 &&
+    terra::hasValues(bosranden_max) && terra::global(bosranden_max, "notNA")$notNA > 0) {
+  
+  dist_naar_nectar_raw <- terra::distance(nectar_max)
+  zone_20m_nec <- terra::ifel(dist_naar_nectar_raw <= 20, 1, NA)
+  
+  bosranden_nec_20m_max <- terra::mask(bosranden_max, zone_20m_nec)
+  bosranden_nec_20m_opp <- terra::mask(bosranden_opp, zone_20m_nec)
+  
+} else {
+  bosranden_nec_20m_max <- template_TV
+  bosranden_nec_20m_opp <- template_TV
+}
+
+# --- B. TOTAAL NECTAR-COMPLEX OPBOUWEN ---
+nectar_combo_raw_max <- terra::cover(nectar_max, bosranden_nec_20m_max)
+
+nectar_basis_nul    <- terra::ifel(is.na(nectar_opp), 0, nectar_opp)
+bosrand_nec_20m_nul <- terra::ifel(is.na(bosranden_nec_20m_opp), 0, bosranden_nec_20m_opp)
+
+nectar_combo_raw_opp <- terra::clamp(nectar_basis_nul + bosrand_nec_20m_nul, upper = 1)
+nectar_combo_raw_opp <- terra::ifel(nectar_combo_raw_opp == 0, NA, nectar_combo_raw_opp)
+
+# --- C. 5 HA CLUSTER-FILTER TOEPASSEN OP NECTAR-COMPLEX ---
+res_nectar_max <- cluster_filter_compleet(nectar_combo_raw_max, nectar_combo_raw_opp, drempel_m2, afstand_m, werkelijk = FALSE)
+res_nectar_opp <- cluster_filter_compleet(nectar_combo_raw_max, nectar_combo_raw_opp, drempel_m2, afstand_m, werkelijk = TRUE)
+
 nectar_filter_max <- res_nectar_max$raster
 nectar_filter_opp <- res_nectar_opp$raster
 cl_nectar_max     <- res_nectar_max$clusters
 cl_nectar_opp     <- res_nectar_opp$clusters
+
+# --- D. WEDERZIJDSE AFSTANDSFILTERS (Eiafzet <250m Nectar, Nectar <500m Eiafzet) ---
+message("-> Wederzijdse afstandsfilters tussen eiafzet- en nectar-complexen berekenen...")
+
+if (terra::hasValues(ei_combo_max) && terra::hasValues(nectar_filter_max) &&
+    terra::global(ei_combo_max, "notNA")$notNA > 0 && 
+    terra::global(nectar_filter_max, "notNA")$notNA > 0) {
+  
+  # Eiafzet-complex moet binnen 250m van gefilterde Nectar liggen
+  dist_naar_nectar_max <- terra::distance(nectar_filter_max)
+  zone_nectar_250m_max <- terra::ifel(dist_naar_nectar_max <= 250, 1, NA)
+  bruineeikenpage_eiafzet_max <- terra::mask(ei_combo_max, zone_nectar_250m_max)
+  
+  # Nectar-complex moet binnen 500m van gefilterde Eiafzet liggen
+  dist_naar_eiafzet_max <- terra::distance(ei_combo_max)
+  zone_eiafzet_500m_max <- terra::ifel(dist_naar_eiafzet_max <= 500, 1, NA)
+  bruineeikenpage_nectar_max  <- terra::mask(nectar_filter_max, zone_eiafzet_500m_max)
+  
+  # Synchroniseer cluster-rasters
+  cl_eiafzet_max <- terra::mask(cl_max, bruineeikenpage_eiafzet_max)
+  cl_nectar_max  <- terra::mask(cl_nectar_max, bruineeikenpage_nectar_max)
+  
+  rm(dist_naar_nectar_max, zone_nectar_250m_max, dist_naar_eiafzet_max, zone_eiafzet_500m_max)
+} else {
+  bruineeikenpage_eiafzet_max <- template_TV
+  bruineeikenpage_nectar_max  <- template_TV
+  cl_eiafzet_max              <- template_TV
+  cl_nectar_max               <- template_TV
+}
 ```
 
 ```{r afstand tss vpt en nectar biotoop}

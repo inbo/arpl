@@ -1,7 +1,7 @@
 vlaanderen_20m.asc
 
 // baken geschikte voortplantingsgebieden af
-assign(bontdikkopje_voortplanting_bwk, bwk(ce%, 4010%, 7150%, cg%, 2310%, 4030%, cm%, hj%, ms%, 7140%, se%, sf%, 2180%, 91E0%, rbbsf%, sm%, 7230%, so%, rbbso%, vo%, pmb%, pmh%, ppmb%, ppmh%, rbbppm%, qb%, 9190%, k(ce%, k(cg%, k(cm%, k(hj%, k(ms%, k(se%, k(sm%, k(so%, k(sf%, k(vo%, k(ppmh%, k(pmh%, k(pmb%, k(ppmb%, k(qb%))
+assign(bontdikkopje_voortplanting_bwk, bwk(ce%, 4010%, 7150%, cg%, 2310%, 4030%, cm%, hj%, ms%, 7140%, se%, sf%, 2180%, 91E0%, rbbsf%, sm%, 7230%, so%, rbbso%, vo%,) pmb%, pmh%, ppmb%, ppmh%, rbbppm%, qb%, 9190%,) k(ce%, k(cg%, k(cm%, k(hj%, k(ms%, k(se%, k(sm%, k(so%, k(sf%, k(vo%, k(ppmh%, k(pmh%, k(pmb%, k(ppmb%, k(qb%))
 
 // de bodem moet voldoende vochtig zijn
 assign(bontdikkopjeVocht, OrEq('bodem_drainage.asc', 1, 2, 3, 7, 10, 11, 12, 14, 15))
@@ -32,7 +32,7 @@ deleteVariable(bontdikkopje_voortplanting)
 assign(bontdikkopje_voortplanting_vocht5ha, cFilterGeArea(bontdikkopje_voortplanting_cluster, 5, hectare))
 
 // baken geschikte foerageergebieden af
-assign(bontdikkopje_foerageer_bwk, bwk(ce%, 4010%, 7150%, cg%, 2310%, 4030%, cm%, hj%, ms%, 7140%, se%, sf%, 2180%, 91E0%, rbbsf%, sm%, 7230%, so%, rbbso%, vo%, ppmh%, pmh%, pmb%, ppmb%, qb%, 9190%, k(ce%, k(cg%, k(cm%, k(hj%, k(ms%, k(se%, k(sm%, k(so%, k(sf%, k(vo%, k(ppmh%, k(pmh%, k(pmb%, k(ppmb%, k(qb%))
+assign(bontdikkopje_foerageer_bwk, bwk(ce%, 4010%, 7150%, cg%, 2310%, 4030%, cm%, hj%, ms%, 7140%, se%, sf%, 2180%, 91E0%, rbbsf%, sm%, 7230%, so%, rbbso%, vo%,) ppmh%, pmh%, pmb%, ppmb%, qb%, 9190%,) k(ce%, k(cg%, k(cm%, k(hj%, k(ms%, k(se%, k(sm%, k(so%, k(sf%, k(vo%, k(ppmh%, k(pmh%, k(pmb%, k(ppmb%, k(qb%))
 
 // foerageergebied moet minstens 5 hectare groot zijn (Bink, 1992)
 assign(bontdikkopje_foerageer_cluster, fuzzyClusterIdU(bontdikkopje_foerageer_bwk, 50, meter))
