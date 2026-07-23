@@ -116,55 +116,31 @@ rm(df, resultaat)
 area_shape  <- vect(here("data/input/Kalmthout.shp"))
 master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
 
-# Inlezen van de CSV-sleutel (gebruikt om tabel-indices te mappen naar codes)
 df_namen_sleutel <- read_csv(here("data/input/Excel_files/BWK_Laag_Namen_2025.csv"), show_col_types = FALSE)
 gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
 
 area_shape_proj <- project(area_shape, crs(master_grid))
 area_buffer_fix <- buffer(area_shape_proj, width = buffer_m)
 
-message("-> Vertaalraster voor globale/lokale cellen opbouwen via snelle MASK methode...")
+message("-> Vertaalraster voor globale/lokale cellen opbouwen...")
 id_raster_KH <- crop(master_grid, area_buffer_fix, snap = "near")
 
-globale_id_raster <- master_grid
-values(globale_id_raster) <- 1:ncell(globale_id_raster)
+# Snelle extractie van cel-IDs
+extractie_ids <- terra::cells(master_grid, area_buffer_fix)
 
-# ==============================================================================
-# ULTRA-SNELLE METHODE: Direct naar data.frame met celnummers in C++
-# ==============================================================================
-id_raster_KH_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
-id_raster_KH_masked <- mask(id_raster_KH_globale_values, area_buffer_fix)
-
-message("-> Vertaaltabel bliksemsnel opbouwen via C++ dataframe extractie...")
-
-# 'cells = TRUE' zorgt ervoor dat terra direct een kolom 'cell' (lokale id) 
-# en een kolom met de waarde (globale id) genereert voor alle niet-NA cellen.
-df_extractie <- as.data.frame(id_raster_KH_masked, cells = TRUE)
-
-# Direct omzetten naar data.table en de kolommen juist benoemen
-vertaal_df <- as.data.table(df_extractie)
-
-# De kolommen heten nu standaard 'cell' en de naam van je raster (lyr.1 of gelijkaardig)
-# We hernoemen ze direct naar jouw vertrouwde structuur:
-setnames(vertaal_df, c(1, 2), c("lokale_id", "globale_id"))
-
-# Filter eventuele resterende NA's eruit
-vertaal_df <- vertaal_df[!is.na(globale_id)]
+vertaal_df <- data.table(
+  lokale_id  = 1:ncell(id_raster_KH),
+  globale_id = extractie_ids
+)
 
 studiegebied_globale_ids <- unique(vertaal_df$globale_id)
 
-values(id_raster_KH) <- NA
-# --- DE CRUCIALE TEMPLATE REPARATIE ---
-# In plaats van alles op NA te zetten, maken we een binaire 'mal' van het studiegebied.
-# We rasteriseren de shapefile van Kalmthout (area_buffer_fix) op het uitgesneden raster.
+# Maak een licht sjabloon zonder zware waardenvectoren
 template_KH <- terra::rasterize(area_buffer_fix, id_raster_KH, field = 1, background = 0)
-
-# Controleer of het nu wél cellen bevat:
-cat("Gecorrigeerd aantal pixels in template_KH: ", sum(terra::values(template_KH) == 1, na.rm=TRUE), "\n")
 
 grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
 
-rm(globale_id_raster, id_raster_KH_globale_values, id_raster_KH_masked)
+rm(extractie_ids)
 gc()
 ```
 
@@ -184,7 +160,6 @@ tabel_vlaanderen <- readRDS(here("data/input/Raster_Vlaanderen/BWK_Tabel_Kalmtho
 setDT(tabel_vlaanderen)
 tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
 
-# Initialiseer de lijsten voor de verschillende habitat-bouwstenen
 lijst_matches      <- list()
 lijst_oppervlaktes <- list()
 
@@ -220,23 +195,32 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
     
     if(nrow(tabel_finaal_mapping) > 0) {
       
-      # ROBUUSTE & GEHEUGENZUINIGE METHODE:
-      # Maak lege basabrasters aan
-      r_match_type <- template_KH * NA
+      # GEHEUGEN-OPTIMALISATIE:
+      # Maak verse rasters op basis van het sjabloon
       r_opp_type   <- template_KH * NA
+      r_match_type <- template_KH * NA
       
-      # 1. Vul het oppervlakte-raster via snelle vervanging op celindex
-      r_opp_type[tabel_finaal_mapping$lokale_id] <- tabel_finaal_mapping$Oppervlakte
+      # Vul waarden direct in een tijdelijke R-vector van de grootte van de uitsnede
+      # Dit gebruikt 10x minder geheugen dan een C++ raster-subsetting
+      vec_opp   <- rep(NA_real_, terra::ncell(id_raster_KH))
+      vec_match <- rep(NA_real_, terra::ncell(id_raster_KH))
       
-      # 2. Vul het match-raster voor cellen die aan de drempel voldoen
+      vec_opp[tabel_finaal_mapping$lokale_id] <- tabel_finaal_mapping$Oppervlakte
+      
       tabel_matches_clean <- tabel_finaal_mapping[Match == 1]
       if(nrow(tabel_matches_clean) > 0) {
-        r_match_type[tabel_matches_clean$lokale_id] <- tabel_matches_clean$Match
+        vec_match[tabel_matches_clean$lokale_id] <- tabel_matches_clean$Match
       }
+      
+      # Schrijf de vectoren in één keer weg naar het raster
+      terra::values(r_opp_type)   <- vec_opp
+      terra::values(r_match_type) <- vec_match
       
       # Sla de gegenereerde rasters op
       lijst_matches[[h_type]]      <- r_match_type
       lijst_oppervlaktes[[h_type]] <- r_opp_type
+      
+      rm(vec_opp, vec_match)
     }
   }
 }
@@ -293,56 +277,44 @@ gc()
 ```
 
 ```{r Otter Stap 2 - Landbiotopen smelten en zeven op 1000 ha}
-# ==============================================================================
-# OTTER STAP 2: MACRO-LANDBIOTOOP SMELTEN EN CLUSTEREN OP 1000 HA
-# ==============================================================================
 message("-> Otter Spoor 2: Alle landbiotopen samenvoegen en opschonen...")
 
-# Maak veilige, opgeschoonde binaire kopieën (NA in plaats van 0)
 clean_max <- function(r) {
-  if (is.null(r)) return(id_raster_KH * NA)
+  if (is.null(r)) return(template_KH * NA)
   r[is.na(r) | r == 0] <- NA
   return(r)
 }
 
-# Verzamel alle geldige binaire landlagen
 l_d <- clean_max(d_max); l_h <- clean_max(h_max); l_k <- clean_max(k_max); l_m <- clean_max(m_max)
 l_r <- clean_max(r_max); l_s <- clean_max(s_max); l_t <- clean_max(t_max); l_v <- clean_max(v_max)
 
-# Voeg alles samen via een dekkende OR-constructie (or)
 otter_biotopen_max <- l_d | l_h | l_k | l_m | l_r | l_s | l_t | l_v
 otter_biotopen_max <- terra::ifel(otter_biotopen_max == 1, 1, NA)
 
-# Fractionele dekkingsoptelling (cover)
-otter_biotopen_opp <- id_raster_KH * NA
-for(layer_opp in list(d_opp, h_opp, k_opp, m_opp, r_opp, s_opp, t_opp, v_opp)) {
-  if(!is.null(layer_opp)) {
-    layer_clean <- terra::ifel(is.na(layer_opp), 0, layer_opp)
-    otter_biotopen_opp <- terra::cover(otter_biotopen_opp, layer_clean)
-  }
-}
+# Geheugenzuinige optelling van de fracties
+opp_lijst <- list(d_opp, h_opp, k_opp, m_opp, r_opp, s_opp, t_opp, v_opp)
+opp_schoon <- lapply(opp_lijst, function(x) {
+  if(is.null(x)) return(template_KH * 0)
+  terra::ifel(is.na(x), 0, x)
+})
+
+otter_biotopen_opp <- Reduce("+", opp_schoon)
+otter_biotopen_opp <- terra::clamp(otter_biotopen_opp, upper = 1.0)
 otter_biotopen_opp <- terra::mask(otter_biotopen_opp, otter_biotopen_max)
 
-message(paste("   - Bruto landbiotoop oppervlakte vóór clustering:", round(calc_ha_exact(otter_biotopen_opp), 2), "ha"))
-
-# --- NETWORK CLUSTERING (100m FUZZY, MIN 1000 HA) ---
-# GDX: fuzzyClusterIdU(biotopen, 100m) en daarna cFilterGeArea(..., 1000 ha)
-message("-> Macro-netwerken weven (100m fuzzy) en zeven op min. 1000 ha...")
+# Netwerk-filtering
 cl_otter_land <- cluster_filter_compleet(
   masker     = otter_biotopen_max,
   opp_laag   = otter_biotopen_opp,
-  drempel_m2 = 1000 * 10000, # Harde 1000 hectare ondergrens!
-  dist_m     = 100,          # 100 meter netwerk-zoekstraal
+  drempel_m2 = 1000 * 10000, 
+  dist_m     = 100,          
   werkelijk  = FALSE
 )
 
 otter_biotopen1000_max <- cl_otter_land$raster
 otter_biotopen1000_opp <- terra::mask(otter_biotopen_opp, otter_biotopen1000_max)
 
-message(paste("-> [OK] Vitale macro-leefgebieden (>1000 ha) overgebleven:", 
-              round(calc_ha_exact(otter_biotopen1000_opp), 2), "ha"))
-
-suppressWarnings(rm(l_d, l_h, l_k, l_m, l_r, l_s, l_t, l_v, cl_otter_land, otter_biotopen_max, otter_biotopen_opp))
+suppressWarnings(rm(l_d, l_h, l_k, l_m, l_r, l_s, l_t, l_v, opp_lijst, opp_schoon, cl_otter_land, otter_biotopen_max, otter_biotopen_opp))
 gc()
 ```
 

@@ -277,24 +277,46 @@ gc()
 ```
 
 # Cluster-analyse en oppervlakte filter (Voortplanting)
-```{r Cluster Voortplanting}
-# 1. Reken de ingelezen hectare-drempelwaarde om naar vierkante meters
+```{r Voortplanting en Bosranden Complex}
+message("-> VOORTPLANTING: Samenvoegen met 20m bosranden & clusterfilter toepassen...")
+
 drempel_m2 <- oppervlakte_ha * 10000
 
-# 2. De universele clusterfunctie
+# --- A. BOSRANDEN FILTEREN (MAX 20M VAN VOORTPLANTINGSBIOTOOP) ---
+if (terra::hasValues(voortplanting_bwk_max) && terra::global(voortplanting_bwk_max, "notNA")$notNA > 0 &&
+    terra::hasValues(bosranden_max) && terra::global(bosranden_max, "notNA")$notNA > 0) {
+  
+  dist_naar_vpt <- terra::distance(voortplanting_bwk_max)
+  zone_20m_vpt  <- terra::ifel(dist_naar_vpt <= 20, 1, NA)
+  
+  bosranden_vpt_20m_max <- terra::mask(bosranden_max, zone_20m_vpt)
+  bosranden_vpt_20m_opp <- terra::mask(bosranden_opp, zone_20m_vpt)
+  
+} else {
+  bosranden_vpt_20m_max <- template_TV * NA
+  bosranden_vpt_20m_opp <- template_TV * NA
+}
+
+# --- B. TOTAAL VOORTPLANTINGSCOMPLEX OPBOUWEN ---
+vpt_combo_raw_max <- terra::cover(voortplanting_bwk_max, bosranden_vpt_20m_max)
+
+vpt_basis_nul       <- terra::ifel(is.na(voortplanting_bwk_opp), 0, voortplanting_bwk_opp)
+bosrand_vpt_20m_nul <- terra::ifel(is.na(bosranden_vpt_20m_opp), 0, bosranden_vpt_20m_opp)
+
+vpt_combo_raw_opp <- terra::clamp(vpt_basis_nul + bosrand_vpt_20m_nul, upper = 1)
+vpt_combo_raw_opp <- terra::ifel(vpt_combo_raw_opp == 0, NA, vpt_combo_raw_opp)
+
+# --- C. CLUSTERFILTER TOEPASSEN OP HET GECOMBINEERDE VOORTPLANTINGSCOMPLEX ---
 cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
   if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
     return(list(raster = masker * NA, clusters = masker * NA))
   }
   
-  # Netwerken verbinden via de helft van de dispersie-afstand (afstand_m) als buffer
   temp_mask <- masker
   if(dist_m > 0) temp_mask <- terra::buffer(masker, width = dist_m / 2)
   
-  # Clusters bepalen op het netwerk
   cl_network <- terra::patches(temp_mask, directions = 8, zeroAsNA = TRUE)
   
-  # Bereken de oppervlakte van het GEHELE netwerk (vóór het terugknippen)
   if(werkelijk) {
     stats_df <- terra::zonal(opp_laag, cl_network, fun = "sum", na.rm = TRUE)
     colnames(stats_df) <- c("ID", "Waarde")
@@ -309,125 +331,72 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
   stats_df <- stats_df[!is.na(stats_df$ID), ]
   if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
-  # Filter op de ingestelde hectare grens (voor het bont dikkopje dus 5 ha)
   voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
   if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
-  # Selecteer de goedgekeurde netwerken
   masker_binair <- cl_network %in% voldoet_ids
   final_network_mask <- terra::ifel(masker_binair == 1, 1, NA)
   
-  # Terugknippen naar de fysieke biotoopsnippers, met behoud van de unieke Netwerk ID's
   r_finaal  <- terra::mask(masker, final_network_mask)
   cl_finaal <- terra::mask(cl_network, r_finaal) 
   
   return(list(raster = r_finaal, clusters = cl_finaal))
 }
 
-# 3. Voer de analyses dynamisch uit met jouw ingelezen variabelen
-res_max_voortplanting <- cluster_filter_compleet(voortplanting_bwk_max, voortplanting_bwk_opp, 
+res_max_voortplanting <- cluster_filter_compleet(vpt_combo_raw_max, vpt_combo_raw_opp, 
                                                  drempel_m2, afstand_m, werkelijk = FALSE)
-
-res_opp_voortplanting <- cluster_filter_compleet(voortplanting_bwk_max, voortplanting_bwk_opp, 
+res_opp_voortplanting <- cluster_filter_compleet(vpt_combo_raw_max, vpt_combo_raw_opp, 
                                                  drempel_m2, afstand_m, werkelijk = TRUE)
 
-# Sla de resultaten netjes op
 voortplanting_finaal_max <- res_max_voortplanting$raster
 voortplanting_finaal_opp <- res_opp_voortplanting$raster
-
 cl_voortplanting_max     <- res_max_voortplanting$clusters
 cl_voortplanting_opp     <- res_opp_voortplanting$clusters
 
-# Netjes opruimen
 rm(res_max_voortplanting, res_opp_voortplanting)
 gc()
 ```
 
 # Cluster-analyse en oppervlakte filter (Foerageren)
-```{r Cluster Foerageren}
-# We hergebruiken 'drempel_m2' en 'afstand_m' die in de vorige chunk zijn klaargezet.
-# De functie 'cluster_filter_compleet' is al in het geheugen aanwezig.
+```{r Foerageren en Bosranden Complex}
+message("-> FOERAGEREN: Samenvoegen met 20m bosranden & clusterfilter toepassen...")
 
-# 1. Voer de analyses dynamisch uit voor de foerageerlaag
-res_max_foerageer <- cluster_filter_compleet(foerageer_bwk_max, foerageer_bwk_opp, 
-                                             drempel_m2, afstand_m, werkelijk = FALSE)
+# --- A. BOSRANDEN FILTEREN (MAX 20M VAN FOERAGEERBIOTOOP) ---
+if (terra::hasValues(foerageer_bwk_max) && terra::global(foerageer_bwk_max, "notNA")$notNA > 0 &&
+    terra::hasValues(bosranden_max) && terra::global(bosranden_max, "notNA")$notNA > 0) {
+  
+  dist_naar_foe <- terra::distance(foerageer_bwk_max)
+  zone_20m_foe  <- terra::ifel(dist_naar_foe <= 20, 1, NA)
+  
+  bosranden_foe_20m_max <- terra::mask(bosranden_max, zone_20m_foe)
+  bosranden_foe_20m_opp <- terra::mask(bosranden_opp, zone_20m_foe)
+  
+} else {
+  bosranden_foe_20m_max <- template_TV * NA
+  bosranden_foe_20m_opp <- template_TV * NA
+}
 
-res_opp_foerageer <- cluster_filter_compleet(foerageer_bwk_max, foerageer_bwk_opp, 
-                                             drempel_m2, afstand_m, werkelijk = TRUE)
+# --- B. TOTAAL FOERAGEERCOMPLEX OPBOUWEN ---
+foe_combo_raw_max <- terra::cover(foerageer_bwk_max, bosranden_foe_20m_max)
 
-# 2. Sla de resultaten netjes op onder specifieke foerageer-namen
+foe_basis_nul       <- terra::ifel(is.na(foerageer_bwk_opp), 0, foerageer_bwk_opp)
+bosrand_foe_20m_nul <- terra::ifel(is.na(bosranden_foe_20m_opp), 0, bosranden_foe_20m_opp)
+
+foe_combo_raw_opp <- terra::clamp(foe_basis_nul + bosrand_foe_20m_nul, upper = 1)
+foe_combo_raw_opp <- terra::ifel(foe_combo_raw_opp == 0, NA, foe_combo_raw_opp)
+
+# --- C. CLUSTERFILTER TOEPASSEN OP HET GECOMBINEERDE FOERAGEERCOMPLEX ---
+res_max_foerageer <- cluster_filter_compleet(foe_combo_raw_max, foe_combo_raw_opp, 
+                                              drempel_m2, afstand_m, werkelijk = FALSE)
+res_opp_foerageer <- cluster_filter_compleet(foe_combo_raw_max, foe_combo_raw_opp, 
+                                              drempel_m2, afstand_m, werkelijk = TRUE)
+
 foerageer_finaal_max <- res_max_foerageer$raster
 foerageer_finaal_opp <- res_opp_foerageer$raster
-
 cl_foerageer_max     <- res_max_foerageer$clusters
 cl_foerageer_opp     <- res_opp_foerageer$clusters
 
-# Netjes opruimen van de tijdelijke lijst-resultaten
 rm(res_max_foerageer, res_opp_foerageer)
-gc()
-```
-
-# Wederzijdse afstandsfilter tussen voortplanting en foerageren (max 500m)
-```{r Afstandsfilter Voortplanting Foerageren}
-message("-> Wederzijdse afstandsfilters tussen voortplanting en foerageren berekenen (max 500m)...")
-
-# --- 1. AFSTANDSFILTER VOOR DE BRUTO VARIANT (_max / Maximale Potentie) ---
-if (!all(is.na(terra::values(voortplanting_finaal_max, mat=FALSE))) && 
-    !all(is.na(terra::values(foerageer_finaal_max, mat=FALSE)))) {
-  
-  # Afstand van elke cel tot het dichtstbijzijnde foerageergebied
-  dist_naar_foerageer_max <- terra::distance(foerageer_finaal_max)
-  zone_foerageer_500m_max <- terra::ifel(dist_naar_foerageer_max <= 500, 1, NA)
-  
-  # Afstand van elke cel tot het dichtstbijzijnde voortplantingsgebied
-  dist_naar_voortplanting_max <- terra::distance(voortplanting_finaal_max)
-  zone_voortplanting_500m_max <- terra::ifel(dist_naar_voortplanting_max <= 500, 1, NA)
-  
-  # Toepassen van de filters (AND-conditie via terra::mask)
-  voortplanting_finaal_max <- terra::mask(voortplanting_finaal_max, zone_foerageer_500m_max)
-  foerageer_finaal_max     <- terra::mask(foerageer_finaal_max, zone_voortplanting_500m_max)
-  
-  # Synchroniseer de cluster-ID rasters direct mee!
-  cl_voortplanting_max <- terra::mask(cl_voortplanting_max, voortplanting_finaal_max)
-  cl_foerageer_max     <- terra::mask(cl_foerageer_max, foerageer_finaal_max)
-  
-  rm(dist_naar_foerageer_max, zone_foerageer_500m_max, dist_naar_voortplanting_max, zone_voortplanting_500m_max)
-} else {
-  # Als een van de twee lagen helemaal leeg is, vervalt alles
-  voortplanting_finaal_max <- template_TV
-  foerageer_finaal_max     <- template_TV
-  cl_voortplanting_max     <- template_TV
-  cl_foerageer_max         <- template_TV
-}
-
-
-# --- 2. AFSTANDSFILTER VOOR DE NETTO VARIANT (_opp / Werkelijke Oppervlakte) ---
-if (!all(is.na(terra::values(voortplanting_finaal_opp, mat=FALSE))) && 
-    !all(is.na(terra::values(foerageer_finaal_opp, mat=FALSE)))) {
-  
-  # Afstand berekenen op basis van de aanwezigheid van de werkelijke fracties
-  dist_naar_foerageer_opp <- terra::distance(foerageer_finaal_opp)
-  zone_foerageer_500m_opp <- terra::ifel(dist_naar_foerageer_opp <= 500, 1, NA)
-  
-  dist_naar_voortplanting_opp <- terra::distance(voortplanting_finaal_opp)
-  zone_voortplanting_500m_opp <- terra::ifel(dist_naar_voortplanting_opp <= 500, 1, NA)
-  
-  # Toepassen van de filters op de werkelijke hectares (fracties)
-  voortplanting_finaal_opp <- terra::mask(voortplanting_finaal_opp, zone_foerageer_500m_opp)
-  foerageer_finaal_opp     <- terra::mask(foerageer_finaal_opp, zone_voortplanting_500m_opp)
-  
-  # Synchroniseer de cluster-ID rasters direct mee!
-  cl_voortplanting_opp <- terra::mask(cl_voortplanting_opp, voortplanting_finaal_opp)
-  cl_foerageer_opp     <- terra::mask(cl_foerageer_opp, foerageer_finaal_opp)
-  
-  rm(dist_naar_foerageer_opp, zone_foerageer_500m_opp, dist_naar_voortplanting_opp, zone_voortplanting_500m_opp)
-} else {
-  voortplanting_finaal_opp <- template_TV
-  foerageer_finaal_opp     <- template_TV
-  cl_voortplanting_opp     <- template_TV
-  cl_foerageer_opp         <- template_TV
-}
-
 gc()
 ```
 
