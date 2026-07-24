@@ -218,8 +218,10 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
 # Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
 voortplanting_bwk_max <- lijst_matches[["voortplanting_bwk"]]
 voortplanting_bwk_opp <- lijst_oppervlaktes[["voortplanting_bwk"]]
-foerageer0_max <- lijst_matches[["foerageer0"]]
-foerageer0_opp <- lijst_oppervlaktes[["foerageer0"]]
+land_nabij_max <- lijst_matches[["land_nabij"]]
+land_nabij_opp <- lijst_oppervlaktes[["land_nabij"]]
+land_ruim_max <- lijst_matches[["land_ruim"]]
+land_ruim_opp <- lijst_oppervlaktes[["land_ruim"]]
 struweel1_max <- lijst_matches[["struweel1"]]
 struweel1_opp <- lijst_oppervlaktes[["struweel1"]]
 
@@ -398,363 +400,157 @@ gc()
 
 ```{r Foerageergebied Afbakenen}
 # ==============================================================================
-# SCHIJF-GESTUURDE RASTER-CLUSTERING (BEHOUD VOLLEDIGE BUFFER ZONDER RAM CRASH)
+# STAP 1: LAND_NABIJ CLUSTERS (MIN. 5 HA & MIN. 30% BOS/STRUWEEL)
 # ==============================================================================
-message("-> Start analyse foerageergebied op de volledige 50km buffer via schijf-streaming...")
+message("-> 1. Land_nabij clusters filteren op min. 5 ha en 10m overbrugging...")
 
-# --- SPOOR A: MAXIMALE POTENTIE (Theorie) ---
-message("-> Verwerken Spoor A (Volledige buffer)...")
+# Spoor A: Maximale Potentie (land_nabij_max)
+# Focal met 3x3 matrix (1 cel rand rondom = max 10m overbrugging tussen cellen)
+r_grow_nabij_max <- terra::focal(land_nabij_max, w = 3, fun = "max", na.rm = TRUE)
+cl_id_nabij_max  <- terra::patches(r_grow_nabij_max, directions = 8, zeroAsNA = TRUE)
+cl_id_nabij_max  <- terra::mask(cl_id_nabij_max, land_nabij_max)
 
-# Maak een veilig tijdelijk bestand aan op de harde schijf voor de focal-stap
-tmp_focal_max <- tempfile(fileext = ".tif")
-tmp_patch_max <- tempfile(fileext = ".tif")
+# Oppervlakteberekening per land_nabij cluster over de buffer
+stats_nabij_max <- terra::zonal(land_nabij_max * 0.01, cl_id_nabij_max, fun = "sum", na.rm = TRUE)
+colnames(stats_nabij_max) <- c("Cluster_ID", "Potentie_ha")
 
-# 1. Bereken focal en schrijf DIRECT naar schijf (LZW gecomprimeerd)
-terra::focal(foerageer0_max, w = 5, fun = "max", na.rm = TRUE,
-             filename = tmp_focal_max, overwrite = TRUE, gdal = c("COMPRESS=LZW"))
+# Filter op minimaal 5 ha
+ids_nabij_5ha_max <- stats_nabij_max$Cluster_ID[stats_nabij_max$Potentie_ha >= 5]
 
-r_grow_max <- terra::rast(tmp_focal_max)
-
-# 2. Bereken patches en schrijf DIRECT naar schijf
-terra::patches(r_grow_max, directions = 8, zeroAsNA = TRUE,
-               filename = tmp_patch_max, overwrite = TRUE, gdal = c("COMPRESS=LZW"))
-
-cl_id_max <- terra::rast(tmp_patch_max)
-
-# 3. Maskeer terug naar de scherpe theoretische grenzen
-cl_id_max <- terra::mask(cl_id_max, foerageer0_max)
-
-# 4. Bereken netto potentie-hectares per uniek cluster over de HELE buffer
-stats_max <- terra::zonal(foerageer0_max * 0.01, cl_id_max, fun = "sum", na.rm = TRUE)
-colnames(stats_max) <- c("Cluster_ID", "Potentie_ha")
-
-# Filter op minimale oppervlakte (>= 30 ha)
-valide_cluster_ids_max <- stats_max$Cluster_ID[stats_max$Potentie_ha >= 30]
-
-if(length(valide_cluster_ids_max) > 0) {
-  masker_max <- terra::ifel(cl_id_max %in% valide_cluster_ids_max, 1, NA)
-  gevlektewitsnuitlibel_foerageer2_max <- terra::mask(foerageer0_max, masker_max)
+if(length(ids_nabij_5ha_max) > 0) {
+  mask_nabij_5ha <- cl_id_nabij_max %in% ids_nabij_5ha_max
+  land_nabij_5ha_max <- terra::mask(land_nabij_max, terra::ifel(mask_nabij_5ha, 1, NA))
+  cl_id_5ha_max      <- terra::mask(cl_id_nabij_max, land_nabij_5ha_max)
   
-  # Pas nu pas de finale uitsnede voor TV toe voor de weergave straks
-  gevlektewitsnuitlibel_foerageer2_max <- terra::crop(gevlektewitsnuitlibel_foerageer2_max, area_shape_proj, mask = TRUE)
+  # --- BOSEIS CHECK (MIN. 30% BOS/STRUWEEL) ---
+  message("-> Controle op minstens 30% bos/struweel binnen land_nabij clusters...")
+  struweel_in_nabij <- terra::mask(struweel1_max, cl_id_5ha_max)
+  
+  stats_struweel <- terra::zonal(struweel_in_nabij * 0.01, cl_id_5ha_max, fun = "sum", na.rm = TRUE)
+  colnames(stats_struweel) <- c("Cluster_ID", "Struweel_ha")
+  
+  df_bos_check <- merge(stats_nabij_max[stats_nabij_max$Cluster_ID %in% ids_nabij_5ha_max, ], 
+                        stats_struweel, by = "Cluster_ID", all.x = TRUE)
+  df_bos_check$Struweel_ha[is.na(df_bos_check$Struweel_ha)] <- 0
+  df_bos_check$Pct_Bos <- (df_bos_check$Struweel_ha / df_bos_check$Potentie_ha) * 100
+  
+  ids_nabij_bos_ok <- df_bos_check$Cluster_ID[df_bos_check$Pct_Bos >= 30]
+  
+  if(length(ids_nabij_bos_ok) > 0) {
+    land_nabij_gefilterd_max <- terra::mask(land_nabij_5ha_max, 
+                                            terra::ifel(cl_id_5ha_max %in% ids_nabij_bos_ok, 1, NA))
+  } else {
+    message("⚠️ Geen enkel land_nabij cluster voldoet aan de 30% boseis.")
+    land_nabij_gefilterd_max <- template_TV * NA
+  }
 } else {
-  gevlektewitsnuitlibel_foerageer2_max <- template_TV * NA
+  message("⚠️ Geen land_nabij clusters van >= 5 ha gevonden.")
+  land_nabij_gefilterd_max <- template_TV * NA
 }
 
-# Tussentijdse opruiming van de tijdelijke schijfbestanden en RAM
-rm(r_grow_max, cl_id_max, stats_max)
-unlink(c(tmp_focal_max, tmp_patch_max))
-gc()
-
-
-# --- SPOOR B: WERKELIJKE OPPERVLAKTE (Strikte 1% fractie-clustering) ---
-message("-> Verwerken Spoor B (Volledige buffer met reële fracties)...")
-
-tmp_focal_opp <- tempfile(fileext = ".tif")
-tmp_patch_opp <- tempfile(fileext = ".tif")
-
-# 1. Focal via schijf
-terra::focal(foerageer0_opp, w = 5, fun = "max", na.rm = TRUE,
-             filename = tmp_focal_opp, overwrite = TRUE, gdal = c("COMPRESS=LZW"))
-
-r_grow_opp <- terra::rast(tmp_focal_opp)
-
-# 2. Patches via schijf
-terra::patches(r_grow_opp, directions = 8, zeroAsNA = TRUE,
-               filename = tmp_patch_opp, overwrite = TRUE, gdal = c("COMPRESS=LZW"))
-
-cl_id_opp <- terra::rast(tmp_patch_opp)
-
-# 3. Maskeren
-cl_id_opp <- terra::mask(cl_id_opp, foerageer0_opp)
-
-# ... [Bovenkant van Spoor B blijft hetzelfde] ...
-
-# 4. Zonal sum van reële fracties over de HELE buffer
-stats_opp <- terra::zonal(foerageer0_opp * 0.01, cl_id_opp, fun = "sum", na.rm = TRUE)
-colnames(stats_opp) <- c("Cluster_ID", "Werkelijke_ha")
-
-# GEFIXT: `:=` vervangen door `<-` voor reguliere vector-toewijzing
-valide_cluster_ids_opp <- stats_opp$Cluster_ID[stats_opp$Werkelijke_ha >= 30]
-
-if(length(valide_cluster_ids_opp) > 0) {
-  masker_opp <- terra::ifel(cl_id_opp %in% valide_cluster_ids_opp, 1, NA)
-  gevlektewitsnuitlibel_foerageer2_opp <- terra::mask(foerageer0_opp, masker_opp)
-  gevlektewitsnuitlibel_foerageer2_opp <- terra::crop(gevlektewitsnuitlibel_foerageer2_opp, area_shape_proj, mask = TRUE)
-} else {
-  gevlektewitsnuitlibel_foerageer2_opp <- template_TV * NA
-}
-
-# Finale opruiming schijfbestanden Spoor B
-rm(r_grow_opp, cl_id_opp, stats_opp)
-unlink(c(tmp_focal_opp, tmp_patch_opp))
+# Clean-up tussenstappen
+rm(r_grow_nabij_max, cl_id_nabij_max, stats_nabij_max, struweel_in_nabij, stats_struweel)
 gc()
 
 # ==============================================================================
-# 5. HECTAREBEREKENING & CONSOLE OUTPUT
+# STAP 2: LAND_RUIM COMPLEXEN (MIN. 30 HA, MAX. 50M AFSTAND)
 # ==============================================================================
-ha_foer_pot  <- calc_ha_exact(gevlektewitsnuitlibel_foerageer2_max)
-ha_foer_werk <- calc_ha_exact(gevlektewitsnuitlibel_foerageer2_opp)
+message("-> 2. Land_ruim complexen opbouwen (min. 30 ha, 50m overbrugging)...")
 
-cat("\n=========================================================\n")
-cat("      RESULTATEN FOERAGEERGEBIED GEVLEKTEWITSNUITLIBEL     \n")
-cat("=========================================================\n")
-cat(paste("Aantal goedgekeurde theoretische clusters: ", length(valide_cluster_ids_max), "\n"))
-cat(paste("Aantal goedgekeurde werkelijke clusters:    ", length(valide_cluster_ids_opp), "\n"))
-cat(paste("Geschikt gebied (Maximale Potentie):  ", round(ha_foer_pot, 2), "ha\n"))
-cat(paste("Geschikt gebied (Werkelijke Fractie): ", round(ha_foer_werk, 2), "ha\n"))
-cat("=========================================================\n\n")
-```
+# Focal met 11x11 window (5 cellen rand rondom = 50m overbrugging)
+r_grow_ruim_max <- terra::focal(land_ruim_max, w = 11, fun = "max", na.rm = TRUE)
+cl_id_ruim_max  <- terra::patches(r_grow_ruim_max, directions = 8, zeroAsNA = TRUE)
+cl_id_ruim_max  <- terra::mask(cl_id_ruim_max, land_ruim_max)
 
-```{r struweel}
-# ==============================================================================
-# GECORRIGEERD: CLUSTERSAMENSTELLINGSCHECK (MIN 30% STRUWEEL BINNEN FOERAGEERCLUSTER)
-# ==============================================================================
-message("-> Start samenstellingsanalyse van de foerageerclusters (min. 30% struweel)...")
+stats_ruim_max <- terra::zonal(land_ruim_max * 0.01, cl_id_ruim_max, fun = "sum", na.rm = TRUE)
+colnames(stats_ruim_max) <- c("Cluster_ID", "Potentie_ha")
 
-# --- SPOOR A: MAXIMALE POTENTIE (Theorie) ---
-# We vertrekken van de foerageerclusters die we in de vorige stap hebben gemaakt:
-# r_grow_max (de gegroeide clusters) en cl_id_max (de scherpe theoretische clusters)
+ids_ruim_30ha_max <- stats_ruim_max$Cluster_ID[stats_ruim_max$Potentie_ha >= 30]
 
-# 1. Zorg dat de inputrasters een zuivere NA-achtergrond hebben
-r_foer0_max_clean <- foerageer0_max
-r_foer0_max_clean[is.na(r_foer0_max_clean) | r_foer0_max_clean == 0] <- NA
-
-r_struweel_max_clean <- struweel1_max
-r_struweel_max_clean[is.na(r_struweel_max_clean) | r_struweel_max_clean == 0] <- NA
-
-# We reconstrueren hier heel even de actieve foerageerclusters over de hele buffer
-r_grow_foer_max <- terra::focal(r_foer0_max_clean, w = 5, fun = "max", na.rm = TRUE)
-cl_id_foer_max  <- terra::patches(r_grow_foer_max, directions = 8, zeroAsNA = TRUE)
-cl_id_foer_max  <- terra::mask(cl_id_foer_max, r_foer0_max_clean)
-
-# 2. BEREKEN PER CLUSTER DE OPPERVLAKTES (in ha)
-# A) Het totale oppervlak van het foerageergebied binnen elk cluster
-stats_foer_totaal <- terra::zonal(r_foer0_max_clean * 0.01, cl_id_foer_max, fun = "sum", na.rm = TRUE)
-colnames(stats_foer_totaal) <- c("Cluster_ID", "Totaal_Foer_ha")
-
-# B) Het oppervlak aan struweel dat binnen de grenzen van elk foerageercluster valt
-struweel_in_foer_max <- terra::mask(r_struweel_max_clean, cl_id_foer_max)
-stats_struweel_in_foer <- terra::zonal(struweel_in_foer_max * 0.01, cl_id_foer_max, fun = "sum", na.rm = TRUE)
-colnames(stats_struweel_in_foer) <- c("Cluster_ID", "Struweel_ha")
-
-# 3. BEREKEN HET PERCENTAGE STRUWEEL PER CLUSTER
-df_samenstelling_max <- merge(stats_foer_totaal, stats_struweel_in_foer, by = "Cluster_ID", all.x = TRUE)
-df_samenstelling_max$Struweel_ha[is.na(df_samenstelling_max$Struweel_ha)] <- 0
-df_samenstelling_max$Percentage_Struweel <- (df_samenstelling_max$Struweel_ha / df_samenstelling_max$Totaal_Foer_ha) * 100
-
-# Welke Cluster-IDs voldoen aan de eis van minimaal 30% struweel?
-valide_mozaiek_ids_max <- df_samenstelling_max$Cluster_ID[df_samenstelling_max$Percentage_Struweel >= 30]
-
-# 4. PAS FILTER TOE OP HET FOERAGEERGEBIED (Struweel zelf valt af!)
-if(length(valide_mozaiek_ids_max) > 0) {
-  masker_mozaiek_max <- cl_id_foer_max %in% valide_mozaiek_ids_max
-  gevlektewitsnuitlibel_foerageer3_max <- terra::mask(r_foer0_max_clean, terra::ifel(masker_mozaiek_max, 1, NA))
+if(length(ids_ruim_30ha_max) > 0) {
+  land_ruim_30ha_max <- terra::mask(land_ruim_max, terra::ifel(cl_id_ruim_max %in% ids_ruim_30ha_max, 1, NA))
   
-  # Crop alvast naar studiegebied voor rapportage/interactieve kaart
-  gevlektewitsnuitlibel_foerageer3_max <- terra::crop(gevlektewitsnuitlibel_foerageer3_max, area_shape_proj, mask = TRUE)
+  # --- CHECK: LIGGEN DE LAND_NABIJ CLUSTERS BINNEN DIT 30HA COMPLEX? ---
+  message("-> Land_nabij clusters toetsen aan 30ha land_ruim complexen...")
+  
+  # Maak een buffer van 50m rond het 30ha ruim-complex om ruimtelijke overlap/nabijheid correct op te vangen
+  ruim_complex_zone <- terra::focal(land_ruim_30ha_max, w = 11, fun = "max", na.rm = TRUE)
+  
+  land_nabij_in_ruim_max <- terra::mask(land_nabij_gefilterd_max, ruim_complex_zone)
 } else {
-  message("⚠️ Waarschuwing: Geen enkel foerageercluster voldoet aan de 30% struweel-eis in Spoor A.")
-  gevlektewitsnuitlibel_foerageer3_max <- template_TV * NA
+  message("⚠️ Geen land_ruim complexen van >= 30 ha gevonden.")
+  land_nabij_in_ruim_max <- template_TV * NA
 }
 
-
-# --- SPOOR B: WERKELIJKE OPPERVLAKTE (Reële Fracties) ---
-message("-> Verwerken Spoor B (Reële Fracties met 30% samenstellingscheck)...")
-
-if(!all(is.na(terra::values(gevlektewitsnuitlibel_foerageer3_max, mat=FALSE)))) {
-  # 1. Snijd foerageer0_opp EERST af naar de omvang van het studiegebied
-  foer0_opp_tv <- terra::crop(foerageer0_opp, area_shape_proj, mask = TRUE)
-  
-  # 2. Maskeer nu veilig met het goedgekeurde ruimtelijke masker uit Spoor A
-  gevlektewitsnuitlibel_foerageer3_opp <- terra::mask(foer0_opp_tv, gevlektewitsnuitlibel_foerageer3_max)
-} else {
-  gevlektewitsnuitlibel_foerageer3_opp <- template_TV * NA
-}
-
-# --- TUSSENTIJDSE RAPPORTAGE ---
-ha_foer_voor <- calc_ha_exact(r_foer0_max_clean)
-ha_foer_na   <- calc_ha_exact(gevlektewitsnuitlibel_foerageer3_max)
-
-message("   - Aantal geëvalueerde foerageerclusters: ", nrow(df_samenstelling_max))
-message("   - Aantal clusters dat voldoet (>= 30% struweel): ", length(valide_mozaiek_ids_max))
-message("   - Netto foerageergebied VOOR 30% samenstellingscheck: ", round(ha_foer_voor, 2), " ha")
-message("   - Netto foerageergebied NA 30% samenstellingscheck:   ", round(ha_foer_na, 2), " ha")
-
-# --- FINALE SCHOONMAAK ---
-rm(r_foer0_max_clean, r_struweel_max_clean, r_grow_foer_max, cl_id_foer_max, 
-   stats_foer_totaal, struweel_in_foer_max, stats_struweel_in_foer, df_samenstelling_max)
+rm(r_grow_ruim_max, cl_id_ruim_max, stats_ruim_max)
 gc()
-```
 
-```{r foerageer + voortplanting}
 # ==============================================================================
-# FINALE SYNTHESE: KOPPELING OP VOLLEDIG CLUSTERNIVEAU (< 500M)
+# STAP 3: FINALE SYNTHESE & KOPPELING WATER <-> LAND (MAX 10M AFSTAND)
 # ==============================================================================
-message("-> Start finale koppeling op clusterniveau voor Gevlekte witsnuitlibel...")
-
-# --- SPOOR A: MAXIMALE POTENTIE (Theorie) ---
-message("-> Verwerken Spoor A (Theorie)...")
+message("-> 3. Finale koppeling: Water en Land_nabij moeten binnen 10m van elkaar liggen...")
 
 if(terra::hasValues(gevlektewitsnuitlibel_voortplanting_max) && 
-   terra::hasValues(gevlektewitsnuitlibel_foerageer3_max)) {
+   terra::hasValues(land_nabij_in_ruim_max)) {
   
-  # 1. Breng beide basisrasters naar de studiegebied-omvang
-  vpt_prep_max  <- terra::crop(gevlektewitsnuitlibel_voortplanting_max, area_shape_proj, mask = TRUE)
-  foer_prep_max <- terra::crop(gevlektewitsnuitlibel_foerageer3_max, area_shape_proj, mask = TRUE)
+  # Patches maken om unieke water- en landclusters te kunnen selecteren
+  cl_water <- terra::patches(gevlektewitsnuitlibel_voortplanting_max, directions = 8, zeroAsNA = TRUE)
+  cl_land  <- terra::patches(land_nabij_in_ruim_max, directions = 8, zeroAsNA = TRUE)
   
-  # 2. Identificeer de unieke clusters (patches)
-  cl_vpt_max  <- terra::patches(vpt_prep_max, directions = 8, zeroAsNA = TRUE)
-  cl_foer_max <- terra::patches(foer_prep_max, directions = 8, zeroAsNA = TRUE)
+  # Afstandsberekeningen
+  dist_from_water <- terra::distance(cl_water)
+  dist_from_land  <- terra::distance(cl_land)
   
-  # 3. Bereken de doorlopende afstand vanaf de clusters
-  dist_from_water_max <- terra::distance(cl_vpt_max)
-  dist_from_foer_max  <- terra::distance(cl_foer_max)
+  # Bepaal welke cellen binnen 10m van de ander liggen
+  land_binnen_10m_water <- terra::ifel(dist_from_water <= 10, 1, 0)
+  water_binnen_10m_land  <- terra::ifel(dist_from_land <= 10, 1, 0)
   
-  # 4. GECORRIGEERDE CLUSTER-LOGICA: Maak binaire zone-rasters (1 = binnen 500m, 0 = daarbuiten)
-  zone_foer_500 <- terra::ifel(dist_from_foer_max <= 500, 1, 0)
-  zone_water_500 <- terra::ifel(dist_from_water_max <= 500, 1, 0)
+  # Cluster-niveau valideren (als minstens 1 pixel van het cluster raakt, bewaar het hele cluster)
+  valide_land_ids  <- terra::zonal(land_binnen_10m_water, cl_land, fun = "max", na.rm = TRUE)
+  valide_water_ids <- terra::zonal(water_binnen_10m_land, cl_water, fun = "max", na.rm = TRUE)
   
-  # Bereken de maximale zone-waarde per uniek Cluster ID
-  ids_vpt_valide_max  <- terra::zonal(zone_foer_500, cl_vpt_max, fun = "max", na.rm = TRUE)
-  ids_foer_valide_max <- terra::zonal(zone_water_500, cl_foer_max, fun = "max", na.rm = TRUE)
+  colnames(valide_land_ids)  <- c("Cluster_ID", "Status")
+  colnames(valide_water_ids) <- c("Cluster_ID", "Status")
   
-  # We dwingen de kolomnamen naar een vaste structuur om vector-fouten te voorkomen
-  colnames(ids_vpt_valide_max)  <- c("Cluster_ID", "Status")
-  colnames(ids_foer_valide_max) <- c("Cluster_ID", "Status")
+  winnaars_land  <- valide_land_ids$Cluster_ID[valide_land_ids$Status == 1]
+  winnaars_water <- valide_water_ids$Cluster_ID[valide_water_ids$Status == 1]
   
-  # Een cluster is een winnaar als er minstens 1 pixel binnen de 500m zone ligt (Status == 1)
-  winnaars_vpt_max  <- ids_vpt_valide_max$Cluster_ID[ids_vpt_valide_max$Status == 1]
-  winnaars_foer_max <- ids_foer_valide_max$Cluster_ID[ids_foer_valide_max$Status == 1]
-  
-  # 5. BEHOUD DE VOLLEDIGE CLUSTERS (Alles-of-niets)
-  if(length(winnaars_vpt_max) > 0 && length(winnaars_foer_max) > 0) {
-    masker_vpt_max  <- cl_vpt_max %in% winnaars_vpt_max
-    masker_foer_max <- cl_foer_max %in% winnaars_foer_max
+  if(length(winnaars_land) > 0 && length(winnaars_water) > 0) {
     
-    gevlektewitsnuitlibel_voortplanting_finaal_max <- terra::mask(vpt_prep_max, terra::ifel(masker_vpt_max, 1, NA))
-    gevlektewitsnuitlibel_foerageer_finaal_max     <- terra::mask(foer_prep_max, terra::ifel(masker_foer_max, 1, NA))
+    gevlektewitsnuitlibel_land_finaal_max  <- terra::mask(land_nabij_in_ruim_max, 
+                                                          terra::ifel(cl_land %in% winnaars_land, 1, NA))
+    gevlektewitsnuitlibel_water_finaal_max <- terra::mask(gevlektewitsnuitlibel_voortplanting_max, 
+                                                          terra::ifel(cl_water %in% winnaars_water, 1, NA))
     
-    # MAAK HET NIEUWE GECOMBINEERDE RASTER
-    gevlektewitsnuitlibel_leefgebied_max           <- terra::cover(gevlektewitsnuitlibel_voortplanting_finaal_max, gevlektewitsnuitlibel_foerageer_finaal_max)
-  } else {
-    message("⚠️ Waarschuwing: Geen overlappende clusters gevonden in Spoor A.")
-    gevlektewitsnuitlibel_voortplanting_finaal_max <- template_TV * NA
-    gevlektewitsnuitlibel_foerageer_finaal_max     <- template_TV * NA
-    gevlektewitsnuitlibel_leefgebied_max           <- template_TV * NA
-  }
-} else {
-  gevlektewitsnuitlibel_voortplanting_finaal_max <- template_TV * NA
-  gevlektewitsnuitlibel_foerageer_finaal_max     <- template_TV * NA
-  gevlektewitsnuitlibel_leefgebied_max           <- template_TV * NA
-}
-
-
-# --- SPOOR B: WERKELIJKE OPPERVLAKTE (Reële Fracties) ---
-message("-> Verwerken Spoor B (Werkelijkheid)...")
-
-if(terra::hasValues(gevlektewitsnuitlibel_voortplanting_opp) && 
-   terra::hasValues(gevlektewitsnuitlibel_foerageer3_opp)) {
-  
-  if(exists("masker_vpt_max") && exists("masker_foer_max") && 
-     !all(is.na(terra::values(masker_vpt_max, mat=FALSE)))) {
+    # FINALE COMBINATIE (Water + Land_nabij)
+    gevlektewitsnuitlibel_leefgebied_max <- terra::cover(gevlektewitsnuitlibel_water_finaal_max, 
+                                                         gevlektewitsnuitlibel_land_finaal_max)
     
-    vpt_prep_opp  <- terra::crop(gevlektewitsnuitlibel_voortplanting_opp, area_shape_proj, mask = TRUE)
-    foer_prep_opp <- terra::crop(gevlektewitsnuitlibel_foerageer3_opp, area_shape_proj, mask = TRUE)
-    
-    # Filter de fractie-basiskaarten met de schone ruimtelijke maskers uit Spoor A
-    gevlektewitsnuitlibel_voortplanting_finaal_opp <- terra::mask(vpt_prep_opp, terra::ifel(masker_vpt_max, 1, NA))
-    gevlektewitsnuitlibel_foerageer_finaal_opp     <- terra::mask(foer_prep_opp, terra::ifel(masker_foer_max, 1, NA))
-    
-    # MAAK HET NIEUWE GECOMBINEERDE RASTER VOOR FRACTIES
-    gevlektewitsnuitlibel_leefgebied_opp           <- terra::cover(gevlektewitsnuitlibel_voortplanting_finaal_opp, gevlektewitsnuitlibel_foerageer_finaal_opp)
+    # Bijsnijden naar studiegebied voor rapportage
+    gevlektewitsnuitlibel_leefgebied_max <- terra::crop(gevlektewitsnuitlibel_leefgebied_max, area_shape_proj, mask = TRUE)
     
   } else {
-    gevlektewitsnuitlibel_voortplanting_finaal_opp <- template_TV * NA
-    gevlektewitsnuitlibel_foerageer_finaal_opp     <- template_TV * NA
-    gevlektewitsnuitlibel_leefgebied_opp           <- template_TV * NA
+    message("⚠️ Geen water- en landclusters gevonden die binnen 10m van elkaar liggen.")
+    gevlektewitsnuitlibel_leefgebied_max <- template_TV * NA
   }
 } else {
-  gevlektewitsnuitlibel_voortplanting_finaal_opp <- template_TV * NA
-  gevlektewitsnuitlibel_foerageer_finaal_opp     <- template_TV * NA
-  gevlektewitsnuitlibel_leefgebied_opp           <- template_TV * NA
+  gevlektewitsnuitlibel_leefgebied_max <- template_TV * NA
 }
 
-# Geheugen netjes opruimen
-suppressWarnings(
-  rm(vpt_prep_max, foer_prep_max, cl_vpt_max, cl_foer_max, dist_from_water_max, dist_from_foer_max,
-     zone_foer_500, zone_water_500, ids_vpt_valide_max, ids_foer_valide_max, vpt_prep_opp, foer_prep_opp)
-)
-gc()
-```
+# --- PARALLEL SPOOR B (WERKELIJKE OPPERVLAKTE FRACTIES) ---
+if(exists("land_nabij_opp") && !all(is.na(terra::values(gevlektewitsnuitlibel_leefgebied_max, mat=FALSE)))) {
+  # Masker het werkelijke fractieraster met de goedgekeurde ruimtelijke footprint uit Spoor A
+  vpt_opp_tv  <- terra::crop(gevlektewitsnuitlibel_voortplanting_opp, area_shape_proj, mask = TRUE)
+  land_opp_tv <- terra::crop(land_nabij_opp, area_shape_proj, mask = TRUE)
+  
+  leef_opp_ruw <- terra::cover(vpt_opp_tv, land_opp_tv)
+  gevlektewitsnuitlibel_leefgebied_opp <- terra::mask(leef_opp_ruw, gevlektewitsnuitlibel_leefgebied_max)
+} else {
+  gevlektewitsnuitlibel_leefgebied_opp <- template_TV * NA
+}
 
-```{r hectareberekening}
-# ==============================================================================
-# HECTAREBEREKENING & RAPPORTAGE EINDOVERZICHT (GEFIXT: UNIEKE CHUNKNAAM)
-# ==============================================================================
-ha_finaal_vpt_pot  <- calc_ha_exact(gevlektewitsnuitlibel_voortplanting_finaal_max)
-ha_finaal_vpt_wek  <- calc_ha_exact(gevlektewitsnuitlibel_voortplanting_finaal_opp)
-
-ha_finaal_foer_pot <- calc_ha_exact(gevlektewitsnuitlibel_foerageer_finaal_max)
-ha_finaal_foer_wek <- calc_ha_exact(gevlektewitsnuitlibel_foerageer_finaal_opp)
-
-ha_finaal_leef_pot <- calc_ha_exact(gevlektewitsnuitlibel_leefgebied_max)
-ha_finaal_leef_wek <- calc_ha_exact(gevlektewitsnuitlibel_leefgebied_opp)
-
-cat("\n=========================================================\n")
-cat("     EINDRESULTATEN MODEL GEVLEKTEWITSNUITLIBEL (TV)     \n")
-cat("=========================================================\n")
-cat(paste("Voortplantingsbiotoop (Max Potentie):  ", round(ha_finaal_vpt_pot, 2), "ha\n"))
-cat(paste("Voortplantingsbiotoop (Werkelijke Fr): ", round(ha_finaal_vpt_wek, 2), "ha\n"))
-cat("---------------------------------------------------------\n")
-cat(paste("Foerageergebied (Max Potentie):        ", round(ha_finaal_foer_pot, 2), "ha\n"))
-cat(paste("Foerageergebied (Werkelijke Fractie):  ", round(ha_finaal_foer_wek, 2), "ha\n"))
-cat("---------------------------------------------------------\n")
-cat(paste("TOTAAL LEEFGEBIED (Max Potentie):      ", round(ha_finaal_leef_pot, 2), "ha\n"))
-cat(paste("TOTAAL LEEFGEBIED (Werkelijke Fractie): ", round(ha_finaal_leef_wek, 2), "ha\n"))
-cat("=========================================================\n\n")
-```
-
-```{r Tabel}
-# ==============================================================================
-# DIAGNOSE EN OUTPUT PRINTS (AUDIT VAN DE 500M CLUSTERKOPPELING)
-# ==============================================================================
-cat("\n--- AUDIT: EFFECT VAN DE ECOLOOGSCHE 500M CLUSTERKOPPELING ---\n")
-
-# 1. Breng de componenten van VÓÓR de koppeling naar het studiegebied om eerlijk te vergelijken
-vpt_voor_crop  <- terra::crop(gevlektewitsnuitlibel_voortplanting_max, area_shape_proj, mask = TRUE)
-foer_voor_crop <- terra::crop(gevlektewitsnuitlibel_foerageer3_max, area_shape_proj, mask = TRUE)
-
-# Spoor A (Max Potentie): We gebruiken terra::cover om double-counting van overlappende pixels VOOR de koppeling te voorkomen!
-leefgebied_voor_max <- terra::cover(vpt_voor_crop, foer_voor_crop)
-
-ha_max_voor <- calc_ha_exact(leefgebied_voor_max)
-ha_max_na   <- calc_ha_exact(gevlektewitsnuitlibel_leefgebied_max)
-
-cat("Spoor A (Max Potentie) VOOR 500m koppeling (binnen TV):", round(ha_max_voor, 2), "ha\n")
-cat("Spoor A (Max Potentie) NA 500m koppeling (binnen TV):  ", round(ha_max_na, 2), "ha\n")
-cat("-> Netto afgevallen habitat door 500m grens (Spoor A):   ", round(ha_max_voor - ha_max_na, 2), "ha\n\n")
-
-
-# 2. Spoor B (Werkelijke Oppervlakte)
-vpt_voor_opp_crop  <- terra::crop(gevlektewitsnuitlibel_voortplanting_opp, area_shape_proj, mask = TRUE)
-foer_voor_opp_crop <- terra::crop(gevlektewitsnuitlibel_foerageer3_opp, area_shape_proj, mask = TRUE)
-
-leefgebied_voor_opp <- terra::cover(vpt_voor_opp_crop, foer_voor_opp_crop)
-
-ha_opp_voor <- calc_ha_exact(leefgebied_voor_opp)
-ha_opp_na   <- calc_ha_exact(gevlektewitsnuitlibel_leefgebied_opp)
-
-cat("Spoor B (Werkelijke Opp) VOOR 500m koppeling (binnen TV):", round(ha_opp_voor, 2), "ha\n")
-cat("Spoor B (Werkelijke Opp) NA 500m koppeling (binnen TV):  ", round(ha_opp_na, 2), "ha\n")
-cat("-> Netto afgevallen habitat door 500m grens (Spoor B):   ", round(ha_opp_voor - ha_opp_na, 2), "ha\n")
-
-# GEFIXT: De cruciale model-rasters zijn hier uit de rm() lijst gehaald om crashes in de volgende chunk te voorkomen!
-suppressWarnings(
-  rm(voortplanting_bwk_max, voortplanting_bwk_opp, foerageer0_max, foerageer0_opp,
-     struweel1_max, r_witsnuit_waterbiotoop1, r_witsnuit_waterbiotoop1_opp,
-     vpt_voor_crop, foer_voor_crop, leefgebied_voor_max, vpt_voor_opp_crop, foer_voor_opp_crop, leefgebied_voor_opp)
-)
+# Schoonmaak
+rm(cl_water, cl_land, dist_from_water, dist_from_land, land_binnen_10m_water, water_binnen_10m_land)
 gc()
 ```
 
@@ -999,21 +795,18 @@ for(item in export_config) {
 
 ```{r Interactieve kaart}
 # ==============================================================================
-# STAP 14: INTERACTIEVE KAART (LEAFLET - INCLUSIEF VOORTPLANTINGSLAAAG)
+# STAP 14: INTERACTIEVE KAART (LEAFLET - INCLUSIEF GOEDGEKEURDE WATERBIOTOOP)
 # ==============================================================================
 if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE)))) {
   
-  message("-> Clusterstatistieken berekenen op basis van het TOTALE, gedeelde netwerk...")
+  message("-> Clusterstatistieken berekenen voor interactieve kaart...")
   
-  # GEFIXT: We berekenen de frequentie en hectares op het BREDE, ongecroppte netwerkraster
-  # Hierdoor worden alle eilanden met hetzelfde ID wereldwijd bij elkaar opgeteld!
   stats_global_freq <- terra::freq(r_opp_net_ids)
   colnames(stats_global_freq) <- c("layer", "ID", "count")
   
   stats_global_opp <- terra::zonal(gevlektewitsnuitlibel_leefgebied_opp * 0.01, r_opp_net_ids, fun = "sum", na.rm = TRUE)
   colnames(stats_global_opp) <- c("ID", "Totaal_Netwerk_Werk_ha")
   
-  # Bereken ook hoeveel daarvan specifiek BINNEN TV ligt (voor de nuance)
   stats_tv_opp <- terra::zonal(r_opp_tv * 0.01, r_net_ids_tv, fun = "sum", na.rm = TRUE)
   colnames(stats_tv_opp) <- c("ID", "Binnen_TV_Werk_ha")
   
@@ -1043,7 +836,7 @@ if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE))
       )
     )
 
-  # 2. Vectoriseren van de exact gecroppte netwerk-ids naar Polygonen voor Leaflet
+  # Vectoriseren van netwerk-ids naar Polygonen voor Leaflet
   cl_poly <- terra::as.polygons(r_net_ids_tv, aggregate = TRUE) %>% 
     st_as_sf() %>% 
     st_transform(4326)
@@ -1056,19 +849,21 @@ if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE))
   cl_poly_final <- st_sf(st_sfc(crs = 4326))
 }
 
-# 3. Projecteer rasters en vectoren naar WGS84 voor Leaflet
+# 1. Projecteer basisrasters en grenzen naar WGS84 voor Leaflet
 r_web_status <- terra::project(r_status, "EPSG:4326", method = "near")
 bbox         <- st_bbox(grens_web)
 
-# NIEUW: Projecteer het goedgekeurde voortplantingsbiotoop (indien aanwezig)
-if(exists("gevlektewitsnuitlibel_voortplanting_finaal_max") && 
-   !all(is.na(terra::values(gevlektewitsnuitlibel_voortplanting_finaal_max, mat=FALSE)))) {
-  r_web_vpt <- terra::project(gevlektewitsnuitlibel_voortplanting_finaal_max, "EPSG:4326", method = "near")
+# 2. HIER ZIT DE CRUCIALE TOEVOEGING: GOEDGEKEURDE POELEN PROJECTEREN
+if(exists("gevlektewitsnuitlibel_water_finaal_max") && 
+   !all(is.na(terra::values(gevlektewitsnuitlibel_water_finaal_max, mat=FALSE)))) {
+  
+  # Projecteer het goedgekeurde water-raster direct naar WGS84
+  r_web_water <- terra::project(gevlektewitsnuitlibel_water_finaal_max, "EPSG:4326", method = "near")
 } else {
-  r_web_vpt <- NULL
+  r_web_water <- NULL
 }
 
-# Projectie van waarnemingen van de libel (indien aanwezig)
+# 3. Projectie van waarnemingen
 if(has_observations && nrow(df_points_sf) > 0) {
   waarneming_smear_web <- st_transform(waarneming_smear_sf, 4326)
   points_web           <- st_transform(df_points_sf, 4326)
@@ -1087,24 +882,29 @@ map <- leaflet() %>%
   addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet") %>%
   fitBounds(bbox[['xmin']], bbox[['ymin']], bbox[['xmax']], bbox[['ymax']])
 
-# Voeg status pixels toe
+# Status pixels (de brede footprint)
 if(!all(is.na(terra::values(r_web_status, mat=FALSE)))) {
-  map <- map %>% addRasterImage(terra::as.int(r_web_status), colors = pal_4, opacity = 0.4, group = "Habitat Status (Pixels)")
+  map <- map %>% addRasterImage(terra::as.int(r_web_status), colors = pal_4, opacity = 0.35, group = "Habitat Status (Pixels)")
 }
 
-# NIEUW: Voeg de goedgekeurde voortplantingswateren toe als een felblauwe rasterlaag
-if(!is.null(r_web_vpt)) {
-  map <- map %>% addRasterImage(terra::as.int(r_web_vpt), colors = "#00BFFF", opacity = 0.8, group = "Voortplantingsbiotoop (Vennen)")
+# NIEUW: VOEG DE GOEDGEKEURDE POELEN TOE IN HET OPVALLEND BLAUW
+if(!is.null(r_web_water)) {
+  map <- map %>% addRasterImage(
+    terra::as.int(r_web_water), 
+    colors = "#0072B2",        # Helder, ecologisch blauw
+    opacity = 0.85,             # Hoge opaciteit zodat het water er echt uitspringt
+    group = "Goedgekeurde Poelen/Vennen"
+  )
 }
 
-# Voeg Polygonen en Waarnemingen toe
+# Polygonen van clusters en Waarnemingen toevoegen
 map <- map %>%
   addPolygons(
     data = cl_poly_final,
     fillColor = ~pal_status(Type),
-    fillOpacity = ~ifelse(ARPL, 0.6, 0.1), 
+    fillOpacity = ~ifelse(ARPL, 0.5, 0.1), 
     color = ~pal_status(Type), 
-    weight = ~ifelse(ARPL, 3, 0.5), 
+    weight = ~ifelse(ARPL, 2.5, 0.5), 
     opacity = 1,
     popup = ~Popup,
     group = "Leefgebieden (Clusters)"
@@ -1124,14 +924,17 @@ if(has_observations && nrow(df_points_sf) > 0) {
     )
 }
 
-# Grens en Controls toevoegen (Aangepast met de nieuwe overlayGroup)
+# Grens Studiegebied & Lagenbeheer instellen
 map %>%
   addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens Studiegebied") %>%
   addLayersControl(
     baseGroups = c("OSM (Kaart)", "Satelliet"),
-    overlayGroups = c("Leefgebieden (Clusters)", "Habitat Status (Pixels)", 
-                      "Voortplantingsbiotoop (Vennen)", "Dispersiebereik (Smear)", 
-                      "Waarnemingen", "Grens Studiegebied"),
+    overlayGroups = c("Goedgekeurde Poelen/Vennen", 
+                      "Leefgebieden (Clusters)", 
+                      "Habitat Status (Pixels)", 
+                      "Dispersiebereik (Smear)", 
+                      "Waarnemingen", 
+                      "Grens Studiegebied"),
     options = layersControlOptions(collapsed = FALSE)
   )
 ```

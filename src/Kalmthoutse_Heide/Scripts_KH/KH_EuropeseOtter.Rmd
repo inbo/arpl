@@ -122,25 +122,31 @@ gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
 area_shape_proj <- project(area_shape, crs(master_grid))
 area_buffer_fix <- buffer(area_shape_proj, width = buffer_m)
 
-message("-> Vertaalraster voor globale/lokale cellen opbouwen...")
+message("-> Uitsnede maken en lokale/globale cel-IDs berekenen...")
+
+# 1. Snijd de master_grid direct uit naar het studiegebied (met buffer)
 id_raster_KH <- crop(master_grid, area_buffer_fix, snap = "near")
 
-# Snelle extractie van cel-IDs
-extractie_ids <- terra::cells(master_grid, area_buffer_fix)
+# 2. GEHEUGEN-FIX: Bereken globale cel-IDs op basis van xy-coördinaten van de uitsnede
+# Dit voorkomt het laden van miljoenen cellen van heel Vlaanderen in het RAM
+lokale_coords <- terra::xyFromCell(id_raster_KH, 1:ncell(id_raster_KH))
+globale_ids   <- terra::cellFromXY(master_grid, lokale_coords)
 
+# 3. Bouw de vertaaltabel efficiënt op met data.table
 vertaal_df <- data.table(
   lokale_id  = 1:ncell(id_raster_KH),
-  globale_id = extractie_ids
+  globale_id = globale_ids
 )
 
-studiegebied_globale_ids <- unique(vertaal_df$globale_id)
+# Enkel de unieke globale IDs bewaren voor de database query
+studiegebied_globale_ids <- unique(vertaal_df$globale_id[!is.na(vertaal_df$globale_id)])
 
-# Maak een licht sjabloon zonder zware waardenvectoren
+# Sjabloon opbouwen voor latere stappen
 template_KH <- terra::rasterize(area_buffer_fix, id_raster_KH, field = 1, background = 0)
+grens_web   <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
 
-grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
-
-rm(extractie_ids)
+# Geheugen opschonen
+rm(lokale_coords, globale_ids)
 gc()
 ```
 
@@ -277,44 +283,76 @@ gc()
 ```
 
 ```{r Otter Stap 2 - Landbiotopen smelten en zeven op 1000 ha}
+# ==============================================================================
+# OTTER STAP 2: LANDBIOTOPEN SMELTEN EN ZEVEN OP 1000 HA (GEOPTIMALISEERD)
+# ==============================================================================
 message("-> Otter Spoor 2: Alle landbiotopen samenvoegen en opschonen...")
 
+# 1. Hulpfunctie definiëren om NAs en nullen op te schonen
 clean_max <- function(r) {
   if (is.null(r)) return(template_KH * NA)
   r[is.na(r) | r == 0] <- NA
   return(r)
 }
 
-l_d <- clean_max(d_max); l_h <- clean_max(h_max); l_k <- clean_max(k_max); l_m <- clean_max(m_max)
-l_r <- clean_max(r_max); l_s <- clean_max(s_max); l_t <- clean_max(t_max); l_v <- clean_max(v_max)
-
-otter_biotopen_max <- l_d | l_h | l_k | l_m | l_r | l_s | l_t | l_v
-otter_biotopen_max <- terra::ifel(otter_biotopen_max == 1, 1, NA)
-
-# Geheugenzuinige optelling van de fracties
-opp_lijst <- list(d_opp, h_opp, k_opp, m_opp, r_opp, s_opp, t_opp, v_opp)
-opp_schoon <- lapply(opp_lijst, function(x) {
-  if(is.null(x)) return(template_KH * 0)
-  terra::ifel(is.na(x), 0, x)
-})
-
-otter_biotopen_opp <- Reduce("+", opp_schoon)
-otter_biotopen_opp <- terra::clamp(otter_biotopen_opp, upper = 1.0)
-otter_biotopen_opp <- terra::mask(otter_biotopen_opp, otter_biotopen_max)
-
-# Netwerk-filtering
-cl_otter_land <- cluster_filter_compleet(
-  masker     = otter_biotopen_max,
-  opp_laag   = otter_biotopen_opp,
-  drempel_m2 = 1000 * 10000, 
-  dist_m     = 100,          
-  werkelijk  = FALSE
+# 2. Smelt alle binaire/fractionele landbiotopen in één snelle stap met pmax
+opp_stack <- c(
+  clean_max(d_opp), clean_max(h_opp), clean_max(k_opp), clean_max(m_opp),
+  clean_max(r_opp), clean_max(s_opp), clean_max(t_opp), clean_max(v_opp)
 )
 
-otter_biotopen1000_max <- cl_otter_land$raster
-otter_biotopen1000_opp <- terra::mask(otter_biotopen_opp, otter_biotopen1000_max)
+# 3. Bereken de som van de fracties (max. 1.0) en de binaire aanwezigheid
+otter_biotopen_opp <- sum(opp_stack, na.rm = TRUE)
+otter_biotopen_opp <- terra::clamp(otter_biotopen_opp, upper = 1.0)
+otter_biotopen_max <- terra::ifel(otter_biotopen_opp > 0, 1, NA)
 
-suppressWarnings(rm(l_d, l_h, l_k, l_m, l_r, l_s, l_t, l_v, opp_lijst, opp_schoon, cl_otter_land, otter_biotopen_max, otter_biotopen_opp))
+rm(opp_stack)
+gc()
+
+# 4. SNELLER ALTERNATIEF VOOR CLUSTER FILTERING (Via Vector Polygons)
+if (!all(is.na(terra::values(otter_biotopen_max, mat = FALSE)))) {
+  message("-> Landbiotopen clusteren en zeven op minimale drempel (1000 ha)...")
+  
+  # A. Maak ruwe polygonen van de landbiotoop-pixels
+  poly_land <- terra::as.polygons(otter_biotopen_max, aggregate = TRUE) %>% terra::disagg()
+  
+  # B. Smelt polygonen samen die binnen 100m van elkaar liggen (buffer 50m)
+  poly_buf <- terra::buffer(poly_land, width = 50)
+  poly_net <- terra::aggregate(poly_buf) %>% terra::disagg()
+  poly_net$Cluster_ID <- 1:nrow(poly_net)
+  
+  # C. Ken de Cluster_IDs toe aan de oorspronkelijke ruimtelijke vlakken
+  poly_land$Cluster_ID <- terra::relate(poly_land, poly_net, "within") %>% 
+    apply(1, function(x) { if(any(x)) which(x)[1] else NA })
+  
+  # D. Rasteriseer de Cluster IDs terug naar een tijdelijk raster
+  r_clusters <- terra::rasterize(poly_land, template_KH, field = "Cluster_ID", touches = FALSE)
+  
+  # E. Sommeer de effectieve hectare-oppervlakte per cluster
+  zonal_ha <- terra::zonal(otter_biotopen_opp, r_clusters, fun = "sum", na.rm = TRUE)
+  colnames(zonal_ha) <- c("Cluster_ID", "Som_Pixels")
+  zonal_ha$Opp_ha <- zonal_ha$Som_Pixels * 0.01 # 1 pixel (10x10m) = 0.01 ha
+  
+  # F. Selecteer alleen clusters met >= 1000 ha werkelijk habitat
+  voldoet_ids <- zonal_ha$Cluster_ID[zonal_ha$Opp_ha >= 1000]
+  
+  if (length(voldoet_ids) > 0) {
+    # Maskeer het raster op basis van de geldige cluster-IDs
+    otter_biotopen1000_max <- terra::mask(otter_biotopen_max, r_clusters %in% voldoet_ids, maskvalues = FALSE)
+    otter_biotopen1000_opp <- terra::mask(otter_biotopen_opp, otter_biotopen1000_max)
+  } else {
+    otter_biotopen1000_max <- template_KH * NA
+    otter_biotopen1000_opp <- template_KH * NA
+  }
+  
+  rm(poly_land, poly_buf, poly_net, r_clusters, zonal_ha)
+} else {
+  otter_biotopen1000_max <- template_KH * NA
+  otter_biotopen1000_opp <- template_KH * NA
+}
+
+# Geheugen weer netjes vrijmaken
+suppressWarnings(rm(otter_biotopen_max, otter_biotopen_opp))
 gc()
 ```
 
@@ -330,7 +368,7 @@ final_opp <- template_KH * NA
 if (exists("otter_biotopen1000_max") && !all(is.na(terra::values(otter_biotopen1000_max, mat=FALSE))) &&
     exists("otter_water_max") && !all(is.na(terra::values(otter_water_max, mat=FALSE)))) {
   
-  # 1. Afstandsrasters berekenen (snel via terra::distance)
+  # 1. Afstandsrasters berekenen (geheugenzuinig)
   dist_tot_water <- terra::distance(otter_water_max)
   dist_tot_land  <- terra::distance(otter_biotopen1000_max)
   
@@ -338,11 +376,19 @@ if (exists("otter_biotopen1000_max") && !all(is.na(terra::values(otter_biotopen1
   leefgebied3_max <- otter_biotopen1000_max == 1 & dist_tot_water <= 1000
   leefgebied3_opp <- terra::mask(otter_biotopen1000_opp, leefgebied3_max)
   
+  # Afstandsraster meteen opruimen uit geheugen!
+  rm(dist_tot_water)
+  gc()
+  
   # GDX: europeseotter_leefgebied4 = and(water, cellDistanceLe(biotopen1000, 1000m))
   leefgebied4_max <- otter_water_max == 1 & dist_tot_land <= 1000
+  
+  rm(dist_tot_land)
+  gc()
+  
   # Water krijgt een volledige dekkingsfractie van 1.0 per pixel
   r_water_opp_full <- terra::ifel(otter_water_max == 1, 1.0, NA)
-  leefgebied4_opp <- terra::mask(r_water_opp_full, leefgebied4_max)
+  leefgebied4_opp  <- terra::mask(r_water_opp_full, leefgebied4_max)
   
   # GDX: or(leefgebied3, leefgebied4)
   otter_leefgebied_max <- leefgebied3_max | leefgebied4_max
@@ -355,32 +401,35 @@ if (exists("otter_biotopen1000_max") && !all(is.na(terra::values(otter_biotopen1
     terra::mask(otter_leefgebied_max) %>% 
     terra::crop(template_KH)
   
-  # --- STRUIKELKOPPELING NAAR JOUW FINALE TABELLEN EN KAARTEN ---
+  # --- KOPPELING NAAR FINALE TABELLEN EN KAARTEN ---
   final_max <- otter_leefgebied_max
   final_opp <- otter_leefgebied_opp
   cl_max    <- final_max
   bwk_opp   <- final_opp
   
   cat("\n=========================================================\n")
-  cat("          RESULTATEN MODEL EUROPESE OTTER                \n")
+  cat("          RESULTATEN MODEL EUROPESE OTTER                 \n")
   cat("=========================================================\n")
   cat("Totaal stabiel leefgebied Otter (ha):", round(calc_ha_exact(final_opp), 2), "\n")
   cat("=========================================================\n\n")
   
-  suppressWarnings(rm(dist_tot_water, dist_tot_land, leefgebied3_max, leefgebied3_opp, 
+  suppressWarnings(rm(leefgebied3_max, leefgebied3_opp, 
                       leefgebied4_max, leefgebied4_opp, r_water_opp_full, l3_clean, l4_clean,
                       otter_leefgebied_max, otter_leefgebied_opp))
 } else {
   message("⚠️ Knelpunt: Er is geen landnetwerk >1000 ha óf geen water aanwezig in de actieve regio!")
-  cl_max    <- final_max
-  bwk_opp   <- final_opp
+  cl_max  <- final_max
+  bwk_opp <- final_opp
 }
 
-# Back-up variabelen voor je renderer en kaarten-mal onderaan
+# Back-up variabelen voor renderer en kaarten-mal onderaan
 r_status  <- final_max
-cl_id_max <- terra::patches(final_max, directions = 8, zeroAsNA = TRUE)
-cl_id_opp <- cl_id_max
-otter_waterbiotoop1_finaal_max <- otter_water_max # Slaat de waterlopen op als blauwe laag in Leaflet!
+cl_max    <- final_max # Wordt in de volgende chunk via polygonen gebufferd naar unieke netwerken
+
+# Bewaar finale waterbiotoop-laag voor Leaflet als die bestaat
+if (exists("otter_water_max")) {
+  otter_waterbiotoop1_finaal_max <- otter_water_max 
+}
 
 suppressWarnings(rm(otter_biotopen1000_max, otter_biotopen1000_opp, otter_water_max))
 gc()

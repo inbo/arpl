@@ -14,7 +14,7 @@ assign(bruineeikenpage_eiafzet_bos, cFilterGeArea(bruineeikenpage_eiafzet_bwk_cl
 
 // baken lineaire elementen af, die kleiner mogen zijn dan 5 ha
 
-assign(bruineeikenpage_eiafzet_lineair, bwk(khq, khq-, khq+, khwqr, khwqr-, khwqr+, kbq, kbq-, kbq+, kh(qb%))
+assign(bruineeikenpage_eiafzet_lineair, bwk(khq, khq-, khq+, khwqr, khwqr-, khwqr+, kh(qb%))
 
 assign(bruineeikenpage_eiafzet, or(bruineeikenpage_eiafzet_bos, bruineeikenpage_eiafzet_lineair))
 
