@@ -81,3 +81,6 @@ rsconnect/
 # Scenario_rds
 /data/input/Scenario_rds
 .positai
+
+# Waarnemingen files (toestemming nodig)
+/data/input/Waarnemingen_Soorten
