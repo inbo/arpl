@@ -9,6 +9,7 @@ output:
     theme: flatly
 params:
   scenario_rds_path: "TV_Scenario_bosbehoudss_ss31fix_tvg_vrij_2026.rds" # Wordt aangestuurd vanuit masterscript
+  soort_invoer: "aardbeivlinder"
 
 ---
 
@@ -115,7 +116,7 @@ resultaten_gegroepeerd <- df_nieuw %>%
   nest(Data = c(Code, Match))
 
 # 2. LAAD DE REGIONALE TABEL IN
-tabel_vlaanderen <- readRDS(here("data/input/Raster_Vlaanderen/BWK_Tabel_Turnhout_Plus_50km.rds"))
+tabel_vlaanderen <- readRDS(scenario_path)
 setDT(tabel_vlaanderen)
 tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
 
@@ -187,10 +188,6 @@ gc()
 # Cluster-analyse en oppervlakte filter
 ```{r}
 drempel_m2 <- oppervlakte_ha * 10000
-
-masker_bron <- alle_matches[["Match"]]
-masker_bron[masker_bron == 0] <- NA
-opp_bron <- alle_oppervlaktes[["Oppervlakte"]]
 
 cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = TRUE) {
   if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
