@@ -347,56 +347,25 @@ rm(foerageer_basis_max, foerageer_basis_opp, foerageer_complex_clusters)
 
 ```{r actieradius en finale samensmelting}
 # ==============================================================================
-# STAP 4: ACTIERADIUS CHECK (5 KM) EN LEEFGEBIED SAMENSMELTING MET WERKELIJKE OPP
+# STAP 4: ACTIERADIUS CHECK (5 KM) EN FINALE BROEDBOS SELECTIE
 # ==============================================================================
-message("-> Actieradiuskoppeling (5000m) berekenen tussen boskernen en foerageercomplexen...")
+message("-> Actieradiuskoppeling (5000m) berekenen tussen broedbos en foerageercomplex...")
 
-# Gebruik de binaire rasters om de buffers van 5 km te trekken
+# 1. Trek een buffer van 5 km rond de foerageercomplexen van >= 250 ha (Stap 3)
 buffer_5000m_foer <- terra::buffer(r_foerageer2_max, width = 5000)
-buffer_5000m_bos  <- terra::buffer(r_wespendief_bos_max, width = 5000)
 
-# Snijd zowel de binaire potentie (max) als de werkelijke fracties (opp) uit via de buffers
-r_voortplanting0_max <- terra::mask(r_wespendief_bos_max, buffer_5000m_foer)
-r_voortplanting0_opp <- terra::mask(r_wespendief_bos_opp, buffer_5000m_foer) # Echte bos-fracties behouden!
+# 2. Selecteer ENKEL het voortplantingsbos (dat in Stap 1 al >= 50 ha was) 
+#    dat binnen deze 5 km straal ligt.
+#    Geen overbodige her-clustering of tweede oppervlaktefilter meer nodig!
+wespendief_leefgebied_max <- terra::mask(r_wespendief_bos_max, buffer_5000m_foer) %>% 
+  terra::crop(template_TV)
 
-r_foerageer0_max <- terra::mask(r_foerageer2_max, buffer_5000m_bos)
-r_foerageer0_opp <- terra::mask(r_foerageer2_opp, buffer_5000m_bos) # Echte foerageer-fracties behouden!
-
-rm(buffer_5000m_foer, buffer_5000m_bos)
-
-message("-> Leefgebieden (Spoor 1) samenvoegen...")
-leefgebied1_max <- !is.na(r_voortplanting0_max) | !is.na(r_foerageer0_max)
-leefgebied1_max <- terra::ifel(leefgebied1_max == 1, 1, NA)
-
-# Tel de werkelijke fracties zuiver bij elkaar op (tot max 100% / 1.0 per cel)
-leefgebied1_opp <- terra::app(
-  terra::sds(
-    terra::ifel(is.na(r_voortplanting0_opp), 0, r_voortplanting0_opp),
-    terra::ifel(is.na(r_foerageer0_opp), 0, r_foerageer0_opp)
-  ),
-  fun = function(x) pmin(sum(x, na.rm = TRUE), 1)
-)
-leefgebied1_opp <- terra::ifel(leefgebied1_opp == 0, NA, leefgebied1_opp)
-
-rm(r_voortplanting0_max, r_voortplanting0_opp, r_foerageer0_max, r_foerageer0_opp)
-
-message("-> Finale clustering (500m fuzzy) en eindoppervlakte filter (250 ha)...")
-# De finale landscape-check (250 ha) gebeurt binair om de grens te bepalen
-finaal_leefgebied_clusters <- cluster_filter_compleet(
-  masker       = leefgebied1_max,
-  opp_laag     = leefgebied1_opp,
-  drempel_m2   = 2500000,   
-  dist_m       = 500,       
-  werkelijk    = FALSE      
-)
-
-# CRUCIALE FIX: Het finale werkelijke oppervlaktespoor snijdt de ECHTE fracties (leefgebied1_opp) uit!
-wespendief_leefgebied_max <- terra::crop(finaal_leefgebied_clusters$raster, template_TV)
-wespendief_leefgebied_opp <- terra::crop(terra::mask(leefgebied1_opp, wespendief_leefgebied_max), template_TV)
+wespendief_leefgebied_opp <- terra::mask(r_wespendief_bos_opp, buffer_5000m_foer) %>% 
+  terra::crop(template_TV)
 
 # Grote eindschoonmaak
-rm(r_wespendief_bos_max, r_wespendief_bos_opp, r_wespendief_open_max, r_wespendief_open_opp, 
-   r_foerageer2_max, r_foerageer2_opp, leefgebied1_max, leefgebied1_opp, finaal_leefgebied_clusters)
+rm(buffer_5000m_foer, r_wespendief_bos_max, r_wespendief_bos_opp, 
+   r_wespendief_open_max, r_wespendief_open_opp, r_foerageer2_max, r_foerageer2_opp)
 gc()
 ```
 
