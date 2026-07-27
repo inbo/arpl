@@ -251,175 +251,209 @@ rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
-```{r Landschapsanalyse Vliegend hert}
+```{r Externe Kaartlagen Inlezen}
 # ==============================================================================
-# 1. GEGEVENS INLEZEN EN PROPRIËTEREN OP HET MASTERGRID (10M)
+# STAP 1: EXTERNE RASTERLAGEN INLEZEN (GROENKAART, BOSLEEFTIJD, HELLINGEN)
 # ==============================================================================
-message("-> Landschapsbestanden inlezen voor het Vliegend hert...")
+message("-> Externe GIS-lagen inlezen voor het vliegend hert...")
 
-# Inlezen bosleeftijdkaart (Klassen 1 en 2 = Oud bos)
-r_bosleeftijd <- terra::rast(here("data/input/Raster_Vlaanderen/bosleeftijd.tif")) %>% 
-  terra::crop(area_buffer_fix, snap = "near")
-r_oud_bos <- terra::ifel(r_bosleeftijd == 1 | r_bosleeftijd == 2, 1, NA)
+# Helper om externe ASCI/TIF rasters snel en stabiel in te laden en af te stemmen op het studiegebied
+load_and_sync <- function(pad) {
+  if (file.exists(pad)) {
+    r_raw <- terra::rast(pad)
+    r_sync <- terra::resample(r_raw, id_raster_VS, method = "near") %>% terra::crop(id_raster_VS)
+    return(r_sync)
+  } else {
+    message("⚠️ Waarschuwing: Bestand niet gevonden op pad: ", pad)
+    return(id_raster_VS * NA)
+  }
+}
 
-# Inlezen hellingenkaart (We gebruiken ALLE actieve hellingspixels conform jouw verzoek)
-r_hellingen <- terra::rast(here("data/input/Raster_Vlaanderen/vliegend_hert_hellingen.tif")) %>% 
-  terra::crop(area_buffer_fix, snap = "near")
-r_helling_mask <- terra::ifel(r_hellingen == 1, 1, NA)
+# 1. Groenkaart inlezen (1 = Hooggroen/Bos, 2,3,4 = Open groen)
+r_groenkaart <- load_and_sync(here("data/input/ASCI Files/Groenkaart_2021.tif"))
 
-# Groenkaart inladen (1 = Hooggroen/Bos, 2, 3 en 4 = Open structuren)
-r_groenkaart <- terra::rast(here("data/input/Raster_Vlaanderen/groenkaart2013_10m.tif")) %>% 
-  terra::crop(area_buffer_fix, snap = "near")
+r_groen_hoog_max <- r_groenkaart == 1
+r_groen_open_max <- r_groenkaart %in% c(2, 3, 4)
 
-# ==============================================================================
-# 2. BOS- EN OPEN STRUCTUREN SCHEIDEN EN FILTEREN
-# ==============================================================================
-message("-> Bos- en open structuren scheiden en filteren met BWK-rasters...")
+# 2. Bosleeftijdkaart inlezen (1 of 2 = Oud bos)
+r_bosleeftijd_raw <- load_and_sync(here("data/input/Raster_Vlaanderen/vlaanderen_bosleeftijd_10m.tif"))
+r_oud_bos_max     <- r_bosleeftijd_raw %in% c(1, 2)
 
-# Extractie hooggroen/bos uit groenkaart (waarde 1)
-r_groen_bos <- terra::ifel(r_groenkaart == 1, 1, NA)
+# 3. Hellingen inlezen (4 graden)
+r_helling_max <- load_and_sync(here("data/input/Raster_Vlaanderen/vliegend_hert_4gr_DTMVLII_10m_comp.tif")) == 1
 
-# Match met jouw reeds klaargezette 'naaldbos_max' variabele uit de database!
-# Geschikte bossen = hooggroen en GEEN naaldbos/broekbos
-vhert_bossen_geschikt <- terra::ifel(r_groen_bos == 1 & is.na(naaldbos_max), 1, NA)
-
-# Extractie open gebieden uit groenkaart (waarden 2, 3 of 4)
-vhert_open_ruw <- terra::ifel(r_groenkaart == 2 | r_groenkaart == 3 | r_groenkaart == 4, 1, NA)
-
-suppressWarnings(rm(r_bosleeftijd, r_groenkaart, r_groen_bos))
+# Geheugen opschonen
+suppressWarnings(rm(r_groenkaart, r_bosleeftijd_raw))
 gc()
 ```
 
-```{r Interactie en habitatbepaling Vliegend hert}
+```{r Geschikt Loofbos en Afstandsfilters}
 # ==============================================================================
-# 3. RUIMTELIJKE INTERACTIES (OUD BOS & HELLINGEN < 1000M)
+# STAP 2: LOOFBOS FILTEREN EN KOPPELEN AAN OUD BOS & HELLINGEN (< 1000M)
 # ==============================================================================
-message("-> Ruimtelijke interacties meten (bosleeftijd < 1000m & hellingen < 1000m)...")
+message("-> Geschikt loofbos afbakenen (exclusief naaldbos/broekbos)...")
 
-# Bos mag tot 1000m van oud bos liggen (LARCH: cellDistanceLe(oud_bos, 1000))
-dist_tot_oud_bos <- terra::distance(r_oud_bos)
-vhert_bossen_oud_interactie <- terra::ifel(vhert_bossen_geschikt == 1 & dist_tot_oud_bos <= 1000, 1, NA)
+# 1. Hooggroen ZONDER naaldbos/broekbos
+# Binaire maximale potentie
+r_naaldbos_bin <- !is.na(naaldbos_max) & naaldbos_max == 1
+r_bossen1_max  <- r_groen_hoog_max == 1 & !r_naaldbos_bin
+r_bossen1_max  <- terra::ifel(r_bossen1_max == 1, 1, NA)
 
-# Dit bos moet binnen 1000m van een helling liggen (LARCH: cellDistanceLe(hellingen, 1000))
-dist_tot_helling <- terra::distance(r_helling_mask)
-vhert_bossen_helling_interactie <- terra::ifel(vhert_bossen_oud_interactie == 1 & dist_tot_helling <= 1000, 1, NA)
+# Fractionele parallelle verwerking: Naaldbos/broekbos opp afsnijden
+r_naaldbos_opp_clean <- terra::ifel(is.na(naaldbos_opp), 0, naaldbos_opp)
+r_bossen1_opp        <- terra::clamp(1.0 - r_naaldbos_opp_clean, lower = 0, upper = 1.0) %>% 
+  terra::mask(r_bossen1_max)
 
-# ==============================================================================
-# 4. PRE-CLUSTERING EN OPPERVLAKTEDREMPELS (BOS >= 10HA & OPEN >= 5HA)
-# ==============================================================================
-message("-> Bos- en open clusters groeperen en filteren op minimale oppervlaktes...")
-
-# Bos-clustering (LARCH fuzzy 50m = 25m buffer) -> Moet cumulatief >= 10 ha zijn
-bos_buffered <- terra::buffer(vhert_bossen_helling_interactie, width = 25)
-r_bos_clusters_raw <- terra::patches(bos_buffered, directions = 8, zeroAsNA = TRUE)
-r_bos_clusters <- terra::mask(r_bos_clusters_raw, vhert_bossen_helling_interactie)
-
-freq_bos <- terra::freq(r_bos_clusters)
-freq_bos$area_ha <- freq_bos$count * 0.01
-goedgekeurde_bos_ids <- freq_bos$value[freq_bos$area_ha >= 10.0]
-
-if(length(goedgekeurde_bos_ids) > 0) {
-  vhert_bossen_10ha <- r_bos_clusters %in% goedgekeurde_bos_ids
-  vhert_bossen_10ha <- terra::ifel(vhert_bossen_10ha == 1, 1, NA)
+# 2. Afstandsfilter 1: Binnen 1000m van Oud Bos
+message("-> Afstandsfilter 1: Afstand tot Oud Bos berekenen (<= 1000m)...")
+if (!all(is.na(terra::values(r_oud_bos_max, mat=FALSE)))) {
+  dist_oud_bos  <- terra::distance(r_oud_bos_max)
+  r_bossen2_max <- r_bossen1_max == 1 & dist_oud_bos <= 1000
 } else {
-  vhert_bossen_10ha <- id_raster_VS * NA
+  message("⚠️ Geen oud bos gevonden: Filter overgeslagen.")
+  r_bossen2_max <- r_bossen1_max
 }
+r_bossen2_max <- terra::ifel(r_bossen2_max == 1, 1, NA)
+r_bossen2_opp <- terra::mask(r_bossen1_opp, r_bossen2_max)
 
-# Open-clustering (LARCH fuzzy 50m = 25m buffer) -> Moet cumulatief >= 5 ha zijn
-open_buffered <- terra::buffer(vhert_open_ruw, width = 25)
-r_open_clusters_raw <- terra::patches(open_buffered, directions = 8, zeroAsNA = TRUE)
-r_open_clusters <- terra::mask(r_open_clusters_raw, vhert_open_ruw)
-
-freq_open <- terra::freq(r_open_clusters)
-freq_open$area_ha <- freq_open$count * 0.01
-goedgekeurde_open_ids <- freq_open$value[freq_open$area_ha >= 5.0]
-
-if(length(goedgekeurde_open_ids) > 0) {
-  vhert_open_5ha <- r_open_clusters %in% goedgekeurde_open_ids
-  vhert_open_5ha <- terra::ifel(vhert_open_5ha == 1, 1, NA)
+# 3. Afstandsfilter 2: Binnen 1000m van hellingen
+message("-> Afstandsfilter 2: Afstand tot hellingen berekenen (<= 1000m)...")
+if (!all(is.na(terra::values(r_helling_max, mat=FALSE)))) {
+  dist_helling <- terra::distance(r_helling_max)
+  r_bossen_gefilterd_max <- r_bossen2_max == 1 & dist_helling <= 1000
 } else {
-  vhert_open_5ha <- id_raster_VS * NA
+  message("⚠️ Geen hellingen gevonden: Filter overgeslagen.")
+  r_bossen_gefilterd_max <- r_bossen2_max
 }
+r_bossen_gefilterd_max <- terra::ifel(r_bossen_gefilterd_max == 1, 1, NA)
+r_bossen_gefilterd_opp <- terra::mask(r_bossen2_opp, r_bossen_gefilterd_max)
 
+# 4. Cluster-analyse Bos: Fuzzy 50m, minimaal 10 hectare
+message("-> Loofboscomplexen clusteren (50m fuzzy) en filteren op min. 10 ha...")
+cl_bos_10ha <- cluster_filter_compleet(
+  masker     = r_bossen_gefilterd_max,
+  opp_laag   = r_bossen_gefilterd_opp,
+  drempel_m2 = 10 * 10000, # 10 ha drempel
+  dist_m     = 50,
+  werkelijk  = FALSE
+)
+
+vh_bossen3_max <- cl_bos_10ha$raster
+vh_bossen3_opp <- terra::mask(r_bossen_gefilterd_opp, vh_bossen3_max)
+
+cat("Gecertificeerd boscomplex >= 10 ha (ha):", round(calc_ha_exact(vh_bossen3_opp), 2), "\n")
+
+suppressWarnings(rm(r_naaldbos_bin, r_naaldbos_opp_clean, r_bossen1_max, r_bossen1_opp,
+                    r_bossen2_max, r_bossen2_opp, r_bossen_gefilterd_max, r_bossen_gefilterd_opp,
+                    cl_bos_10ha))
+gc()
+```
+
+```{r Vliegend Hert Stap 3 - Open Gebieden en Bosranden}
 # ==============================================================================
-# 5. LARCH BOSRAND EN MINIMALE CONTACTLENGTE (>= 0.25 HA)
+# STAP 3: OPEN GEBIEDEN FILTEREN (5 HA) EN BOSRAND-INTERACTIE BEPALEN
 # ==============================================================================
-message("-> Bosrand (contactzone) detecteren tussen geschikte bos- en open clusters...")
+message("-> Open groengebieden clusteren (50m fuzzy) en filteren op min. 5 ha...")
 
-# Een cel is een 'bosrand' als het een geschikt bos is dat direct grenst aan open gebied (10m contact)
-open_border_buffer <- terra::buffer(vhert_open_5ha, width = 10)
-vhert_bosrand_ruw <- terra::ifel(vhert_bossen_10ha == 1 & open_border_buffer == 1, 1, NA)
+# Open groen krijgt de volle fractie 1.0 op opp-niveau als het uit de Groenkaart komt
+r_open_opp_full <- terra::ifel(r_groen_open_max == 1, 1.0, NA)
 
-# Bosrand-clustering (LARCH fuzzy 10m = 5m buffer) -> Moet cumulatief >= 0.25 ha zijn (overeenkomend met >= 100m lengte)
-bosrand_buffered <- terra::buffer(vhert_bosrand_ruw, width = 5)
-r_bosrand_clusters_raw <- terra::patches(bosrand_buffered, directions = 8, zeroAsNA = TRUE)
-r_bosrand_clusters <- terra::mask(r_bosrand_clusters_raw, vhert_bosrand_ruw)
+cl_open_5ha <- cluster_filter_compleet(
+  masker     = r_groen_open_max,
+  opp_laag   = r_open_opp_full,
+  drempel_m2 = 5 * 10000, # 5 ha drempel
+  dist_m     = 50,
+  werkelijk  = FALSE
+)
 
-freq_rand <- terra::freq(r_bosrand_clusters)
-freq_rand$area_ha <- freq_rand$count * 0.01
-goedgekeurde_rand_ids <- freq_rand$value[freq_rand$area_ha >= 0.25]
+vh_open1_max <- cl_open_5ha$raster
 
-if(length(goedgekeurde_rand_ids) > 0) {
-  vhert_bosrand_025ha <- r_bosrand_clusters %in% goedgekeurde_rand_ids
-  vhert_bosrand_025ha <- terra::ifel(vhert_bosrand_025ha == 1, 1, NA)
-} else {
-  vhert_bosrand_025ha <- id_raster_VS * NA
-}
+# --- BOSRAND-INTERACTIE: RAKENDE ZONES AANWIJZEN ---
+message("-> Raakvlakken (bosranden) tussen gekwalificeerd bos en open gebied berekenen...")
 
-# ==============================================================================
-# 6. FINALE BUFFER (40M IN HET BOS VANAF DE RAND)
-# ==============================================================================
-message("-> Geschikt bos tot 40 meter diep vanaf de bosranden meenemen...")
+vh_bosrand_max <- id_raster_VS * NA
 
-dist_tot_bosrand <- terra::distance(vhert_bosrand_025ha)
-vhert_bosbuffer_40m <- terra::ifel(vhert_bossen_10ha == 1 & dist_tot_bosrand <= 40, 1, NA)
-
-# Finaal ruw leefgebied = de bosrand + het aangrenzende diepe bos
-vhert_leefgebied_ruw <- terra::cover(vhert_bosrand_025ha, vhert_bosbuffer_40m)
-vhert_leefgebied_ruw <- terra::ifel(vhert_leefgebied_ruw == 1, 1, NA)
-
-# ==============================================================================
-# 7. FINALE HABITAT CLUSTERING (LARCH FUZZY 50M & MINIMAAL 5 HA)
-# ==============================================================================
-message("-> Netwerkwolken clusteren (fuzzy 50m) en testen op minstens 5 ha...")
-
-finale_buffered <- terra::buffer(vhert_leefgebied_ruw, width = 25)
-r_final_clusters_raw <- terra::patches(finale_buffered, directions = 8, zeroAsNA = TRUE)
-r_final_scherp_clusters <- terra::mask(r_final_clusters_raw, vhert_leefgebied_ruw)
-
-freq_final <- terra::freq(r_final_scherp_clusters)
-freq_final$area_ha <- freq_final$count * 0.01
-goedgekeurde_vhert_ids <- freq_final$value[freq_final$area_ha >= 5.0]
-
-if(length(goedgekeurde_vhert_ids) > 0) {
-  final_max <- r_final_scherp_clusters %in% goedgekeurde_vhert_ids
-  final_max <- terra::ifel(final_max == 1, 1, NA) %>% terra::crop(template_VS)
+if (!all(is.na(terra::values(vh_bossen3_max, mat=FALSE))) && !all(is.na(terra::values(vh_open1_max, mat=FALSE)))) {
   
-  # Aangezien we met binaire bosrandrasters werken is de werkelijke oppervlakte gelijk aan het binaire maximum
-  final_opp <- final_max %>% terra::crop(template_VS)
-  cl_max <- final_max
-  bwk_opp <- final_opp
+  # Cell-distance check: Bos binnen 15m van open gebied (touching/adjacent)
+  dist_tot_open  <- terra::distance(vh_open1_max)
+  r_bosrand_rauw <- vh_bossen3_max == 1 & dist_tot_open <= 15
+  r_bosrand_rauw <- terra::ifel(r_bosrand_rauw == 1, 1, NA)
+  
+  # GDX: Lengte van de bosrand moet minstens 100m zijn (vertaald naar 0.25 ha fuzzy 10m cluster)
+  cl_bosrand <- cluster_filter_compleet(
+    masker     = r_bosrand_rauw,
+    opp_laag   = terra::mask(vh_bossen3_opp, r_bosrand_rauw),
+    drempel_m2 = 0.25 * 10000, # 0.25 ha drempel (= 100m aaneengesloten rand)
+    dist_m     = 10,           # 10m direct aanliggende cellen
+    werkelijk  = FALSE
+  )
+  
+  vh_leefgebied2_max <- cl_bosrand$raster
 } else {
-  message("⚠️ Knelpunt: Geen enkele netwerkwolk haalt cumulatief de 5 ha leefgebiedsgrens!")
-  final_max <- template_VS * NA
-  final_opp <- template_VS * NA
-  cl_max <- final_max
-  bwk_opp <- final_opp
+  vh_leefgebied2_max <- id_raster_VS * NA
 }
 
-# STRUJKELKOPPELING: Dit is de variabele die de Leaflet-kaart direct ophaalt om de bosranden blauw te kleuren!
-vhert_bosranden_finaal_max <- vhert_bosrand_025ha
+vh_leefgebied2_opp <- terra::mask(vh_bossen3_opp, vh_leefgebied2_max)
 
-cat("\n--- MODEL VLIEGEND HERT SUCCESVOL AFGEROND ---\n")
-cat("Definitief stabiel leefgebied (ha):", round(calc_ha_exact(final_opp), 2), "\n")
+suppressWarnings(rm(cl_open_5ha, r_open_opp_full, r_bosrand_rauw, cl_bosrand))
+gc()
+```
 
-suppressWarnings(rm(r_oud_bos, r_helling_mask, dist_tot_oud_bos, dist_tot_helling, vhert_bossen_geschikt, 
-                    vhert_bossen_oud_interactie, vhert_bossen_helling_interactie, bos_buffered, r_bos_clusters_raw, 
-                    r_bos_clusters, freq_bos, goedgekeurde_bos_ids, vhert_open_ruw, open_buffered, r_open_clusters_raw, 
-                    r_open_clusters, freq_open, goedgekeurde_open_ids, vhert_open_5ha, open_border_buffer, 
-                    vhert_bosrand_ruw, bosrand_buffered, r_bosrand_clusters_raw, r_bosrand_clusters, freq_rand, 
-                    goedgekeurde_rand_ids, dist_tot_bosrand, vhert_bosbuffer_40m, vhert_leefgebied_ruw, 
-                    finale_buffered, r_final_clusters_raw, r_final_scherp_clusters, freq_final, goedgekeurde_vhert_ids))
+```{r Vliegend Hert Stap 4 - Bosdiepte Buffer en Finale Integratie}
+# ==============================================================================
+# STAP 4: BOSDIEPTE BUFFER (40M) EN FINALE HABITAT-INTEGRATIE
+# ==============================================================================
+message("-> Bosdiepte-buffer van 40m berekenen vanaf de kwalitatieve bosrand...")
+
+if (!all(is.na(terra::values(vh_leefgebied2_max, mat=FALSE)))) {
+  dist_tot_rand <- terra::distance(vh_leefgebied2_max)
+  
+  # GDX: vliegendhert_bosrand3 = and(bossen3, cellDistanceLe(leefgebied2, 40m))
+  vh_bosrand3_max <- vh_bossen3_max == 1 & dist_tot_rand <= 40
+  vh_bosrand3_max <- terra::ifel(vh_bosrand3_max == 1, 1, NA)
+  
+  # Logische OR van bosrand én de 40m boszone
+  vh_leefgebied_bruto_max <- terra::cover(vh_leefgebied2_max, vh_bosrand3_max)
+  vh_leefgebied_bruto_opp <- terra::mask(vh_bossen3_opp, vh_leefgebied_bruto_max)
+} else {
+  vh_leefgebied_bruto_max <- id_raster_VS * NA
+  vh_leefgebied_bruto_opp <- id_raster_VS * NA
+}
+
+# --- FINALE LANDSCHAPSCLUSTERING (FUZZY 50M, MIN 5 HA) ---
+message("-> Finale leefgebiedswolken clusteren (fuzzy 50m) en toetsten op min. 5 ha...")
+cl_finaal <- cluster_filter_compleet(
+  masker     = vh_leefgebied_bruto_max,
+  opp_laag   = vh_leefgebied_bruto_opp,
+  drempel_m2 = 5 * 10000, # 5 ha einddrempel ANB
+  dist_m     = 50,
+  werkelijk  = FALSE
+)
+
+vliegendhert_leefgebied_max <- cl_finaal$raster %>% terra::crop(template_VS)
+vliegendhert_leefgebied_opp <- terra::mask(vh_leefgebied_bruto_opp, vliegendhert_leefgebied_max) %>% terra::crop(template_VS)
+
+# --- FINALE KOPPELING NAAR JOUW SAMENVATTENDE TABELLEN EN KAARTEN ---
+final_max <- vliegendhert_leefgebied_max
+final_opp <- vliegendhert_leefgebied_opp
+cl_max    <- final_max
+bwk_opp   <- final_opp
+
+cat("\n=========================================================\n")
+cat("          RESULTATEN MODEL VLIEGEND HERT                  \n")
+cat("=========================================================\n")
+cat("Definitief stabiel leefgebied Vliegend Hert (ha):", round(calc_ha_exact(final_opp), 2), "\n")
+cat("=========================================================\n\n")
+
+# Back-up aliasing voor je Leaflet renderer en kaarten-mal onderaan
+r_status  <- final_max
+cl_id_max <- terra::patches(final_max, directions = 8, zeroAsNA = TRUE)
+cl_id_opp <- cl_id_max
+
+suppressWarnings(rm(vh_bossen3_max, vh_bossen3_opp, vh_open1_max, vh_leefgebied2_max, 
+                    vh_leefgebied2_opp, vh_bosrand3_max, vh_leefgebied_bruto_max, 
+                    vh_leefgebied_bruto_opp, cl_finaal))
 gc()
 ```
 
