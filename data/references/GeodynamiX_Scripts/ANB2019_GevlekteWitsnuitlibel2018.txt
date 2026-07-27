@@ -2,7 +2,7 @@ vlaanderen_20m.asc
 
 // baken de voortplantingsgebieden af
 
-assign(gevlektewitsnuitlibel_voortplanting_bwk, bwk(ae, ae+, ae-, 2190%, 3140%, 3150%, aer, aer+, aer-, aev, aev+, aev-, ao, ao+, ao-, 3160%, 7140%, 7150%, aom, aom+, aom-, 3110%, 3130%, aoo, aoo-))
+assign(gevlektewitsnuitlibel_voortplanting_bwk, bwk(ae, ae+, 2190%, 3140%, 3150%, aer, aer+, aev, aev+, aev-, ao, ao+, ao-, 3160%, 3110%, 3130%, aoo, aoo-))
 
 // uit GRB-watergang, kleine waters proberen te filteren
 
