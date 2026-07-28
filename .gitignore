@@ -55,16 +55,16 @@ rsconnect/
 /data/input/Raster_vlaanderen/BWK_TidyTabel_Smal_Vlaanderen_2025.parquet
 
 # Raster kaart Turnhouts Vennegebied + 50 km buffer 10x10 m
-/data/input/Raster_Vlaanderen/BWK_Tabel_Turnhout_Plus_50km.rds
+/data/input/Raster_Vlaanderen/BWK_Tabel_Turnhouts_Vennegebied_Plus_50km.rds
 
 # Raster kaart De Maten + 50 km buffer 10x10 m
-/data/input/Raster_Vlaanderen/BWK_Tabel_DeMaten_Plus_50km.rds
+/data/input/Raster_Vlaanderen/BWK_Tabel_De_Maten_Plus_50km.rds
 
 # Raster kaart Kalmthoutse Heide + 50 km buffer 10x10 m
-/data/input/Raster_Vlaanderen/BWK_Tabel_Kalmthout_Plus_50km.rds
+/data/input/Raster_Vlaanderen/BWK_Tabel_Kalmthoutse_Heide_Plus_50km.rds
 
 # Raster kaart Mechelse Heide + 50 km buffer 10x10 m
-/data/input/Raster_Vlaanderen/BWK_Tabel_MechelseHeide_Plus_50km.rds
+/data/input/Raster_Vlaanderen/BWK_Tabel_Mechelse_Heide_Plus_50km.rds
 
 # Raster kaart Heesbossen + 50 km buffer 10x10 m
 /data/input/Raster_Vlaanderen/BWK_Tabel_Heesbossen_Plus_50km.rds

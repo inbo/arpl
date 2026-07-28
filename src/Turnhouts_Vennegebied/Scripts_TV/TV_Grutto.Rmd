@@ -141,7 +141,7 @@ resultaten_gegroepeerd <- df_nieuw %>%
   nest(Data = c(Code, Match))
 
 # 2. LAAD DE REGIONALE TABEL IN
-tabel_vlaanderen <- readRDS(here("data/input/Raster_Vlaanderen/BWK_Tabel_Turnhout_Plus_50km.rds"))
+tabel_vlaanderen <- readRDS(here("data/input/Raster_Vlaanderen/BWK_Tabel_Turnhouts_Vennegebied_Plus_50km.rds"))
 setDT(tabel_vlaanderen)
 tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
 
