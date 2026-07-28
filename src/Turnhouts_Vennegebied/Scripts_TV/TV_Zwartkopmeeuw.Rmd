@@ -355,36 +355,20 @@ rm(foer_clusters, r_voort_vlakbij_water_max, r_voort_vlakbij_water_opp, r_foer_2
 # ==============================================================================
 message("-> Leefgebieden (voortplanting + foerageren) logisch samensmelten...")
 
-# MAX-spoor (Binaire aanwezigheid): Logische OF-schakeling
-leefgebied_basis_max <- !is.na(r_voort_finaal_max) | !is.na(r_foer_finaal_max)
-leefgebied_basis_max <- terra::ifel(leefgebied_basis_max == 1, 1, NA)
+# MAX-spoor: Het leefgebied IS het goedgekeurde voortplantingsgebied
+leefgebied_basis_max <- r_voort_finaal_max
 
-# OPP-spoor: Tel de parallelle werkelijke oppervlaktefracties zuiver bij elkaar op
-leefgebied_basis_opp <- terra::app(
-  terra::sds(
-    terra::ifel(is.na(r_voort_finaal_opp), 0, r_voort_finaal_opp),
-    terra::ifel(is.na(r_foer_finaal_opp), 0, r_foer_finaal_opp)
-  ),
-  fun = function(x) pmin(sum(x, na.rm = TRUE), 1)
-)
+# OPP-spoor: De oppervlaktefractie is enkel die van de voortplantingshabitat
+leefgebied_basis_opp <- r_voort_finaal_opp
 leefgebied_basis_opp <- terra::mask(leefgebied_basis_opp, leefgebied_basis_max)
 leefgebied_basis_opp <- terra::ifel(leefgebied_basis_opp == 0, NA, leefgebied_basis_opp)
 
 rm(r_voort_finaal_max, r_voort_finaal_opp, r_foer_finaal_max, r_foer_finaal_opp)
 
-message("-> Finale landschapscheck: 50m fuzzy clustering en minimum van 200 ha...")
-# Het uiteindelijke samengevoegde netwerkcomplex moet na een laatste 50m clustering minimaal 200 ha groot zijn
-finaal_leefgebied_clusters <- cluster_filter_compleet(
-  masker       = leefgebied_basis_max,
-  opp_laag     = leefgebied_basis_opp,
-  drempel_m2   = 2000000,   
-  dist_m       = 50,       
-  werkelijk    = FALSE      
-)
 
 # Vastleggen en croppen naar het Turnhoutse master template
-zwartkopmeeuw_leefgebied_max <- terra::crop(finaal_leefgebied_clusters$raster, template_TV)
-zwartkopmeeuw_leefgebied_opp <- terra::crop(terra::mask(leefgebied_basis_opp, zwartkopmeeuw_leefgebied_max), template_TV)
+zwartkopmeeuw_leefgebied_max <-leefgebied_basis_max
+zwartkopmeeuw_leefgebied_opp <- leefgebied_basis_opp
 
 # Grote eindschoonmaak van het R-geheugen
 rm(leefgebied_basis_max, leefgebied_basis_opp, finaal_leefgebied_clusters)
