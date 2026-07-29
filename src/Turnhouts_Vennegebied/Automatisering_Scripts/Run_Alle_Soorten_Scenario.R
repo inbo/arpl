@@ -39,7 +39,7 @@ message("==================================================")
 alle_scripts <- list.files(path = MAP_SCRIPTS, pattern = "\\.Rmd$", full.names = TRUE)
 
 # 1b. Definieer welk script GEEN uniek script is (als je nog een apart generiek script hebt)
-soorten_script_pad <- file.path(MAP_SCRIPTS, "Leefgebieden_Simpel_TV_Scenario.Rmd")
+soorten_script_pad <- file.path(MAP_SCRIPTS, "Scenario_TV_Leefgebieden_Simpel.Rmd")
 
 # 1c. Trek het soorten-script af van de totale lijst om de unieke scripts over te houden
 unieke_scripts <- setdiff(alle_scripts, soorten_script_pad)

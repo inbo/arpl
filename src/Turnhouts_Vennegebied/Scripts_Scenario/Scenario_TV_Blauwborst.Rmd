@@ -45,6 +45,48 @@ calc_ha_exact <- function(r) {
   val <- terra::global(area_raster, "sum", na.rm = TRUE)[[1]]
   return(as.numeric(val))
 }
+
+cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = TRUE) {
+  if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
+    return(list(raster = masker * NA, clusters = masker * NA))
+  }
+  
+  # 1. Netwerken verbinden via buffer
+  temp_mask <- masker
+  if(dist_m > 0) temp_mask <- terra::buffer(masker, width = dist_m / 2)
+  
+  # 2. Clusters bepalen op het netwerk
+  cl_network <- terra::patches(temp_mask, directions = 8, zeroAsNA = TRUE)
+  
+  # 3. Bereken de oppervlakte van het GEHELE netwerk op basis van de werkelijke som van fracties
+  if(werkelijk) {
+    stats_df <- terra::zonal(opp_laag, cl_network, fun = "sum", na.rm = TRUE)
+    colnames(stats_df) <- c("ID", "Waarde")
+    stats_df$Area_m2 <- stats_df$Waarde * 10000 
+  } else {
+    cl_biotoop_only <- terra::mask(cl_network, masker)
+    f <- terra::freq(cl_biotoop_only)
+    stats_df <- data.frame(ID = f$value, Waarde = f$count)
+    stats_df$Area_m2 <- stats_df$Waarde * 100 
+  }
+  
+  stats_df <- stats_df[!is.na(stats_df$ID), ]
+  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  
+  # 4. Filter op drempelwaarde (m2)
+  voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
+  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  
+  # 5. Geef alleen de netwerken over die aan de eis voldoen
+  masker_binair <- cl_network %in% voldoet_ids
+  final_network_mask <- terra::ifel(masker_binair == 1, 1, NA)
+  
+  # 6. Terugknippen naar de fysieke biotoop met behoud van netwerk-IDs
+  r_finaal  <- terra::mask(masker, final_network_mask)
+  cl_finaal <- terra::mask(cl_network, r_finaal) 
+  
+  return(list(raster = r_finaal, clusters = cl_finaal))
+}
 ```
 
 # Soort en scenario informatie ophalen
@@ -78,14 +120,12 @@ rm(df, resultaat)
 area_shape  <- vect(here("data/input/Turnhouts_Vennegebied.shp"))
 master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
 
-# Inlezen van de CSV-sleutel (gebruikt om tabel-indices te mappen naar codes)
 df_namen_sleutel <- read_csv(here("data/input/Excel_files/BWK_Laag_Namen_2025.csv"), show_col_types = FALSE)
 gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
 
 area_shape_proj <- project(area_shape, crs(master_grid))
 area_buffer_fix <- buffer(area_shape_proj, width = buffer_m)
 
-# Vertaalraster bouwen (Zonder de zware TIF cube in te laden!)
 message("-> Vertaalraster voor globale/lokale cellen opbouwen...")
 id_raster_TV <- crop(master_grid, area_buffer_fix, snap = "near")
 
@@ -96,7 +136,6 @@ id_raster_TV_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "
 # OPTIMALISATIE: Masker het gecropte raster met de buffer (Razendsnel in C++)
 id_raster_TV_masked <- terra::mask(id_raster_TV_globale_values, area_buffer_fix)
 
-# Haal direct de niet-NA cel-indices (lokale IDs) en waarden (globale IDs) op
 lokale_ids  <- terra::cells(id_raster_TV_masked)
 globale_ids <- id_raster_TV_masked[lokale_ids][[1]]
 
@@ -109,11 +148,13 @@ vertaal_df <- vertaal_df[!is.na(globale_id)]
 studiegebied_globale_ids <- unique(vertaal_df$globale_id)
 
 values(id_raster_TV) <- NA
-template_TV          <- id_raster_TV * NA
+
+# Binaire 'mal' van het studiegebied (1 binnen buffer, 0 buiten)
+template_TV <- terra::rasterize(area_buffer_fix, id_raster_TV, field = 1, background = 0)
 
 grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
 
-rm(globale_id_raster, id_raster_TV_globale_values)
+rm(globale_id_raster, id_raster_TV_globale_values, id_raster_TV_masked)
 gc()
 ```
 
@@ -129,14 +170,12 @@ resultaten_gegroepeerd <- df_nieuw %>%
   group_by(Type) %>%
   nest(Data = c(Code, Match))
 
-# 2. LAAD DE REGIONALE TABEL IN
 tabel_vlaanderen <- readRDS(scenario_path)
 setDT(tabel_vlaanderen)
 tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
 lijst_matches      <- list()
 lijst_oppervlaktes <- list()
 
-# 3. VERWERK ELK HABITAT-TYPE
 for(i in 1:nrow(resultaten_gegroepeerd)) {
   h_type <- resultaten_gegroepeerd$Type[i]
   h_data <- resultaten_gegroepeerd$Data[[i]]
@@ -145,21 +184,15 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   bevat_codes <- tolower(trimws(h_data$Code[h_data$Match == "bevat"]))
   
   if(length(bevat_codes) > 0) {
-    # 1. Ontsnap speciale regex-tekens (zoals haakjes) om syntaxfouten te voorkomen
     bevat_codes_escaped <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
-    
-    # 2. CRUCIALE FIX: Plak een '^' voor elke individuele code. 
-    # Dit dwingt grepl() om alleen te matchen als de BWK-code BEGINT met deze letters.
     bevat_codes_anchored <- paste0("^", bevat_codes_escaped)
     regex_term <- paste0(bevat_codes_anchored, collapse = "|")
     
-    # Filteren: EXACT-matches (geen letters voor/na) OF codes die BEGINNEN met de bevat-termen
     tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes | grepl(regex_term, CODE)]
   } else {
     tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes]
   }
   
-  # Filter op studiegebied
   tabel_TV <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
   tabel_cel_som <- tabel_TV[, .(Oppervlakte = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
   
@@ -181,14 +214,13 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
       }
       r_opp_type[tabel_finaal_mapping$lokale_id] <- tabel_finaal_mapping$Oppervlakte
       
-      # Sla de gegenereerde rasters op
       lijst_matches[[h_type]]      <- r_match_type
       lijst_oppervlaktes[[h_type]] <- r_opp_type
     }
   }
 }
 masker_bron <- lijst_matches[[1]]
-opp_bron <- lijst_oppervlaktes[[1]]
+opp_bron    <- lijst_oppervlaktes[[1]]
 names(masker_bron) <- "Match"
 names(opp_bron)    <- "Oppervlakte"
 
@@ -199,82 +231,17 @@ gc()
 # Cluster-analyse en oppervlakte filter
 ```{r Cluster}
 drempel_m2 <- oppervlakte_ha * 10000
-
 masker_bron[masker_bron == 0] <- NA
 
-cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
-  if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
-    return(list(raster = masker * NA, clusters = masker * NA))
-  }
-  
-  # 1. Netwerken verbinden via buffer
-  temp_mask <- masker
-  if(dist_m > 0) temp_mask <- terra::buffer(masker, width = dist_m / 2)
-  
-  # 2. Clusters bepalen op het netwerk
-  cl_network <- terra::patches(temp_mask, directions = 8, zeroAsNA = TRUE)
-  
-  # 3. Bereken de oppervlakte van het GEHELE netwerk (vóór terugknippen!)
-  if(werkelijk) {
-    stats_df <- terra::zonal(opp_laag, cl_network, fun = "sum", na.rm = TRUE)
-    colnames(stats_df) <- c("ID", "Waarde")
-    stats_df$Area_m2 <- stats_df$Waarde * 10000 
-  } else {
-    cl_biotoop_only <- terra::mask(cl_network, masker)
-    f <- terra::freq(cl_biotoop_only)
-    stats_df <- data.frame(ID = f$value, Waarde = f$count)
-    stats_df$Area_m2 <- stats_df$Waarde * 100 
-  }
-  
-  stats_df <- stats_df[!is.na(stats_df$ID), ]
-  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = masker * NA))
-  
-  # 4. Filter op drempelwaarde (bv. 15 ha)
-  voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
-  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
-  
-  # 5. Geef alleen de netwerken over die aan de eis voldoen
-  masker_binair <- cl_network %in% voldoet_ids
-  final_network_mask <- terra::ifel(masker_binair == 1, 1, NA)
-  
-  # 6. Terugknippen naar de fysieke biotoop, maar de NETWERK-ID'S BEHOUDEN!
-  r_finaal  <- terra::mask(masker, final_network_mask)
-  cl_finaal <- terra::mask(cl_network, r_finaal) 
-  
-  return(list(raster = r_finaal, clusters = cl_finaal))
-}
-
-res_max <- cluster_filter_compleet(masker_bron, opp_bron, drempel_m2, afstand_m, werkelijk = FALSE)
-res_opp <- cluster_filter_compleet(masker_bron, opp_bron, drempel_m2, afstand_m, werkelijk = TRUE)
-
-final_max <- res_max$raster
+# Enkel het werkelijke oppervlaktespoor doorrekenen
+res_opp   <- cluster_filter_compleet(masker_bron, opp_bron, drempel_m2, afstand_m, werkelijk = TRUE)
 final_opp <- res_opp$raster
-cl_max    <- res_max$clusters
-cl_opp    <- res_opp$clusters
 
-grens_merged  <- terra::aggregate(area_shape_proj)
-buffer_lijn   <- terra::buffer(grens_merged, width = buffer_m)
-binnen_masker <- terra::rasterize(grens_merged, template_TV, field = 1)
+message("--- BLAUWBORST SCENARIO MODEL AFGEROND ---")
+cat("Totaal werkelijk habitat Blauwborst binnen scenario (ha):", round(calc_ha_exact(final_opp), 2), "\n")
 
-if (terra::global(is.na(final_max), "sum")[[1]] != terra::ncell(final_max)) {
-  is_loss   <- !is.na(final_max) & is.na(final_opp)
-  is_kept   <- !is.na(final_opp)
-  is_inside <- !is.na(binnen_masker)
-
-  r_status <- terra::ifel(is_loss & is_inside, 1, NA)
-  r_status <- terra::cover(r_status, terra::ifel(is_loss & !is_inside, 2, NA))
-  r_status <- terra::cover(r_status, terra::ifel(is_kept & is_inside, 3, NA))
-  r_status <- terra::cover(r_status, terra::ifel(is_kept & !is_inside, 4, NA))
-} else {
-  r_status <- terra::rast(template_TV, vals = NA)
-  message("Let op: Geen geschikte clusters gevonden voor deze soort.")
-}
-
-r_status <- terra::as.factor(r_status)
-status_labels <- data.frame(ID = c(1, 2, 3, 4), 
-                            Label = c("Maximale Potentie (Binnen)", "Maximale Potentie (Buiten)", 
-                                      "Werkelijk Habitat (Binnen)", "Werkelijk Habitat (Buiten)"))
-levels(r_status) <- status_labels
+rm(res_opp, masker_bron, opp_bron)
+gc()
 ```
 
 
@@ -285,19 +252,10 @@ if (!dir.exists(scenario_raster_dir)) dir.create(scenario_raster_dir, recursive 
 
 final_opp_scen <- NULL
 
-if (exists("resB_strikt") && !is.null(resB_strikt)) {
-  final_opp_scen <- max(c(resB_strikt$kern, resB_strikt$bouw), na.rm = TRUE)
-} else if (exists("final_opp")) {
+if (exists("final_opp") && !is.null(final_opp)) {
   final_opp_scen <- final_opp
-} else if (exists("bruinekiekendief_leefgebied1_opp")) {
-  final_opp_scen <- bruinekiekendief_leefgebied1_opp
 } else {
-  mogelijke_vars <- ls(pattern = "(_final_opp|_leefgebied1_opp|_finaal_opp)$")
-  if (length(mogelijke_vars) > 0) {
-    final_opp_scen <- get(mogelijke_vars[1])
-  } else {
-    final_opp_scen <- terra::rast(template_TV, vals = NA)
-  }
+  final_opp_scen <- terra::rast(template_TV, vals = NA)
 }
 
 if (!all(is.na(terra::values(final_opp_scen, mat = FALSE)))) {
