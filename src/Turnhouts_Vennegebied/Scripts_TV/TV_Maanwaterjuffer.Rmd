@@ -608,7 +608,8 @@ if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE))
   
   cl_poly_final <- cl_poly %>%
     mutate(
-      Type = ifelse(Netwerk_ID %in% ids_actueel_relevant, "Werkelijk Habitat (ARPL)", "Potentieel (Geen ARPL)"),
+      ARPL_Status = Netwerk_ID %in% ids_actueel_relevant,
+      Type = ifelse(ARPL_Status, "Werkelijk Habitat (ARPL)", "Potentieel (Geen ARPL)"),
       Popup = paste0(
         "<div style='font-family: Arial; min-width: 220px;'>",
         "<strong>Netwerk Complex ID:</strong> ", Netwerk_ID, "<br>",
@@ -644,7 +645,6 @@ if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE))
 }  
 
 r_web_status <- terra::project(r_status, "EPSG:4326", method = "near")
-bbox         <- st_bbox(grens_web)
 
 if(has_observations && nrow(df_points_sf) > 0) {
   waarneming_smear_web <- st_transform(waarneming_smear_sf, 4326)
@@ -654,51 +654,103 @@ if(has_observations && nrow(df_points_sf) > 0) {
   points_web           <- st_sf(st_sfc(crs = 4326))
 }
 
-pal_status <- colorFactor(palette = c("#4daf4a", "#984ea3"), levels = c("Werkelijk Habitat (ARPL)", "Potentieel (Geen ARPL)"))
-pal_4      = colorFactor(palette = c("#984ea3", "#FF8C00", "#4daf4a", "#377eb8"), levels = 1:4, na.color = "transparent")
+# --- PALETTEN DEFINIËREN ---
+# Palet voor r_status rasterpixels (1 = Potentieel binnen TV, 3 = Werkelijk binnen TV)
+pal_pixels <- colorFactor(
+  palette = c("#984ea3", "#FF8C00", "#4daf4a", "#377eb8"), 
+  domain = c(1, 2, 3, 4), 
+  na.color = "transparent"
+)
 
-# --- 5. LEAFLET KAART BOUWEN ---
+# Palet voor netwerk-polygonen (ARPL vs Geen ARPL)
+pal_biotoop <- colorFactor(
+  palette = c("#4daf4a", "#984ea3"), 
+  levels = c("Werkelijk Habitat (ARPL)", "Potentieel (Geen ARPL)")
+)
+
+# --- LEAFLET KAART BOUWEN ---
 map <- leaflet() %>%
-  # 2. Standaard OpenStreetMap
   addTiles(group = "OSM (Kaart)") %>%
-  # 1. OpenTopoMap als primaire achtergrondkaart
-  addProviderTiles(
-    providers$OpenTopoMap, 
-    group = "OpenTopoMap"
-  ) %>%
-  # 3. Satellietbeelden (Esri)
-  addProviderTiles(
-    providers$Esri.WorldImagery, 
-    group = "Satelliet"
-  )
+  addProviderTiles(providers$OpenTopoMap, group = "OpenTopoMap") %>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet")
 
+# Rasterlaag met pixelkwaliteit
 if(!all(is.na(terra::values(r_web_status, mat=FALSE)))) {
-  map <- map %>% addRasterImage(terra::as.int(r_web_status), colors = pal_pixels, opacity = 0.3, group = "Kwaliteit (Pixels)")
+  map <- map %>% addRasterImage(
+    terra::as.int(r_web_status), 
+    colors = pal_pixels, 
+    opacity = 0.5, 
+    group = "Kwaliteit (Pixels)"
+  )
 }
 
-if(!is.null(poly_finaal) && nrow(poly_finaal) > 0) {
+# Netwerkpolygonen
+if(exists("cl_poly_final") && nrow(cl_poly_final) > 0) {
   map <- map %>% addPolygons(
-    data = poly_finaal, 
-    fillColor = ~pal_biotoop(Label), 
-    fillOpacity = 0.6, 
+    data = cl_poly_final, 
+    fillColor = ~pal_biotoop(Type), 
+    fillOpacity = 0.5, 
     color = ~ifelse(ARPL_Status, "#DFFF00", "white"), 
-    weight = ~ifelse(ARPL_Status, 2, 0.5),                      
+    weight = ~ifelse(ARPL_Status, 2, 0.8),                       
     popup = ~Popup,
-    label = ~paste0(Label, " (#", Weergave_ID, ")"),
+    label = ~paste0(Type, " (#", Netwerk_ID, ")"),
     group = "Gefilterd Leefgebied"
   )
 }
 
-if (nrow(smear_web) > 0) {
-  map <- map %>% addPolygons(data = smear_web, color = "#3498DB", weight = 2, fill = FALSE, dashArray = "10, 5", group = "Dispersiebereik (Smear)")
+# Blauwe vennen (indien aanwezig)
+if(exists("has_water_layer") && has_water_layer) {
+  map <- map %>% addPolygons(
+    data = water_poly,
+    color = "#1E90FF",
+    weight = 1,
+    fillColor = "#00BFFF",
+    fillOpacity = 0.8,
+    group = "Gefilterd Leefgebied"
+  )
 }
+
+# Dispersiebereik (Smear)
+if (nrow(waarneming_smear_web) > 0) {
+  map <- map %>% addPolygons(
+    data = waarneming_smear_web, 
+    color = "#3498DB", 
+    weight = 2, 
+    fill = FALSE, 
+    dashArray = "10, 5", 
+    group = "Dispersiebereik (Smear)"
+  )
+}
+
+# Waarnemingspunten
 if (nrow(points_web) > 0) {
-  map <- map %>% addCircles(data = points_web, color = "black", weight = 1, fillColor = "yellow", fillOpacity = 1, radius = 25, group = "Waarnemingen")
+  map <- map %>% addCircles(
+    data = points_web, 
+    color = "black", 
+    weight = 1, 
+    fillColor = "yellow", 
+    fillOpacity = 1, 
+    radius = 25, 
+    group = "Waarnemingen"
+  )
 }
-  
+
+# Grens en Legende
 map <- map %>%
-  addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens Studiegebied") %>%
-  addLegend(pal = pal_biotoop, values = c("Voortplantingsbiotoop (Waterloop)", "Kern-landbiotoop (Bos)"), title = "Legenda", position = "bottomright", group = "Gefilterd Leefgebied") %>%
+  addPolygons(
+    data = grens_web, 
+    fill = FALSE, 
+    color = "black", 
+    weight = 3, 
+    group = "Grens Studiegebied"
+  ) %>%
+  addLegend(
+    pal = pal_biotoop, 
+    values = c("Werkelijk Habitat (ARPL)", "Potentieel (Geen ARPL)"), 
+    title = "Status Habitat", 
+    position = "bottomright", 
+    group = "Gefilterd Leefgebied"
+  ) %>%
   addLayersControl(
     baseGroups = c("OpenTopoMap", "OSM (Kaart)", "Satelliet"),
     overlayGroups = c("Gefilterd Leefgebied", "Dispersiebereik (Smear)", "Waarnemingen", "Kwaliteit (Pixels)", "Grens Studiegebied"),
