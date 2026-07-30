@@ -155,7 +155,7 @@ resultaten_gegroepeerd <- df_nieuw %>%
   nest(Data = c(Code, Match))
 
 # 2. LAAD DE REGIONALE TABEL IN
-tabel_vlaanderen <- readRDS(here("data/input/Raster_Vlaanderen/BWK_Tabel_Turnhout_Plus_50km.rds"))
+tabel_vlaanderen <- readRDS(here("data/input/Raster_Vlaanderen/BWK_Tabel_Turnhouts_Vennegebied_Plus_50km.rds"))
 setDT(tabel_vlaanderen)
 tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
 
@@ -188,7 +188,8 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   
   # Filter op studiegebied
   tabel_TV <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
-  tabel_cel_som <- tabel_TV[, .(Oppervlakte = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
+  tabel_TV_unique <- unique(tabel_TV, by = c("cel_id", "CODE"))
+  tabel_cel_som <- tabel_TV_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)), by = .(cel_id)]
   
   r_match_type <- id_raster_TV * NA
   r_opp_type   <- id_raster_TV * NA
@@ -241,7 +242,7 @@ r_huetzon_local <- r_huetzon_vlaanderen %>%
 
 # Haal de legende-ID's op (dit print nu netjes jouw tabel van 38 rijen)
 legende_huet  <- terra::cats(r_huetzon_local)[[1]]
-target_labels <- c("Bg", "BgK", "Bk1", "Bk2", "BkK1", "BkK2", "KabPKunst", "Kan", "KanPKunst", "Kunst", "Rg", "Rk", "Rzg")
+target_labels <- c("Bg", "BgK", "Bk1", "Bk2", "BkK1", "BkK2")
 
 # Dynamische match: welke ID's horen bij jouw 6 doelklassen?
 valide_ids <- legende_huet$value[legende_huet$Label %in% target_labels]
@@ -634,7 +635,7 @@ tabel_totaal %>%
 # Interactieve kaart
 ```{r Interactieve kaart}
 # ==============================================================================
-# HERSCHREVEN STAP: INTERACTIEVE KAART (MET DYNAMISCHE POPUPS PER CLUSTER)
+# INTERACTIEVE KAART (GEOMETRIE FIX, OPENTOPO & DYNAMISCHE POPUPS)
 # ==============================================================================
 message("-> Interactieve kaart opbouwen met gedetailleerde cluster-popups...")
 
@@ -652,31 +653,45 @@ if (terra::hasValues(cl_max) && terra::global(cl_max, "notNA")$notNA > 0) {
   colnames(stats_werk_id) <- c("ID", "Werk_ha")
   stats_werk_id$Werk_ha <- round(stats_werk_id$Werk_ha * 0.01, 2)
   
-  # Voeg de statistieken samen in een handige dataframe
+  # Voeg de statistieken samen
   df_cluster_stats <- merge(stats_pot_id, stats_werk_id, by = "ID", all = TRUE)
   
-  # --- 2. POLYGONEN MAKEN OP BASIS VAN DE GECOMBINEERDE CLUSTERKAART ---
-  # Door cl_max te polygoniseren, behouden we de exacte grenzen én de unieke ID's!
+  # --- 2. POLYGONEN MAKEN & GEOMETRIE HERSTELLEN (HERSTELT GEOMETRIEFOUTEN) ---
   poly_finaal <- terra::as.polygons(cl_max, aggregate = TRUE) %>% 
     terra::disagg() %>% 
-    sf::st_as_sf()
+    sf::st_as_sf() %>% 
+    sf::st_make_valid() # Repareer degenereerde vertices/edges uit de rasterconversie
   
   colnames(poly_finaal)[1] <- "ID"
   
   # --- 3. INFORMATIE EN POPUPS KOPPELEN ---
-  smear_web <- if(has_observations && nrow(df_points_sf) > 0) sf::st_transform(waarneming_smear_sf, 4326) else sf::st_sf(sf::st_sfc(crs = 4326))
+  smear_web <- if(has_observations && nrow(df_points_sf) > 0) {
+    sf::st_transform(waarneming_smear_sf, 4326) %>% sf::st_make_valid()
+  } else {
+    sf::st_sf(sf::st_sfc(crs = 4326))
+  }
+  
   max_water_id_check <- if(exists("max_water_id")) max_water_id else 1000
   
+  # Transformeer naar WGS84 (EPSG:4326) voor Leaflet
   poly_finaal <- poly_finaal %>% 
     left_join(df_cluster_stats, by = "ID") %>% 
-    sf::st_transform(4326) %>% 
+    sf::st_transform(4326)
+  
+  # Bepaal ARPL_Status veilig buiten de mutate om
+  if (nrow(smear_web) > 0 && nrow(poly_finaal) > 0) {
+    intersects_matrix <- sf::st_intersects(poly_finaal, smear_web, sparse = FALSE)
+    arpl_vec <- apply(intersects_matrix, 1, any)
+  } else {
+    arpl_vec <- rep(FALSE, nrow(poly_finaal))
+  }
+  
+  poly_finaal <- poly_finaal %>% 
     mutate(
-      # Omdat bos-ID's zijn verhoogd, kunnen we hieruit herleiden wat water of bos is
+      ARPL_Status = arpl_vec,
       Is_Water = ID <= max_water_id_check,
       Label = ifelse(Is_Water, "Voortplantingsbiotoop (Waterloop)", "Kern-landbiotoop (Bos)"),
-      Weergave_ID = ifelse(Is_Water, ID, ID - (max_water_id_check + 500)), # Toon het originele, 'schone' ID
-      
-      ARPL_Status = if(nrow(smear_web) > 0) sf::st_intersects(geometry, smear_web, sparse = FALSE)[,1] else FALSE,
+      Weergave_ID = ifelse(Is_Water, ID, ID - (max_water_id_check + 500)),
       
       Popup = paste0(
         "<div style='font-family: Arial; min-width: 200px;'>",
@@ -706,8 +721,18 @@ pal_pixels  <- colorFactor(palette = c("#A9CCE3", "#FAD7A0", "#2E86C1", "#D35400
 
 # --- 5. LEAFLET KAART BOUWEN ---
 map <- leaflet() %>%
+  # 2. Standaard OpenStreetMap
   addTiles(group = "OSM (Kaart)") %>%
-  addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet")
+  # 1. OpenTopoMap als primaire achtergrondkaart
+  addProviderTiles(
+    providers$OpenTopoMap, 
+    group = "OpenTopoMap"
+  ) %>%
+  # 3. Satellietbeelden (Esri)
+  addProviderTiles(
+    providers$Esri.WorldImagery, 
+    group = "Satelliet"
+  )
 
 if(!all(is.na(terra::values(r_web_status, mat=FALSE)))) {
   map <- map %>% addRasterImage(terra::as.int(r_web_status), colors = pal_pixels, opacity = 0.3, group = "Kwaliteit (Pixels)")
@@ -737,7 +762,7 @@ map <- map %>%
   addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens Studiegebied") %>%
   addLegend(pal = pal_biotoop, values = c("Voortplantingsbiotoop (Waterloop)", "Kern-landbiotoop (Bos)"), title = "Legenda", position = "bottomright", group = "Gefilterd Leefgebied") %>%
   addLayersControl(
-    baseGroups = c("OSM (Kaart)", "Satelliet"),
+    baseGroups = c("OpenTopoMap", "OSM (Kaart)", "Satelliet"),
     overlayGroups = c("Gefilterd Leefgebied", "Dispersiebereik (Smear)", "Waarnemingen", "Kwaliteit (Pixels)", "Grens Studiegebied"),
     options = layersControlOptions(collapsed = FALSE)
   ) %>%

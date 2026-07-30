@@ -157,23 +157,20 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   bevat_codes <- tolower(trimws(h_data$Code[h_data$Match == "bevat"]))
   
   if(length(bevat_codes) > 0) {
-    # 1. Ontsnap speciale regex-tekens (zoals haakjes) om syntaxfouten te voorkomen
     bevat_codes_escaped <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
-    
-    # 2. CRUCIALE FIX: Plak een '^' voor elke individuele code. 
-    # Dit dwingt grepl() om alleen te matchen als de BWK-code BEGINT met deze letters.
     bevat_codes_anchored <- paste0("^", bevat_codes_escaped)
     regex_term <- paste0(bevat_codes_anchored, collapse = "|")
     
-    # Filteren: EXACT-matches (geen letters voor/na) OF codes die BEGINNEN met de bevat-termen
     tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes | grepl(regex_term, CODE)]
   } else {
     tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes]
   }
   
-  # Filter op studiegebied
   tabel_TV <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
-  tabel_cel_som <- tabel_TV[, .(Oppervlakte = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
+  tabel_TV_unique <- unique(tabel_TV, by = c("cel_id", "CODE"))
+
+  # 2. Bereken de som per cel_id en cap de maximale waarde hard op 1.0 (100%)
+  tabel_cel_som <- tabel_TV_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)),by = .(cel_id)]
   
   r_match_type <- id_raster_TV * NA
   r_opp_type   <- id_raster_TV * NA
@@ -193,7 +190,6 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
       }
       r_opp_type[tabel_finaal_mapping$lokale_id] <- tabel_finaal_mapping$Oppervlakte
       
-      # Sla de gegenereerde rasters op
       lijst_matches[[h_type]]      <- r_match_type
       lijst_oppervlaktes[[h_type]] <- r_opp_type
     }

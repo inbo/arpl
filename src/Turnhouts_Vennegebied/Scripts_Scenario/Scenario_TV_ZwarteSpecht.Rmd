@@ -45,6 +45,40 @@ calc_ha_exact <- function(r) {
   val <- terra::global(area_raster, "sum", na.rm = TRUE)[[1]]
   return(as.numeric(val))
 }
+
+cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
+  if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
+    return(list(raster = masker * NA, clusters = masker * NA))
+  }
+  
+  temp_mask <- masker
+  if(dist_m > 0) temp_mask <- terra::buffer(masker, width = dist_m / 2)
+  
+  cl <- terra::patches(temp_mask, directions = 8, zeroAsNA = TRUE) %>% terra::mask(masker)
+  
+  if(werkelijk) {
+    stats_df <- terra::zonal(opp_laag, cl, fun = "sum", na.rm = TRUE)
+    colnames(stats_df) <- c("ID", "Waarde")
+    # CORRECTIE: Waarde is de som van fracties (1 pixel = 1.0). 
+    # Vermenigvuldigen met 100 geeft de juiste Area in m2!
+    stats_df$Area_m2 <- stats_df$Waarde * 100 
+  } else {
+    f <- terra::freq(cl)
+    stats_df <- data.frame(ID = f$value, Waarde = f$count)
+    stats_df$Area_m2 <- stats_df$Waarde * 100 # 1 binaire pixel = 100m2
+  }
+  
+  stats_df <- stats_df[!is.na(stats_df$ID), ]
+  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = cl * NA))
+  
+  voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
+  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = cl * NA))
+  
+  masker_binair <- cl %in% voldoet_ids
+  final_mask <- terra::ifel(masker_binair == 1, 1, NA)
+  
+  return(list(raster = terra::mask(masker, final_mask), clusters = cl))
+}
 ```
 
 # Soort en scenario informatie ophalen
@@ -132,7 +166,6 @@ gc()
 
 # Biotoopfiltering (BWK-codes)
 ```{r Biotoopfiltering}
-# 1. LAAD DE BRON-CROSSWALK/DICTIONARY IN
 df_nieuw <- read_csv(here("data/input/Excel_files/Resultaten_Totaal_Samengevoegd.csv"), show_col_types = FALSE)
 
 resultaten_gegroepeerd <- df_nieuw %>%
@@ -141,16 +174,12 @@ resultaten_gegroepeerd <- df_nieuw %>%
   group_by(Type) %>%
   nest(Data = c(Code, Match))
 
-# 2. LAAD DE REGIONALE TABEL IN
 tabel_vlaanderen <- readRDS(scenario_path)
 setDT(tabel_vlaanderen)
 tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
 
-# Initialiseer de lijsten voor de verschillende habitat-bouwstenen
-lijst_matches      <- list()
 lijst_oppervlaktes <- list()
 
-# 3. VERWERK ELK HABITAT-TYPE DYNAMISCH VIA DATA.TABLE
 for(i in 1:nrow(resultaten_gegroepeerd)) {
   h_type <- resultaten_gegroepeerd$Type[i]
   h_data <- resultaten_gegroepeerd$Data[[i]]
@@ -159,222 +188,167 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   bevat_codes <- tolower(trimws(h_data$Code[h_data$Match == "bevat"]))
   
   if(length(bevat_codes) > 0) {
-    # 1. Ontsnap speciale regex-tekens (zoals haakjes) om syntaxfouten te voorkomen
     bevat_codes_escaped <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
-    
-    # 2. CRUCIALE FIX: Plak een '^' voor elke individuele code. 
-    # Dit dwingt grepl() om alleen te matchen als de BWK-code BEGINT met deze letters.
     bevat_codes_anchored <- paste0("^", bevat_codes_escaped)
     regex_term <- paste0(bevat_codes_anchored, collapse = "|")
     
-    # Filteren: EXACT-matches (geen letters voor/na) OF codes die BEGINNEN met de bevat-termen
     tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes | grepl(regex_term, CODE)]
   } else {
     tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes]
   }
   
-  # Filter op studiegebied
   tabel_TV <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
-  tabel_cel_som <- tabel_TV[, .(Oppervlakte = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
+  tabel_TV_unique <- unique(tabel_TV, by = c("cel_id", "CODE"))
+  tabel_cel_som <- tabel_TV_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)), by = .(cel_id)]
   
-  r_match_type <- id_raster_TV * NA
-  r_opp_type   <- id_raster_TV * NA
+  r_opp_type <- id_raster_TV * NA
   
   if(nrow(tabel_cel_som) > 0) {
     tabel_cel_som[, Oppervlakte := pmin(Oppervlakte, 1)]
-    tabel_cel_som[, Match := ifelse(Oppervlakte >= 0.01, 1, 0)]
-    
     setnames(tabel_cel_som, "cel_id", "globale_id")
+    
     tabel_finaal_mapping <- merge(tabel_cel_som, vertaal_df, by = "globale_id", all.x = TRUE)
     tabel_finaal_mapping <- tabel_finaal_mapping[!is.na(lokale_id)]
     
     if(nrow(tabel_finaal_mapping) > 0) {
-      tabel_matches_clean <- tabel_finaal_mapping[Match == 1]
-      if(nrow(tabel_matches_clean) > 0) {
-        r_match_type[tabel_matches_clean$lokale_id] <- tabel_matches_clean$Match
-      }
       r_opp_type[tabel_finaal_mapping$lokale_id] <- tabel_finaal_mapping$Oppervlakte
-      
-      # Sla de gegenereerde rasters op
-      lijst_matches[[h_type]]      <- r_match_type
       lijst_oppervlaktes[[h_type]] <- r_opp_type
     }
   }
 }
 
-# Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
-bwk_max <- lijst_matches[["bwk"]]
 bwk_opp <- lijst_oppervlaktes[["bwk"]]
 
-# Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
-rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
+rm(resultaten_gegroepeerd, df_nieuw, lijst_oppervlaktes, tabel_vlaanderen, tabel_gefilterd, tabel_TV, tabel_cel_som, vertaal_df)
 gc()
 ```
 
 ```{r basisbiotoop en groenkaart}
 # ==============================================================================
-# STAP 1: BASISBIOTOOP EN HOOGGROEN COUPLING (100M FUZZY CLUSTERING)
+# STAP 1: BASISBIOTOOP EN HOOGGROEN COUPLING (REËLE OPPERVLAKTES)
 # ==============================================================================
 message("-> Groenkaart inlezen en synchroniseren voor de bosstructuur...")
 
-# Inlezen en resamplen van de groenkaart (waarde 1 = hooggroen/bomen)
 r_groen_raw <- rast(here("data/input/ASCI Files/Groenkaart_2021.tif"))
 r_groen     <- terra::resample(r_groen_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
 
-# Selecteer hooggroen (waarde 1)
 zwartespecht_groen_ok <- r_groen == 1
+r_groen_opp <- terra::ifel(zwartespecht_groen_ok, 1.0, 0)
+r_bwk_opp   <- terra::ifel(is.na(bwk_opp), 0, bwk_opp)
 
-# Logische OF-schakeling: geschikt bos is de BWK-bosklasse óf het hooggroen
-zwartespecht_basis_max <- (bwk_max == 1) | zwartespecht_groen_ok
-zwartespecht_basis_max <- terra::ifel(zwartespecht_basis_max == 1, 1, NA)
-
-# Oppervlaktespoor netjes parallel opbouwen
-zwartespecht_basis_opp <- terra::app(
-  terra::sds(
-    terra::ifel(is.na(bwk_opp), 0, bwk_opp),
-    terra::ifel(is.na(zwartespecht_groen_ok), 0, terra::ifel(zwartespecht_groen_ok == 1, 1, 0))
-  ),
-  fun = function(x) pmin(sum(x, na.rm = TRUE), 1)
-)
-zwartespecht_basis_opp <- terra::mask(zwartespecht_basis_opp, zwartespecht_basis_max)
-zwartespecht_basis_opp <- terra::ifel(zwartespecht_basis_opp == 0, NA, zwartespecht_basis_opp)
+# Fractionele optelsom
+zwartespecht_basis_opp <- terra::clamp(r_bwk_opp + r_groen_opp, upper = 1.0)
+zwartespecht_basis_opp <- terra::ifel(zwartespecht_basis_opp > 0, zwartespecht_basis_opp, NA)
 
 message("-> Initiële landschapsclustering uitvoeren (100m fuzzy)...")
-# Alle geschikte cellen binnen 100m vormen samen één functioneel boscomplex
-zwartespecht_clusters <- cluster_filter_compleet(
-  masker       = zwartespecht_basis_max,
-  opp_laag     = zwartespecht_basis_opp,
-  drempel_m2   = 0,  # We groeperen eerst ALLES, filtering gebeurt in de volgende stappen
-  dist_m       = 100,       
-  werkelijk    = FALSE      
-)
+r_bin_basis <- terra::ifel(!is.na(zwartespecht_basis_opp) & zwartespecht_basis_opp > 0, 1, NA)
 
-r_bos_patches <- zwartespecht_clusters$clusters
+# C++ distance (100m overbrugging)
+dist_r <- terra::distance(r_bin_basis, target = 1, maxdist = 110)
+r_bridge_opp <- terra::ifel(dist_r <= 100, 1, NA)
+rm(dist_r)
 
-rm(r_groen_raw, r_groen, zwartespecht_groen_ok, zwartespecht_clusters)
-```
+cl_id_opp <- terra::patches(r_bridge_opp, directions = 8, zeroAsNA = TRUE)
+rm(r_bridge_opp)
 
+r_bos_patches <- terra::mask(cl_id_opp, r_bin_basis)
 
-```{r bosgrootte classificatie}
 # ==============================================================================
 # STAP 2: CLASSIFICATIE BOSGROOTTE (OPTIMAAL >300 HA VS. SUBOPTIMAAL 50-300 HA)
 # ==============================================================================
-# Failsafe initialisatie van de binaire klasse-rasters
-r_bos_groot_300ha <- template_TV * NA
-r_bos_klein_50ha  <- template_TV * NA
+r_bos_groot_300ha_opp <- template_TV * NA
+r_bos_klein_50ha_opp  <- template_TV * NA
 
-if (!all(is.na(terra::values(r_bos_patches, mat=FALSE)))) {
-  message("-> Bosvlakken classificeren op basis van oppervlakte (ha)...")
+if (!all(is.na(terra::values(r_bos_patches, mat = FALSE)))) {
+  message("-> Bosvlakken classificeren op basis van reële oppervlakte (ha)...")
   
-  # Bereken de exacte oppervlakte (ha) per unieke cluster via cellSize
-  area_raster <- r_bos_patches * terra::cellSize(r_bos_patches, unit = "ha")
-  stats_ha    <- terra::zonal(area_raster, r_bos_patches, fun = "sum", na.rm = TRUE)
+  area_raster <- terra::cellSize(r_bos_patches, unit = "ha")
+  werkelijk_opp_raster <- zwartespecht_basis_opp * area_raster
+  stats_ha <- terra::zonal(werkelijk_opp_raster, r_bos_patches, fun = "sum", na.rm = TRUE)
   colnames(stats_ha) <- c("ID", "Grootte_ha")
   
-  # Splits de ID's op basis van de ecologische drempelwaardes (50 ha en 300 ha)
-  ids_300ha   <- stats_ha$ID[stats_ha$Grootte_ha >= 300]
-  ids_50_300ha <- stats_ha$ID[stats_ha$Grootte_ha >= 50 & stats_ha$Grootte_ha < 300]
+  ids_300ha    <- stats_ha$ID[stats_ha$Grootte_ha >= 300]   ids_50_300ha <- stats_ha$ID[stats_ha$Grootte_ha >= 50 & stats_ha$Grootte_ha < 300]
   
   if (length(ids_300ha) > 0) {
-    r_bos_groot_300ha <- terra::ifel(r_bos_patches %in% ids_300ha, 1, NA)
+    m_300 <- r_bos_patches %in% ids_300ha
+    r_bos_groot_300ha_opp <- terra::mask(zwartespecht_basis_opp, terra::ifel(m_300, 1, NA))
   }
   
   if (length(ids_50_300ha) > 0) {
-    r_bos_klein_50ha <- terra::ifel(r_bos_patches %in% ids_50_300ha, 1, NA)
+    m_50_300 <- r_bos_patches %in% ids_50_300ha
+    r_bos_klein_50ha_opp <- terra::mask(zwartespecht_basis_opp, terra::ifel(m_50_300, 1, NA))
   }
-  
-  rm(area_raster, stats_ha)
+  rm(area_raster, werkelijk_opp_raster, stats_ha)
 }
-```
 
-```{r netwerk en actieradius analyse}
 # ==============================================================================
 # STAP 3: RECONSTRUCTIE NETWERK (4 KM BUFFER INTERACTIE)
 # ==============================================================================
 message("-> Netwerkrelaties controleren binnen een actieradius van 4 km...")
 
-# Failsafe initialisatie van de goedgekeurde suboptimalisatie laag
-r_bos_klein_goedgekeurd <- template_TV * NA
+r_bos_klein_goedgekeurd_opp <- template_TV * NA
 
-# Criterium: Kleine bossen (50-300 ha) zijn geschikt mits ze op <4 km liggen van:
-# A. Een groot bos (>300 ha) ÓF B. Een ander klein bos (50-300 ha) waarmee ze een netwerk vormen.
-if (!all(is.na(terra::values(r_bos_klein_50ha, mat=FALSE)))) {
+if (!all(is.na(terra::values(r_bos_klein_50ha_opp, mat = FALSE)))) {
+  r_bin_klein <- terra::ifel(!is.na(r_bos_klein_50ha_opp) & r_bos_klein_50ha_opp > 0, 1, NA)
+  buffer_4km_klein <- terra::buffer(r_bin_klein, width = 4000)
   
-  # Trek de 4 km binaire buffers rondom beide bosklassen
-  buffer_4km_klein <- terra::buffer(r_bos_klein_50ha, width = 4000)
-  
-  if (!all(is.na(terra::values(r_bos_groot_300ha, mat=FALSE)))) {
-    buffer_4km_groot <- terra::buffer(r_bos_groot_300ha, width = 4000)
-    # Match met groot OF met klein (buiten zichzelf)
+  if (!all(is.na(terra::values(r_bos_groot_300ha_opp, mat = FALSE)))) {
+    r_bin_groot <- terra::ifel(!is.na(r_bos_groot_300ha_opp) & r_bos_groot_300ha_opp > 0, 1, NA)
+    buffer_4km_groot <- terra::buffer(r_bin_groot, width = 4000)
     netwerk_masker <- !is.na(buffer_4km_groot) | !is.na(buffer_4km_klein)
-    suppressWarnings(rm(buffer_4km_groot))
+    suppressWarnings(rm(buffer_4km_groot, r_bin_groot))
   } else {
     netwerk_masker <- !is.na(buffer_4km_klein)
   }
   
-  # Snijd de kleine bossen uit die binnen het netwerk vallen
-  r_bos_klein_goedgekeurd <- terra::mask(r_bos_klein_50ha, netwerk_masker)
-  rm(buffer_4km_klein, netwerk_masker)
+  r_bos_klein_goedgekeurd_opp <- terra::mask(r_bos_klein_50ha_opp, netwerk_masker)
+  suppressWarnings(rm(buffer_4km_klein, netwerk_masker, r_bin_klein))
 }
 
-message("-> Alle biologisch geschikte bossen samenvoegen...")
-# Combineer de grote bossen en de goedgekeurde netwerkbossen (Logische OF)
-leefgebied1_max <- !is.na(r_bos_groot_300ha) | !is.na(r_bos_klein_goedgekeurd)
-leefgebied1_max <- terra::ifel(leefgebied1_max == 1, 1, NA)
+groot_clean <- terra::ifel(is.na(r_bos_groot_300ha_opp), 0, r_bos_groot_300ha_opp)
+klein_clean <- terra::ifel(is.na(r_bos_klein_goedgekeurd_opp), 0, r_bos_klein_goedgekeurd_opp)
 
-rm(r_bos_groot_300ha, r_bos_klein_50ha, r_bos_klein_goedgekeurd)
-```
+leefgebied1_opp <- terra::clamp(groot_clean + klein_clean, upper = 1.0)
+leefgebied1_opp <- terra::ifel(leefgebied1_opp > 0, leefgebied1_opp, NA)
 
-```{r finale clustering en samensmelting}
 # ==============================================================================
-# STAP 4: FINALE COMPACTHEIDS-CHECK EN SAMENSMELTING OP TEMPLATE
+# STAP 4: FINALE COMPACTHEIDS-CHECK (100 HA DREMPEL)
 # ==============================================================================
-message("-> Finale 100m clustering en 100 ha minimumoppervlakte check...")
+message("-> Finale 100m clustering en 100 ha minimumoppervlakte check op reële fracties...")
 
-# Conform het oude script ondergaat de samengevoegde kaart een finale 100m fuzzy-clustering
-# waarbij het totale aaneengesloten complex minimaal 100 ha (1.000.000 m²) moet bedragen.
-finaal_leefgebied_clusters <- cluster_filter_compleet(
-  masker       = leefgebied1_max,
-  opp_laag     = zwartespecht_basis_opp,
-  drempel_m2   = 1000000,   
-  dist_m       = 100,       
-  werkelijk    = FALSE      
-)
+if (!all(is.na(terra::values(leefgebied1_opp, mat = FALSE)))) {
+  r_bin_finaal <- terra::ifel(!is.na(leefgebied1_opp) & leefgebied1_opp > 0, 1, NA)
+  
+  finaal_leefgebied_clusters <- cluster_filter_compleet(
+    masker     = r_bin_finaal,
+    opp_laag   = leefgebied1_opp,
+    drempel_m2 = 100 * 10000, # 100 ha
+    dist_m     = 100,
+    werkelijk  = TRUE
+  )
+  zwartespecht_leefgebied_opp <- terra::mask(leefgebied1_opp, finaal_leefgebied_clusters$raster) %>% terra::crop(template_TV)
+} else {
+  zwartespecht_leefgebied_opp <- template_TV * NA
+}
 
-# Definitieve eindrasters voor de zwarte specht
-zwartespecht_leefgebied_max <- terra::crop(finaal_leefgebied_clusters$raster, template_TV)
-zwartespecht_leefgebied_opp <- terra::crop(terra::mask(zwartespecht_basis_opp, zwartespecht_leefgebied_max), template_TV)
+cat("\n--- AUDIT: SCENARIO LEEFGEBIED ZWARTESPECHT (WERKELIJKE OPPERVLAKTE) ---\n")
+ha_finaal_werk <- calc_ha_exact(zwartespecht_leefgebied_opp)
+cat("Werkelijke oppervlakte leefgebied Zwartespecht in scenario (>= 100 ha):", round(ha_finaal_werk, 2), "ha\n")
 
-# Grote eindschoonmaak van het R-geheugen
-rm(zwartespecht_basis_max, zwartespecht_basis_opp, r_bos_patches, leefgebied1_max, finaal_leefgebied_clusters)
+suppressWarnings(rm(r_groen_raw, r_groen, zwartespecht_groen_ok, r_groen_opp, r_bwk_opp, zwartespecht_basis_opp, 
+   r_bin_basis, cl_id_opp, r_bos_patches, r_bos_groot_300ha_opp, r_bos_klein_50ha_opp, 
+   r_bos_klein_goedgekeurd_opp, groot_clean, klein_clean, leefgebied1_opp, r_bin_finaal, finaal_leefgebied_clusters))
 gc()
 ```
-
 
 # Export & Transitiekaart
 ```{r Export}
 scenario_raster_dir <- here::here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", scenario_naam)
 if (!dir.exists(scenario_raster_dir)) dir.create(scenario_raster_dir, recursive = TRUE)
 
-final_opp_scen <- NULL
-
-if (exists("resB_strikt") && !is.null(resB_strikt)) {
-  final_opp_scen <- max(c(resB_strikt$kern, resB_strikt$bouw), na.rm = TRUE)
-} else if (exists("final_opp")) {
-  final_opp_scen <- final_opp
-} else if (exists("bruinekiekendief_leefgebied1_opp")) {
-  final_opp_scen <- bruinekiekendief_leefgebied1_opp
-} else {
-  mogelijke_vars <- ls(pattern = "(_final_opp|_leefgebied1_opp|_finaal_opp)$")
-  if (length(mogelijke_vars) > 0) {
-    final_opp_scen <- get(mogelijke_vars[1])
-  } else {
-    final_opp_scen <- terra::rast(template_TV, vals = NA)
-  }
-}
-
-if (!all(is.na(terra::values(final_opp_scen, mat = FALSE)))) {
-  werkelijk_scenario_rast <- terra::ifel(!is.na(final_opp_scen) & final_opp_scen > 0, 1, NA)
+# 1. Binariseren naar 1 / NA voor export
+if (exists("zwartespecht_leefgebied_opp") && !all(is.na(terra::values(zwartespecht_leefgebied_opp, mat = FALSE)))) {
+  werkelijk_scenario_rast <- terra::ifel(!is.na(zwartespecht_leefgebied_opp) & zwartespecht_leefgebied_opp > 0, 1, NA)
 } else {
   werkelijk_scenario_rast <- terra::rast(template_TV, vals = NA)
 }
@@ -400,16 +374,22 @@ writeRaster(export_rast,
 
 message(paste("✓ Scenario-raster succesvol weggeschreven naar:", file_path_scen))
 
+# 2. Vergelijking met Referentie-raster uit 02_Werkelijke_Oppervlakte
 referentie_file <- here::here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", "02_Werkelijke_Oppervlakte", paste0("Habitat_Werkelijke_Oppervlaktes_", soort, ".tif"))
 
 if (file.exists(referentie_file)) {
-  r_ref <- rast(referentie_file) %>% terra::resample(template_TV, method = "near")
+  r_ref_raw <- rast(referentie_file) %>% terra::resample(template_TV, method = "near")
+  r_ref <- terra::ifel(r_ref_raw == 1, 1, NA)
 } else {
   r_ref <- terra::rast(template_TV, vals = NA)
 }
 
 r_scen <- werkelijk_scenario_rast
 
+# Bepaal verschillen:
+# 1 = Verloren (was 1 in ref, nu NA in scen)
+# 2 = Nieuw (was NA in ref, nu 1 in scen)
+# 3 = Behouden (was 1 in ref, is 1 in scen)
 r_rgb <- terra::ifel(!is.na(r_ref) & is.na(r_scen), 1, NA)
 r_rgb <- terra::cover(r_rgb, terra::ifel(is.na(r_ref) & !is.na(r_scen), 2, NA))
 r_rgb <- terra::cover(r_rgb, terra::ifel(!is.na(r_ref) & !is.na(r_scen), 3, NA))

@@ -45,6 +45,40 @@ calc_ha_exact <- function(r) {
   val <- terra::global(area_raster, "sum", na.rm = TRUE)[[1]]
   return(as.numeric(val))
 }
+
+cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
+  if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
+    return(list(raster = masker * NA, clusters = masker * NA))
+  }
+  
+  temp_mask <- masker
+  if(dist_m > 0) temp_mask <- terra::buffer(masker, width = dist_m / 2)
+  
+  cl <- terra::patches(temp_mask, directions = 8, zeroAsNA = TRUE) %>% terra::mask(masker)
+  
+  if(werkelijk) {
+    stats_df <- terra::zonal(opp_laag, cl, fun = "sum", na.rm = TRUE)
+    colnames(stats_df) <- c("ID", "Waarde")
+    # CORRECTIE: Waarde is de som van fracties (1 pixel = 1.0). 
+    # Vermenigvuldigen met 100 geeft de juiste Area in m2!
+    stats_df$Area_m2 <- stats_df$Waarde * 100 
+  } else {
+    f <- terra::freq(cl)
+    stats_df <- data.frame(ID = f$value, Waarde = f$count)
+    stats_df$Area_m2 <- stats_df$Waarde * 100 # 1 binaire pixel = 100m2
+  }
+  
+  stats_df <- stats_df[!is.na(stats_df$ID), ]
+  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = cl * NA))
+  
+  voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
+  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = cl * NA))
+  
+  masker_binair <- cl %in% voldoet_ids
+  final_mask <- terra::ifel(masker_binair == 1, 1, NA)
+  
+  return(list(raster = terra::mask(masker, final_mask), clusters = cl))
+}
 ```
 
 # Soort en scenario informatie ophalen
@@ -130,9 +164,8 @@ rm(globale_id_raster, id_raster_TV_globale_values, id_raster_TV_masked)
 gc()
 ```
 
-# Biotoopfiltering (BWK-codes)
+# Biotoopfiltering (BWK-codes uit Scenario RDS)
 ```{r Biotoopfiltering}
-# 1. LAAD DE BRON-CROSSWALK/DICTIONARY IN
 df_nieuw <- read_csv(here("data/input/Excel_files/Resultaten_Totaal_Samengevoegd.csv"), show_col_types = FALSE)
 
 resultaten_gegroepeerd <- df_nieuw %>%
@@ -141,16 +174,13 @@ resultaten_gegroepeerd <- df_nieuw %>%
   group_by(Type) %>%
   nest(Data = c(Code, Match))
 
-# 2. LAAD DE REGIONALE TABEL IN
+# Lees de scenario-tabel in
 tabel_vlaanderen <- readRDS(scenario_path)
 setDT(tabel_vlaanderen)
 tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
 
-# Initialiseer de lijsten voor de verschillende habitat-bouwstenen
-lijst_matches      <- list()
 lijst_oppervlaktes <- list()
 
-# 3. VERWERK ELK HABITAT-TYPE DYNAMISCH VIA DATA.TABLE
 for(i in 1:nrow(resultaten_gegroepeerd)) {
   h_type <- resultaten_gegroepeerd$Type[i]
   h_data <- resultaten_gegroepeerd$Data[[i]]
@@ -159,89 +189,120 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   bevat_codes <- tolower(trimws(h_data$Code[h_data$Match == "bevat"]))
   
   if(length(bevat_codes) > 0) {
-    # 1. Ontsnap speciale regex-tekens (zoals haakjes) om syntaxfouten te voorkomen
     bevat_codes_escaped <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
-    
-    # 2. CRUCIALE FIX: Plak een '^' voor elke individuele code. 
-    # Dit dwingt grepl() om alleen te matchen als de BWK-code BEGINT met deze letters.
     bevat_codes_anchored <- paste0("^", bevat_codes_escaped)
     regex_term <- paste0(bevat_codes_anchored, collapse = "|")
     
-    # Filteren: EXACT-matches (geen letters voor/na) OF codes die BEGINNEN met de bevat-termen
     tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes | grepl(regex_term, CODE)]
   } else {
     tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes]
   }
   
-  # Filter op studiegebied
   tabel_TV <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
-  tabel_cel_som <- tabel_TV[, .(Oppervlakte = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
+  tabel_TV_unique <- unique(tabel_TV, by = c("cel_id", "CODE"))
+  tabel_cel_som <- tabel_TV_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)), by = .(cel_id)]
   
-  r_match_type <- id_raster_TV * NA
-  r_opp_type   <- id_raster_TV * NA
+  r_opp_type <- id_raster_TV * NA
   
   if(nrow(tabel_cel_som) > 0) {
     tabel_cel_som[, Oppervlakte := pmin(Oppervlakte, 1)]
-    tabel_cel_som[, Match := ifelse(Oppervlakte >= 0.01, 1, 0)]
-    
     setnames(tabel_cel_som, "cel_id", "globale_id")
+    
     tabel_finaal_mapping <- merge(tabel_cel_som, vertaal_df, by = "globale_id", all.x = TRUE)
     tabel_finaal_mapping <- tabel_finaal_mapping[!is.na(lokale_id)]
     
     if(nrow(tabel_finaal_mapping) > 0) {
-      tabel_matches_clean <- tabel_finaal_mapping[Match == 1]
-      if(nrow(tabel_matches_clean) > 0) {
-        r_match_type[tabel_matches_clean$lokale_id] <- tabel_matches_clean$Match
-      }
       r_opp_type[tabel_finaal_mapping$lokale_id] <- tabel_finaal_mapping$Oppervlakte
-      
-      # Sla de gegenereerde rasters op
-      lijst_matches[[h_type]]      <- r_match_type
       lijst_oppervlaktes[[h_type]] <- r_opp_type
     }
   }
 }
 
-# Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
-openwater_max <- lijst_matches[["openwater"]]
 openwater_opp <- lijst_oppervlaktes[["openwater"]]
-rietland_max <- lijst_matches[["rietland"]]
-rietland_opp <- lijst_oppervlaktes[["rietland"]]
-zegge_max <- lijst_matches[["zegge"]]
-zegge_opp <- lijst_oppervlaktes[["zegge"]]
-moeras_max <- lijst_matches[["moeras"]]
-moeras_opp <- lijst_oppervlaktes[["moeras"]]
-grasland_max <- lijst_matches[["grasland"]]
-grasland_opp <- lijst_oppervlaktes[["grasland"]]
-struweel_max <- lijst_matches[["struweel"]]
-struweel_opp <- lijst_oppervlaktes[["struweel"]]
+rietland_opp  <- lijst_oppervlaktes[["rietland"]]
+zegge_opp     <- lijst_oppervlaktes[["zegge"]]
+moeras_opp    <- lijst_oppervlaktes[["moeras"]]
+grasland_opp  <- lijst_oppervlaktes[["grasland"]]
+struweel_opp  <- lijst_oppervlaktes[["struweel"]]
 
-#[1] "openwater" "rietland"  "zegge"     "moeras"    "grasland"  "struweel" 
-
-# Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
-rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
+rm(resultaten_gegroepeerd, df_nieuw, lijst_oppervlaktes, tabel_vlaanderen, tabel_gefilterd, tabel_TV, tabel_cel_som, vertaal_df)
 gc()
 ```
 
-```{r Biotoopcombinatie en Uitsluiting Hooggroen}
-message("=== STAP 1: Basishabitat bundelen en storing uitsluiten ===")
+# Biotoopfiltering (BWK-codes uit Scenario RDS)
+```{r Biotoopfiltering}
+df_nieuw <- read_csv(here("data/input/Excel_files/Resultaten_Totaal_Samengevoegd.csv"), show_col_types = FALSE)
 
-# --- 1. COALESCE & COMBINEER ALLE CORES (FAILSAFE VOOR NULL-LAYERS) ---
-# We maken lijsten van alle mogelijke binnenkomende lagen
-max_lagen <- list(openwater_max, rietland_max, zegge_max, moeras_max, grasland_max, struweel_max)
-opp_lagen <- list(openwater_opp, rietland_opp, zegge_opp, moeras_opp, grasland_opp, struweel_opp)
+resultaten_gegroepeerd <- df_nieuw %>%
+  mutate(Soort_clean = tolower(trimws(Soort))) %>%
+  filter(Soort_clean == soort) %>%
+  group_by(Type) %>%
+  nest(Data = c(Code, Match))
 
-# Filter de NULL-lagen eruit (voor het geval een type niet voorkomt in de database)
-max_lagen <- max_lagen[!sapply(max_lagen, is.null)]
-opp_lagen <- opp_lagen[!sapply(opp_lagen, is.null)]
+# Lees de scenario-tabel in
+tabel_vlaanderen <- readRDS(scenario_path)
+setDT(tabel_vlaanderen)
+tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
 
-# Combineer binaire lagen (Spoor 1) via terra::cover
-biotoop_max <- max_lagen[[1]]
-if(length(max_lagen) > 1) {
-  for(i in 2:length(max_lagen)) biotoop_max <- terra::cover(biotoop_max, max_lagen[[i]])
+lijst_oppervlaktes <- list()
+
+for(i in 1:nrow(resultaten_gegroepeerd)) {
+  h_type <- resultaten_gegroepeerd$Type[i]
+  h_data <- resultaten_gegroepeerd$Data[[i]]
+  
+  exact_codes <- tolower(trimws(h_data$Code[h_data$Match == "exact"]))
+  bevat_codes <- tolower(trimws(h_data$Code[h_data$Match == "bevat"]))
+  
+  if(length(bevat_codes) > 0) {
+    bevat_codes_escaped <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
+    bevat_codes_anchored <- paste0("^", bevat_codes_escaped)
+    regex_term <- paste0(bevat_codes_anchored, collapse = "|")
+    
+    tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes | grepl(regex_term, CODE)]
+  } else {
+    tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes]
+  }
+  
+  tabel_TV <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
+  tabel_TV_unique <- unique(tabel_TV, by = c("cel_id", "CODE"))
+  tabel_cel_som <- tabel_TV_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)), by = .(cel_id)]
+  
+  r_opp_type <- id_raster_TV * NA
+  
+  if(nrow(tabel_cel_som) > 0) {
+    tabel_cel_som[, Oppervlakte := pmin(Oppervlakte, 1)]
+    setnames(tabel_cel_som, "cel_id", "globale_id")
+    
+    tabel_finaal_mapping <- merge(tabel_cel_som, vertaal_df, by = "globale_id", all.x = TRUE)
+    tabel_finaal_mapping <- tabel_finaal_mapping[!is.na(lokale_id)]
+    
+    if(nrow(tabel_finaal_mapping) > 0) {
+      r_opp_type[tabel_finaal_mapping$lokale_id] <- tabel_finaal_mapping$Oppervlakte
+      lijst_oppervlaktes[[h_type]] <- r_opp_type
+    }
+  }
 }
 
-# Bereken de fractionele optelsom (Spoor 2)
+openwater_opp <- lijst_oppervlaktes[["openwater"]]
+rietland_opp  <- lijst_oppervlaktes[["rietland"]]
+zegge_opp     <- lijst_oppervlaktes[["zegge"]]
+moeras_opp    <- lijst_oppervlaktes[["moeras"]]
+grasland_opp  <- lijst_oppervlaktes[["grasland"]]
+struweel_opp  <- lijst_oppervlaktes[["struweel"]]
+
+rm(resultaten_gegroepeerd, df_nieuw, lijst_oppervlaktes, tabel_vlaanderen, tabel_gefilterd, tabel_TV, tabel_cel_som, vertaal_df)
+gc()
+```
+
+```{r Roerdomp Stappenketen}
+# ==============================================================================
+# STAP 1: BASISHABITAT BUNDELEN EN STORING UITSLUITEN
+# ==============================================================================
+message("=== STAP 1: Basishabitat bundelen en storing uitsluiten (reële fracties) ===")
+
+opp_lagen <- list(openwater_opp, rietland_opp, zegge_opp, moeras_opp, grasland_opp, struweel_opp)
+opp_lagen <- opp_lagen[!sapply(opp_lagen, is.null)]
+
 biotoop_opp_som <- template_TV * 0
 for(i in 1:length(opp_lagen)) {
   clean_opp <- terra::deepcopy(opp_lagen[[i]])
@@ -249,14 +310,12 @@ for(i in 1:length(opp_lagen)) {
   biotoop_opp_som <- biotoop_opp_som + clean_opp
 }
 biotoop_opp <- terra::clamp(biotoop_opp_som, upper = 1.0)
-biotoop_opp <- terra::mask(biotoop_opp, biotoop_max)
+biotoop_opp <- terra::ifel(biotoop_opp > 0, biotoop_opp, NA)
 
-# --- 2. HOOGGROEN EN ESTUARIUM INLEZEN & ALIGNEREN ---
 groenkaart <- terra::rast(here("data/input/ASCI Files/Groenkaart_2021.tif"))
 groenkaart_TV <- terra::crop(groenkaart, template_TV, snap = "near")
 hooggroen_aligned <- terra::resample(groenkaart_TV, template_TV, method = "near")
 
-# Brand de stoorlaag: Alleen exact waarde 1 is bos! Estuarium (1130) indien aanwezig
 r_bos_bin <- terra::ifel(hooggroen_aligned == 1, 1, NA)
 
 tabel_estuarium <- tabel_vlaanderen[CODE == "1130"]
@@ -264,7 +323,7 @@ tabel_estuarium_TV <- tabel_estuarium[cel_id %in% studiegebied_globale_ids]
 r_estuarium <- id_raster_TV * NA
 
 if(nrow(tabel_estuarium_TV) > 0) {
-  tabel_est_mapping <- copy(tabel_estuarium_TV)
+  t_est_mapping <- copy(tabel_estuarium_TV)
   setnames(t_est_mapping, "cel_id", "globale_id")
   tabel_finaal_est <- merge(t_est_mapping, vertaal_df, by = "globale_id", all.x = TRUE)
   tabel_finaal_est <- tabel_finaal_est[!is.na(lokale_id)]
@@ -273,187 +332,126 @@ if(nrow(tabel_estuarium_TV) > 0) {
 
 stoorlaag <- terra::cover(r_bos_bin, r_estuarium)
 
-# --- 3. FILTEREN EN ISOLEREN VAN DE HOOFDLAGEN ---
-# We filteren het totale leefgebied
-roerdomp_leefgebied1_max <- terra::mask(biotoop_max, stoorlaag, inverse = TRUE)
 roerdomp_leefgebied1_opp <- terra::mask(biotoop_opp, stoorlaag, inverse = TRUE)
 
-# We behouden ook een schone, gefilterde versie van open water en rietland voor latere stappen!
-rietland_clean_max <- terra::mask(rietland_max, stoorlaag, inverse = TRUE)
-openwater_clean_max <- terra::mask(openwater_max, stoorlaag, inverse = TRUE)
+rietland_clean_opp  <- if(!is.null(rietland_opp)) terra::mask(rietland_opp, stoorlaag, inverse = TRUE) else template_TV * NA
+openwater_clean_opp <- if(!is.null(openwater_opp)) terra::mask(openwater_opp, stoorlaag, inverse = TRUE) else template_TV * NA
 
-rm(biotoop_max, biotoop_opp_som, biotoop_opp, groenkaart, groenkaart_TV, hooggroen_aligned, 
-   r_bos_bin, r_estuarium, stoorlaag, tabel_estuarium, tabel_estuarium_TV, clean_opp)
-gc()
-```
-
-```{r open water}
+# ==============================================================================
+# STAP 2: OPEN WATER PARTIJEN FILTEREN (>= 10 HA)
+# ==============================================================================
 message("=== STAP 2: Open water partijen filteren op minimale grootte (10 ha) ===")
 
-drempel_10ha_m2 <- 10 * 10000
+r_bin_openwater <- terra::ifel(!is.na(openwater_clean_opp) & openwater_clean_opp > 0, 1, NA)
 
-# Zoek grote plassen binnen het open water
 water_clusters <- cluster_filter_compleet(
-  masker = openwater_clean_max,
-  opp_laag = NULL,
-  drempel_m2 = drempel_10ha_m2,
-  dist_m = 50,
-  werkelijk = FALSE
+  masker     = r_bin_openwater,
+  opp_laag   = openwater_clean_opp,
+  drempel_m2 = 10 * 10000,
+  dist_m     = 50,
+  werkelijk  = TRUE
 )
 r_grote_plassen <- water_clusters$raster
 
-# Bereken de afstand tot deze grote plassen. Leefgebied mag max 100m verwijderd liggen.
-if (terra::global(is.na(r_grote_plassen), "sum")[[1]] < terra::ncell(r_grote_plassen)) {
+if (!all(is.na(terra::values(r_grote_plassen, mat=FALSE)))) {
   dist_tot_water <- terra::distance(r_grote_plassen)
   mal_nabij_water <- terra::ifel(dist_tot_water <= 100, 1, NA)
-  
-  roerdomp_leefgebied2_max <- terra::mask(roerdomp_leefgebied1_max, mal_nabij_water)
   roerdomp_leefgebied2_opp <- terra::mask(roerdomp_leefgebied1_opp, mal_nabij_water)
 } else {
-  message("⚠️ Waarschuwing: Geen open waterpartijen van >= 10 ha gevonden in het gebied!")
-  roerdomp_leefgebied2_max <- template_TV * NA
   roerdomp_leefgebied2_opp <- template_TV * NA
 }
 
-rm(water_clusters, r_grote_plassen, dist_tot_water, mal_nabij_water, roerdomp_leefgebied1_max, roerdomp_leefgebied1_opp)
-gc()
-```
-
-```{r waterkanten}
+# ==============================================================================
+# STAP 3: RIETKRAGEN / ECOTONEN ANALYSEREN (>= 500M WATERKANT)
+# ==============================================================================
 message("=== STAP 3: Rietkragen / Ecotonen analyseren (Minimaal 500m waterkant) ===")
 
-# --- KOGELVRIJE ECOTOOM-EXTRACTIE ---
-# We bufferen het rietland met 10 meter (1 pixel) en maskeren dit met het open water. 
-# Dit geeft exact de contact-pixels tussen riet en water!
-riet_buffer <- terra::buffer(rietland_clean_max, width = 10)
-r_waterkant <- terra::mask(openwater_clean_max, riet_buffer)
-
-# Drempel: 500 meter lengte = 50 pixels op 10m grid = 5000 m2 (0.5 ha)
-drempel_waterkant_m2 <- 5000
+r_bin_riet <- terra::ifel(!is.na(rietland_clean_opp) & rietland_clean_opp > 0, 1, NA)
+riet_buffer <- terra::buffer(r_bin_riet, width = 10)
+r_waterkant_bin <- terra::mask(r_bin_openwater, riet_buffer)
 
 waterkant_gefilterd <- cluster_filter_compleet(
-  masker = r_waterkant,
-  opp_laag = NULL,
-  drempel_m2 = drempel_waterkant_m2,
-  dist_m = 50,
-  werkelijk = FALSE
+  masker     = r_waterkant_bin,
+  opp_laag   = NULL,
+  drempel_m2 = 5000, # 500m lengte = 50 pixels = 5000m2
+  dist_m     = 50,
+  werkelijk  = FALSE
 )
 r_robuuste_waterkant <- waterkant_gefilterd$raster
 
-# Het leefgebied moet zich binnen 100 meter van zo'n functionele rietkraag bevinden
-if (terra::global(is.na(r_robuuste_waterkant), "sum")[[1]] < terra::ncell(r_robuuste_waterkant)) {
+if (!all(is.na(terra::values(r_robuuste_waterkant, mat=FALSE)))) {
   dist_tot_waterkant <- terra::distance(r_robuuste_waterkant)
   mal_nabij_waterkant <- terra::ifel(dist_tot_waterkant <= 100, 1, NA)
-  
-  roerdomp_leefgebied3_max <- terra::mask(roerdomp_leefgebied2_max, mal_nabij_waterkant)
   roerdomp_leefgebied3_opp <- terra::mask(roerdomp_leefgebied2_opp, mal_nabij_waterkant)
 } else {
-  message("⚠️ Waarschuwing: Geen aaneengesloten rietkragen van >= 500m lengte gevonden!")
-  roerdomp_leefgebied3_max <- template_TV * NA
   roerdomp_leefgebied3_opp <- template_TV * NA
 }
 
-rm(riet_buffer, r_waterkant, waterkant_gefilterd, r_robuuste_waterkant, dist_tot_waterkant, mal_nabij_waterkant, roerdomp_leefgebied2_max, roerdomp_leefgebied2_opp)
-gc()
-```
-
-```{r rietlandkernen}
+# ==============================================================================
+# STAP 4: NESTKERNEN FILTEREN (>= 0.5 HA ZUIVER RIETLAND)
+# ==============================================================================
 message("=== STAP 4: Nestkernen filteren (Minimaal 0.5 ha zuiver rietland) ===")
 
-drempel_05ha_m2 <- 0.5 * 10000
-
 riet_kernen <- cluster_filter_compleet(
-  masker = rietland_clean_max,
-  opp_laag = NULL,
-  drempel_m2 = drempel_05ha_m2,
-  dist_m = 50,
-  werkelijk = FALSE
+  masker     = r_bin_riet,
+  opp_laag   = rietland_clean_opp,
+  drempel_m2 = 0.5 * 10000,
+  dist_m     = 50,
+  werkelijk  = TRUE
 )
 r_riet_kernen <- riet_kernen$raster
 
-if (terra::global(is.na(r_riet_kernen), "sum")[[1]] < terra::ncell(r_riet_kernen)) {
+if (!all(is.na(terra::values(r_riet_kernen, mat=FALSE)))) {
   dist_tot_rietkern <- terra::distance(r_riet_kernen)
   mal_nabij_rietkern <- terra::ifel(dist_tot_rietkern <= 100, 1, NA)
-  
-  roerdomp_leefgebied4_max <- terra::mask(roerdomp_leefgebied3_max, mal_nabij_rietkern)
   roerdomp_leefgebied4_opp <- terra::mask(roerdomp_leefgebied3_opp, mal_nabij_rietkern)
 } else {
-  message("⚠️ Waarschuwing: Geen aaneengesloten rietlandkernen van >= 0.5 ha gevonden!")
-  roerdomp_leefgebied4_max <- template_TV * NA
   roerdomp_leefgebied4_opp <- template_TV * NA
 }
 
-rm(riet_kernen, r_riet_kernen, dist_tot_rietkern, mal_nabij_rietkern, roerdomp_leefgebied3_max, roerdomp_leefgebied3_opp, rietland_clean_max, openwater_clean_max)
-gc()
-```
-
-
-```{r clustering}
+# ==============================================================================
+# STAP 5: FINALE METAPOPULATIE-CLUSTERING (25 HA / 500M)
+# ==============================================================================
 message("=== STAP 5: Grote metapopulatie-clustering op 25 hectare ===")
 
 drempel_25ha_m2 <- 25 * 10000
 
-# Finaal Spoor 1: Maximale Potentie (Binaire check)
-finaal_roerdomp_max <- cluster_filter_compleet(
-  masker = roerdomp_leefgebied4_max,
-  opp_laag = NULL,
-  drempel_m2 = drempel_25ha_m2,
-  dist_m = 500, # Brede 500m ecologische verbindingsbrug!
-  werkelijk = FALSE
-)
-finaal_leefgebied_max <- finaal_roerdomp_max$raster
+if (!all(is.na(terra::values(roerdomp_leefgebied4_opp, mat=FALSE)))) {
+  r_bin_leef4 <- terra::ifel(!is.na(roerdomp_leefgebied4_opp) & roerdomp_leefgebied4_opp > 0, 1, NA)
+  
+  finaal_roerdomp_opp <- cluster_filter_compleet(
+    masker     = r_bin_leef4,
+    opp_laag   = roerdomp_leefgebied4_opp,
+    drempel_m2 = drempel_25ha_m2,
+    dist_m     = 500, # Brede 500m ecologische verbindingsbrug!
+    werkelijk  = TRUE
+  )
+  roerdomp_finaal_opp <- terra::mask(roerdomp_leefgebied4_opp, finaal_roerdomp_opp$raster)
+} else {
+  roerdomp_finaal_opp <- template_TV * NA
+}
 
-# Finaal Spoor 2: Werkelijke Oppervlakte (Fractionele check)
-finaal_roerdomp_opp <- cluster_filter_compleet(
-  masker = roerdomp_leefgebied4_max,
-  opp_laag = roerdomp_leefgebied4_opp,
-  drempel_m2 = drempel_25ha_m2,
-  dist_m = 500,
-  werkelijk = TRUE
-)
-finaal_leefgebied_opp <- terra::mask(roerdomp_leefgebied4_opp, finaal_roerdomp_opp$raster)
+cat("\n--- AUDIT: SCENARIO LEEFGEBIED ROERDOMP (WERKELIJKE OPPERVLAKTE) ---\n")
+ha_finaal_werk <- calc_ha_exact(roerdomp_finaal_opp)
+cat("Werkelijke oppervlakte leefgebied Roerdomp in scenario (>= 25 ha):", round(ha_finaal_werk, 2), "ha\n")
 
-# --- FINALE OPLEVERING NAAR JOUW UNIVERSELE VARIABELEN ---
-roerdomp_finaal_max <- finaal_leefgebied_max
-roerdomp_finaal_opp <- finaal_leefgebied_opp
-
-# --- EINDOUTPUT REPORTING ---
-cat("\n==================================================\n")
-cat("   FINALE MODELRESULTATEN ROERDOMP                \n")
-cat("==================================================\n")
-cat("Finaal Leefgebied Spoor 1 (Max Potentie):  ", calc_ha_exact(finaal_leefgebied_max), "ha\n")
-cat("Finaal Leefgebied Spoor 2 (Werkelijke Opp): ", calc_ha_exact(finaal_leefgebied_opp), "ha\n")
-cat("==================================================\n")
-
-rm(finaal_roerdomp_max, finaal_roerdomp_opp, roerdomp_leefgebied4_max, roerdomp_leefgebied4_opp)
+suppressWarnings(rm(biotoop_opp_clean_gras, biotoop_opp_clean_moer, biotoop_opp_som, biotoop_opp, groenkaart, 
+   groenkaart_TV, hooggroen_aligned, r_bos_bin, r_estuarium, stoorlaag, roerdomp_leefgebied1_opp, rietland_clean_opp, 
+   openwater_clean_opp, r_bin_openwater, water_clusters, r_grote_plassen, dist_tot_water, mal_nabij_water, 
+   roerdomp_leefgebied2_opp, r_bin_riet, riet_buffer, r_waterkant_bin, waterkant_gefilterd, r_robuuste_waterkant, 
+   dist_tot_waterkant, mal_nabij_waterkant, roerdomp_leefgebied3_opp, riet_kernen, r_riet_kernen, dist_tot_rietkern, 
+   mal_nabij_rietkern, roerdomp_leefgebied4_opp, r_bin_leef4, finaal_roerdomp_opp, tabel_vlaanderen))
 gc()
 ```
-
 
 # Export & Transitiekaart
 ```{r Export}
 scenario_raster_dir <- here::here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", scenario_naam)
 if (!dir.exists(scenario_raster_dir)) dir.create(scenario_raster_dir, recursive = TRUE)
 
-final_opp_scen <- NULL
-
-if (exists("resB_strikt") && !is.null(resB_strikt)) {
-  final_opp_scen <- max(c(resB_strikt$kern, resB_strikt$bouw), na.rm = TRUE)
-} else if (exists("final_opp")) {
-  final_opp_scen <- final_opp
-} else if (exists("bruinekiekendief_leefgebied1_opp")) {
-  final_opp_scen <- bruinekiekendief_leefgebied1_opp
-} else {
-  mogelijke_vars <- ls(pattern = "(_final_opp|_leefgebied1_opp|_finaal_opp)$")
-  if (length(mogelijke_vars) > 0) {
-    final_opp_scen <- get(mogelijke_vars[1])
-  } else {
-    final_opp_scen <- terra::rast(template_TV, vals = NA)
-  }
-}
-
-if (!all(is.na(terra::values(final_opp_scen, mat = FALSE)))) {
-  werkelijk_scenario_rast <- terra::ifel(!is.na(final_opp_scen) & final_opp_scen > 0, 1, NA)
+# 1. Binariseren naar 1 / NA voor export
+if (exists("roerdomp_finaal_opp") && !all(is.na(terra::values(roerdomp_finaal_opp, mat = FALSE)))) {
+  werkelijk_scenario_rast <- terra::ifel(!is.na(roerdomp_finaal_opp) & roerdomp_finaal_opp > 0, 1, NA)
 } else {
   werkelijk_scenario_rast <- terra::rast(template_TV, vals = NA)
 }
@@ -479,16 +477,25 @@ writeRaster(export_rast,
 
 message(paste("✓ Scenario-raster succesvol weggeschreven naar:", file_path_scen))
 
-referentie_file <- here::here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", "02_Werkelijke_Oppervlakte", paste0("Habitat_Werkelijke_Oppervlaktes_", soort, ".tif"))
+# 2. Vergelijking met Referentie-raster uit 02_Werkelijke_Oppervlakte (check op _wv suffix)
+referentie_file_wv  <- here::here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", "02_Werkelijke_Oppervlakte", paste0("Habitat_Werkelijke_Oppervlaktes_", soort, "_wv.tif"))
+referentie_file_std <- here::here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", "02_Werkelijke_Oppervlakte", paste0("Habitat_Werkelijke_Oppervlaktes_", soort, ".tif"))
+
+referentie_file <- if (file.exists(referentie_file_wv)) referentie_file_wv else referentie_file_std
 
 if (file.exists(referentie_file)) {
-  r_ref <- rast(referentie_file) %>% terra::resample(template_TV, method = "near")
+  r_ref_raw <- rast(referentie_file) %>% terra::resample(template_TV, method = "near")
+  r_ref <- terra::ifel(r_ref_raw == 1, 1, NA)
 } else {
   r_ref <- terra::rast(template_TV, vals = NA)
 }
 
 r_scen <- werkelijk_scenario_rast
 
+# Bepaal verschillen:
+# 1 = Verloren (was 1 in ref, nu NA in scen)
+# 2 = Nieuw (was NA in ref, nu 1 in scen)
+# 3 = Behouden (was 1 in ref, is 1 in scen)
 r_rgb <- terra::ifel(!is.na(r_ref) & is.na(r_scen), 1, NA)
 r_rgb <- terra::cover(r_rgb, terra::ifel(is.na(r_ref) & !is.na(r_scen), 2, NA))
 r_rgb <- terra::cover(r_rgb, terra::ifel(!is.na(r_ref) & !is.na(r_scen), 3, NA))
