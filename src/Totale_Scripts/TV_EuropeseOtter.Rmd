@@ -1,5 +1,5 @@
 ---
-title: "Leefgebiedenscript in R: Kalmthoutse Heide"
+title: "Leefgebiedenscript in R: Turnhouts Vennegebied"
 author: "Bert Van Hecke"
 date: "`r Sys.Date()`"
 output: 
@@ -96,7 +96,7 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
 # Soort informatie ophalen
 ```{r Soort informatie}
 df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
-soort <- "knoflookpad"
+soort <- "europeseotter"
 
 resultaat <- df %>%
 filter(Soort == soort) %>%
@@ -111,60 +111,42 @@ print(resultaat)
 rm(df, resultaat)
 ```
 
-# Gebied voorbereiden (Kalmthoutse Heide)
+# Gebied voorbereiden (Turnhouts Vennegebied)
 ```{r Gebied Voorbereiden}
-area_shape  <- vect(here("data/input/Kalmthoutse_Heide.shp"))
+area_shape  <- vect(here("data/input/Turnhouts_Vennegebied.shp"))
 master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
 
-# Inlezen van de CSV-sleutel (gebruikt om tabel-indices te mappen naar codes)
 df_namen_sleutel <- read_csv(here("data/input/Excel_files/BWK_Laag_Namen_2025.csv"), show_col_types = FALSE)
 gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
 
 area_shape_proj <- project(area_shape, crs(master_grid))
 area_buffer_fix <- buffer(area_shape_proj, width = buffer_m)
 
-message("-> Vertaalraster voor globale/lokale cellen opbouwen via snelle MASK methode...")
-id_raster_KH <- crop(master_grid, area_buffer_fix, snap = "near")
+message("-> Uitsnede maken en lokale/globale cel-IDs berekenen...")
 
-globale_id_raster <- master_grid
-values(globale_id_raster) <- 1:ncell(globale_id_raster)
+# 1. Snijd de master_grid direct uit naar het studiegebied (met buffer)
+id_raster_TV <- crop(master_grid, area_buffer_fix, snap = "near")
 
-# ==============================================================================
-# ULTRA-SNELLE METHODE: Direct naar data.frame met celnummers in C++
-# ==============================================================================
-id_raster_KH_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
-id_raster_KH_masked <- mask(id_raster_KH_globale_values, area_buffer_fix)
+# 2. GEHEUGEN-FIX: Bereken globale cel-IDs op basis van xy-coördinaten van de uitsnede
+# Dit voorkomt het laden van miljoenen cellen van heel Vlaanderen in het RAM
+lokale_coords <- terra::xyFromCell(id_raster_TV, 1:ncell(id_raster_TV))
+globale_ids   <- terra::cellFromXY(master_grid, lokale_coords)
 
-message("-> Vertaaltabel bliksemsnel opbouwen via C++ dataframe extractie...")
+# 3. Bouw de vertaaltabel efficiënt op met data.table
+vertaal_df <- data.table(
+  lokale_id  = 1:ncell(id_raster_TV),
+  globale_id = globale_ids
+)
 
-# 'cells = TRUE' zorgt ervoor dat terra direct een kolom 'cell' (lokale id) 
-# en een kolom met de waarde (globale id) genereert voor alle niet-NA cellen.
-df_extractie <- as.data.frame(id_raster_KH_masked, cells = TRUE)
+# Enkel de unieke globale IDs bewaren voor de database query
+studiegebied_globale_ids <- unique(vertaal_df$globale_id[!is.na(vertaal_df$globale_id)])
 
-# Direct omzetten naar data.table en de kolommen juist benoemen
-vertaal_df <- as.data.table(df_extractie)
+# Sjabloon opbouwen voor latere stappen
+template_TV <- terra::rasterize(area_buffer_fix, id_raster_TV, field = 1, background = 0)
+grens_web   <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
 
-# De kolommen heten nu standaard 'cell' en de naam van je raster (lyr.1 of gelijkaardig)
-# We hernoemen ze direct naar jouw vertrouwde structuur:
-setnames(vertaal_df, c(1, 2), c("lokale_id", "globale_id"))
-
-# Filter eventuele resterende NA's eruit
-vertaal_df <- vertaal_df[!is.na(globale_id)]
-
-studiegebied_globale_ids <- unique(vertaal_df$globale_id)
-
-values(id_raster_KH) <- NA
-# --- DE CRUCIALE TEMPLATE REPARATIE ---
-# In plaats van alles op NA te zetten, maken we een binaire 'mal' van het studiegebied.
-# We rasteriseren de shapefile van Kalmthoutse Heide (area_buffer_fix) op het uitgesneden raster.
-template_KH <- terra::rasterize(area_buffer_fix, id_raster_KH, field = 1, background = 0)
-
-# Controleer of het nu wél cellen bevat:
-cat("Gecorrigeerd aantal pixels in template_KH: ", sum(terra::values(template_KH) == 1, na.rm=TRUE), "\n")
-
-grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
-
-rm(globale_id_raster, id_raster_KH_globale_values, id_raster_KH_masked)
+# Geheugen opschonen
+rm(lokale_coords, globale_ids)
 gc()
 ```
 
@@ -180,15 +162,14 @@ resultaten_gegroepeerd <- df_nieuw %>%
   nest(Data = c(Code, Match))
 
 # 2. LAAD DE REGIONALE TABEL IN
-tabel_vlaanderen <- readRDS(here("data/input/Raster_Vlaanderen/BWK_Tabel_Kalmthoutse_Heide_Plus_50km.rds"))
+tabel_vlaanderen <- readRDS(here("data/input/Raster_Vlaanderen/BWK_Tabel_Turnhouts_Vennegebied_Plus_50km.rds"))
 setDT(tabel_vlaanderen)
 tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
 
-# Initialiseer de lijsten voor de verschillende habitat-bouwstenen
 lijst_matches      <- list()
 lijst_oppervlaktes <- list()
 
-# 3. VERWERK ELK HABITAT-TYPE DYNAMISCH VIA DATA.TABLE
+# 3. VERWERK ELK HABITAT-TYPE DYNAMISCH EN GEHEUGENZUINIG
 for(i in 1:nrow(resultaten_gegroepeerd)) {
   h_type <- resultaten_gegroepeerd$Type[i]
   h_data <- resultaten_gegroepeerd$Data[[i]]
@@ -197,26 +178,18 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   bevat_codes <- tolower(trimws(h_data$Code[h_data$Match == "bevat"]))
   
   if(length(bevat_codes) > 0) {
-    # 1. Ontsnap speciale regex-tekens (zoals haakjes) om syntaxfouten te voorkomen
-    bevat_codes_escaped <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
-    
-    # 2. CRUCIALE FIX: Plak een '^' voor elke individuele code. 
-    # Dit dwingt grepl() om alleen te matchen als de BWK-code BEGINT met deze letters.
+    bevat_codes_escaped  <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
     bevat_codes_anchored <- paste0("^", bevat_codes_escaped)
-    regex_term <- paste0(bevat_codes_anchored, collapse = "|")
+    regex_term           <- paste0(bevat_codes_anchored, collapse = "|")
     
-    # Filteren: EXACT-matches (geen letters voor/na) OF codes die BEGINNEN met de bevat-termen
     tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes | grepl(regex_term, CODE)]
   } else {
     tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes]
   }
   
   # Filter op studiegebied
-  tabel_KH <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
-  tabel_cel_som <- tabel_KH[, .(Oppervlakte = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
-  
-  r_match_type <- id_raster_KH * NA
-  r_opp_type   <- id_raster_KH * NA
+  tabel_TV      <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
+  tabel_cel_som <- tabel_TV[, .(Oppervlakte = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
   
   if(nrow(tabel_cel_som) > 0) {
     tabel_cel_som[, Oppervlakte := pmin(Oppervlakte, 1)]
@@ -227,256 +200,247 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
     tabel_finaal_mapping <- tabel_finaal_mapping[!is.na(lokale_id)]
     
     if(nrow(tabel_finaal_mapping) > 0) {
+      
+      # GEHEUGEN-OPTIMALISATIE:
+      # Maak verse rasters op basis van het sjabloon
+      r_opp_type   <- template_TV * NA
+      r_match_type <- template_TV * NA
+      
+      # Vul waarden direct in een tijdelijke R-vector van de grootte van de uitsnede
+      # Dit gebruikt 10x minder geheugen dan een C++ raster-subsetting
+      vec_opp   <- rep(NA_real_, terra::ncell(id_raster_TV))
+      vec_match <- rep(NA_real_, terra::ncell(id_raster_TV))
+      
+      vec_opp[tabel_finaal_mapping$lokale_id] <- tabel_finaal_mapping$Oppervlakte
+      
       tabel_matches_clean <- tabel_finaal_mapping[Match == 1]
       if(nrow(tabel_matches_clean) > 0) {
-        r_match_type[tabel_matches_clean$lokale_id] <- tabel_matches_clean$Match
+        vec_match[tabel_matches_clean$lokale_id] <- tabel_matches_clean$Match
       }
-      r_opp_type[tabel_finaal_mapping$lokale_id] <- tabel_finaal_mapping$Oppervlakte
+      
+      # Schrijf de vectoren in één keer weg naar het raster
+      terra::values(r_opp_type)   <- vec_opp
+      terra::values(r_match_type) <- vec_match
       
       # Sla de gegenereerde rasters op
       lijst_matches[[h_type]]      <- r_match_type
       lijst_oppervlaktes[[h_type]] <- r_opp_type
+      
+      rm(vec_opp, vec_match)
     }
   }
 }
 
-# Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
-waterbiotoop_bwk_max <- lijst_matches[["waterbiotoop_bwk"]]
-waterbiotoop_bwk_opp <- lijst_oppervlaktes[["waterbiotoop_bwk"]]
-landbiotoop_bwk_max <- lijst_matches[["landbiotoop_bwk"]]
-landbiotoop_bwk_opp <- lijst_oppervlaktes[["landbiotoop_bwk"]]
+# Uitpakken naar de exacte losse variabelen
+d_max <- lijst_matches[["d"]]; d_opp <- lijst_oppervlaktes[["d"]]
+h_max <- lijst_matches[["h"]]; h_opp <- lijst_oppervlaktes[["h"]]
+k_max <- lijst_matches[["k"]]; k_opp <- lijst_oppervlaktes[["k"]]
+m_max <- lijst_matches[["m"]]; m_opp <- lijst_oppervlaktes[["m"]]
+r_max <- lijst_matches[["r"]]; r_opp <- lijst_oppervlaktes[["r"]]
+s_max <- lijst_matches[["s"]]; s_opp <- lijst_oppervlaktes[["s"]]
+t_max <- lijst_matches[["t"]]; t_opp <- lijst_oppervlaktes[["t"]]
+v_max <- lijst_matches[["v"]]; v_opp <- lijst_oppervlaktes[["v"]]
 
-#"voortplanting0" "not_eikenbos"   "moeras"         "openwater" 
-
-# Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
-rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
+# Grote eindschoonmaak
+rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes, tabel_vlaanderen)
 gc()
 ```
 
-```{r Watervlakken en Kleine Waters Knoflookpad}
-message("-> Watervlakken shapefile lokaal inlezen...")
-# Inlezen en projecteren op het mastergrid van Kalmthoutse Heide
-watervlakken_v <- vect(here("data/input/ASCI Files/watervlakken2024.shp"))
-watervlakken_proj <- project(watervlakken_v, crs(id_raster_KH))
-
-message("-> Topologische fouten herstellen en uitsnijden op Kalmthoutse Heide...")
-area_buffer_clean <- makeValid(area_buffer_fix) %>% terra::aggregate()
-watervlakken_clean <- makeValid(watervlakken_proj)
-watervlakken_KH <- crop(watervlakken_clean, area_buffer_clean)
-
+```{r Otter Stap 1 - Waterbiotopen opbouwen}
 # ==============================================================================
-# VECTOR-GEBASEERDE IDENTIFICATIE VAN KLEINE WATERS (<= 0.4 ha)
+# OTTER STAP 1: INTEGRAL WATERNETWERK (HUETZON KLASSE 1 + BLAUWELAAG)
 # ==============================================================================
-message("-> Kleine voortplantingswaters filteren (<= 0.4 ha)...")
-watervlakken_buffered <- terra::buffer(watervlakken_KH, width = 5)
-watervlakken_fuzzy_clusters <- terra::aggregate(watervlakken_buffered, by = NULL)
-watervlakken_fuzzy_clusters$fuzzy_area_m2 <- terra::expanse(watervlakken_fuzzy_clusters)
+message("-> Otter Spoor 1: Waterlopen en plassen inlezen en samenvoegen...")
 
-# GDX: BlauweLaag clusters kleiner of gelijk aan 0.4 ha (4000 m2)
-kleine_clusters_v <- watervlakken_fuzzy_clusters[watervlakken_fuzzy_clusters$fuzzy_area_m2 <= 4000, ]
+# 1. Huetzon-raster inlezen voor waterlopen (Ge('rastert_huetzon1.asc', 1))
+r_huetzon_raw <- terra::rast(here("data/input/Raster_Vlaanderen/vlaanderen_huetzon_10m.tif"))
+r_huetzon     <- terra::resample(r_huetzon_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
 
-r_kp_waterbiotoop1     <- waterbiotoop_bwk_max
-r_kp_waterbiotoop1_opp <- waterbiotoop_bwk_opp
+# Selecteer alle cellen van klasse 1 (hoofdwaterlopen)
+r_waterlopen1 <- r_huetzon == 1
 
-if (nrow(kleine_clusters_v) > 0) {
-  kleine_watervlakken_finaal <- crop(watervlakken_KH, kleine_clusters_v)
-  if (nrow(kleine_watervlakken_finaal) > 0) {
-    r_kpad_kleinwater <- terra::rasterize(kleine_watervlakken_finaal, id_raster_KH, field = 1, background = NA)
-    
-    r_kp_waterbiotoop1     <- terra::cover(waterbiotoop_bwk_max, r_kpad_kleinwater)
-    r_kp_waterbiotoop1_opp <- terra::cover(waterbiotoop_bwk_opp, r_kpad_kleinwater)
-  }
+# 2. BlauweLaag plassen inlezen (Ge('BlauweLaag_Plassen_06042017_20m_.asc', 1))
+# Failsafe: mocht de specifieke plassen-asc niet aanwezig zijn, maak een leeg raster
+bl_path <- here("data/input/ASCI Files/BlauweLaag_Plassen_06042017_20m_.asc")
+if (file.exists(bl_path)) {
+  r_bl_raw <- terra::rast(bl_path)
+  r_bl     <- terra::resample(r_bl_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
+  r_plassen <- r_bl == 1
+} else {
+  message("⚠️ Opmerking: BlauweLaag plassen-bestand niet gevonden, we rekenen puur op de Huetzon waterlopen.")
+  r_plassen <- id_raster_TV * NA
 }
 
-suppressWarnings(rm(watervlakken_v, watervlakken_proj, area_buffer_clean, watervlakken_clean, 
-                    watervlakken_KH, watervlakken_buffered, watervlakken_fuzzy_clusters, 
-                    kleine_clusters_v, kleine_watervlakken_finaal, r_kpad_kleinwater))
+# 3. Combineer alle water-elementen via logische OF (or)
+otter_water_max <- (r_waterlopen1 == 1) | (r_plassen == 1)
+otter_water_max <- terra::ifel(otter_water_max == 1, 1, NA)
+
+message(paste("-> Totaal rauw waterbiotoop geïdentificeerd:", 
+              round(calc_ha_exact(otter_water_max), 2), "ha"))
+
+suppressWarnings(rm(r_huetzon_raw, r_huetzon, r_waterlopen1, r_bl_raw, r_bl, r_plassen))
 gc()
 ```
 
-```{r 3 buren check waterbiotoop knoflookpad}
+```{r Otter Stap 2 - Landbiotopen smelten en zeven op 1000 ha}
 # ==============================================================================
-# CONNECTIVITEITSCHECK: MINSTENS 3 ANDERE POELEN BINNEN 500M (CUMULATIEF = 4)
+# OTTER STAP 2: LANDBIOTOPEN SMELTEN EN ZEVEN OP 1000 HA (GEOPTIMALISEERD)
 # ==============================================================================
-message("-> Unieke poelclusters identificeren voor de knoflookpad...")
-r_water_clusters <- terra::patches(r_kp_waterbiotoop1, directions = 8, zeroAsNA = TRUE)
+message("-> Otter Spoor 2: Alle landbiotopen samenvoegen en opschonen...")
 
-kp_waterbiotoop2_max <- id_raster_KH * NA
-cl_id_max <- id_raster_KH * NA
-
-if (!all(is.na(terra::values(r_water_clusters, mat=FALSE)))) {
-  message("-> Naburige poelen tellen via edge-to-edge vector buffers...")
-  watervlakken_poly <- terra::as.polygons(r_water_clusters, dissolve = FALSE)
-  
-  if (!is.null(watervlakken_poly) && nrow(watervlakken_poly) > 0) {
-    watervlakken_poly <- makeValid(watervlakken_poly)
-    poly_buffer <- terra::buffer(watervlakken_poly, width = 500) %>% makeValid()
-    
-    intersect_matrix <- terra::is.related(poly_buffer, watervlakken_poly, "intersects")
-    intersect_matrix <- matrix(intersect_matrix, nrow = nrow(poly_buffer), ncol = nrow(watervlakken_poly))
-    
-    # GDX: GeUniqueCountInBuffer >= 4 (het cluster zelf + minstens 3 buren)
-    cluster_counts <- rowSums(intersect_matrix)
-    watervlakken_poly$unieke_buren_count <- cluster_counts
-    
-    goedgekeurde_clusters_poly <- watervlakken_poly[watervlakken_poly$unieke_buren_count >= 4, ]
-    
-    if (nrow(goedgekeurde_clusters_poly) > 0) {
-      message("-> Gecertificeerde poelnetwerken verrasteren...")
-      kp_waterbiotoop2_max <- terra::rasterize(goedgekeurde_clusters_poly, id_raster_KH, field = 1, background = NA)
-    } else {
-      message("⚠️ Knelpunt: Geen enkele poel voldoet aan de netwerkeis van minstens 3 buren!")
-    }
-    suppressWarnings(rm(poly_buffer, intersect_matrix, cluster_counts))
-  }
+# 1. Hulpfunctie definiëren om NAs en nullen op te schonen
+clean_max <- function(r) {
+  if (is.null(r)) return(template_TV * NA)
+  r[is.na(r) | r == 0] <- NA
+  return(r)
 }
 
-# Fractionele parallelle verwerking
-kp_waterbiotoop2_opp <- terra::mask(r_kp_waterbiotoop1_opp, kp_waterbiotoop2_max)
-cl_id_max <- terra::mask(r_water_clusters, kp_waterbiotoop2_max)
-
-cat("Gecertificeerd waterbiotoop (ha):", round(calc_ha_exact(kp_waterbiotoop2_opp), 2), "\n")
-suppressWarnings(rm(r_water_clusters, watervlakken_poly, goedgekeurde_clusters_poly))
-gc()
-```
-
-```{r landbiotoop clustering en interactie knoflookpad}
-# ==============================================================================
-# LANDBIOTOOP GROFZEVING (>= 50 HA) & COMMUTER INTERACTIE (< 250M)
-# ==============================================================================
-message("-> Landbiotoop filteren op minimale landschapsgrootte van 50 ha...")
-
-# GDX: fuzzyClusterIdU(knoflookpad_landbiotoop_bwk, 50m) en cFilterGeArea(..., 50 ha)
-cl_land_bruto <- cluster_filter_compleet(
-  masker     = landbiotoop_bwk_max,
-  opp_laag   = landbiotoop_bwk_opp,
-  drempel_m2 = 50 * 10000, # 50 hectare bruto ondergrens
-  dist_m     = 50,         # 50 meter fuzzy overbrugging
-  werkelijk  = FALSE
+# 2. Smelt alle binaire/fractionele landbiotopen in één snelle stap met pmax
+opp_stack <- c(
+  clean_max(d_opp), clean_max(h_opp), clean_max(k_opp), clean_max(m_opp),
+  clean_max(r_opp), clean_max(s_opp), clean_max(t_opp), clean_max(v_opp)
 )
-kp_landbiotoop_50ha_max <- cl_land_bruto$raster
-kp_landbiotoop_50ha_opp <- terra::mask(landbiotoop_bwk_opp, kp_landbiotoop_50ha_max)
 
-kp_landbiotoop_finaal_max  <- id_raster_KH * NA
-kp_waterbiotoop_finaal_max <- id_raster_KH * NA
+# 3. Bereken de som van de fracties (max. 1.0) en de binaire aanwezigheid
+otter_biotopen_opp <- sum(opp_stack, na.rm = TRUE)
+otter_biotopen_opp <- terra::clamp(otter_biotopen_opp, upper = 1.0)
+otter_biotopen_max <- terra::ifel(otter_biotopen_opp > 0, 1, NA)
 
-# --- RUIMTELIJKE KOPPELING OP CLUSTERNIVEAU (< 250M) ---
-message("-> Wederzijdse interactie controleren op 250m commuter-afstand...")
+rm(opp_stack)
+gc()
 
-r_land_patches  <- terra::patches(kp_landbiotoop_50ha_max, directions = 8, zeroAsNA = TRUE)
-water_poly      <- terra::as.polygons(cl_id_max, dissolve = TRUE)
-land_poly       <- terra::as.polygons(r_land_patches, dissolve = TRUE)
-
-goedgekeurde_land_ids  <- c()
-goedgekeurde_water_ids <- c()
-
-if (!is.null(water_poly) && nrow(water_poly) > 0 && !is.null(land_poly) && nrow(land_poly) > 0) {
-  water_poly_clean <- terra::makeValid(water_poly)
-  land_poly_clean  <- terra::makeValid(land_poly)
+# 4. SNELLER ALTERNATIEF VOOR CLUSTER FILTERING (Via Vector Polygons)
+if (!all(is.na(terra::values(otter_biotopen_max, mat = FALSE)))) {
+  message("-> Landbiotopen clusteren en zeven op minimale drempel (1000 ha)...")
   
-  # Buffer van 250 meter trekken rondom de poelenmatrix
-  water_buffer_250m <- terra::buffer(water_poly_clean, width = 250) %>% terra::makeValid()
+  # A. Maak ruwe polygonen van de landbiotoop-pixels
+  poly_land <- terra::as.polygons(otter_biotopen_max, aggregate = TRUE) %>% terra::disagg()
   
-  intersect_matrix <- terra::is.related(land_poly_clean, water_buffer_250m, "intersects")
-  intersect_matrix <- matrix(intersect_matrix, nrow = nrow(land_poly_clean), ncol = nrow(water_buffer_250m))
+  # B. Smelt polygonen samen die binnen 100m van elkaar liggen (buffer 50m)
+  poly_buf <- terra::buffer(poly_land, width = 50)
+  poly_net <- terra::aggregate(poly_buf) %>% terra::disagg()
+  poly_net$Cluster_ID <- 1:nrow(poly_net)
   
-  id_col_land  <- names(land_poly_clean)[1]
-  id_col_water <- names(water_poly_clean)[1]
+  # C. Ken de Cluster_IDs toe aan de oorspronkelijke ruimtelijke vlakken
+  poly_land$Cluster_ID <- terra::relate(poly_land, poly_net, "within") %>% 
+    apply(1, function(x) { if(any(x)) which(x)[1] else NA })
   
-  land_indices  <- which(rowSums(intersect_matrix) > 0)
-  water_indices <- which(colSums(intersect_matrix) > 0)
+  # D. Rasteriseer de Cluster IDs terug naar een tijdelijk raster
+  r_clusters <- terra::rasterize(poly_land, template_TV, field = "Cluster_ID", touches = FALSE)
   
-  if (length(land_indices) > 0)  goedgekeurde_land_ids  <- as.numeric(land_poly_clean[[id_col_land]][land_indices, 1])
-  if (length(water_indices) > 0) goedgekeurde_water_ids <- as.numeric(water_poly_clean[[id_col_water]][water_indices, 1])
-}
-
-# Gecertificeerd landbiotoop
-if (length(goedgekeurde_land_ids) > 0) {
-  kp_landbiotoop_finaal_max <- r_land_patches %in% goedgekeurde_land_ids
-  kp_landbiotoop_finaal_max <- terra::ifel(kp_landbiotoop_finaal_max == 1, 1, NA)
-  kp_landbiotoop_finaal_opp <- terra::mask(kp_landbiotoop_50ha_opp, kp_landbiotoop_finaal_max)
+  # E. Sommeer de effectieve hectare-oppervlakte per cluster
+  zonal_ha <- terra::zonal(otter_biotopen_opp, r_clusters, fun = "sum", na.rm = TRUE)
+  colnames(zonal_ha) <- c("Cluster_ID", "Som_Pixels")
+  zonal_ha$Opp_ha <- zonal_ha$Som_Pixels * 0.01 # 1 pixel (10x10m) = 0.01 ha
+  
+  # F. Selecteer alleen clusters met >= 1000 ha werkelijk habitat
+  voldoet_ids <- zonal_ha$Cluster_ID[zonal_ha$Opp_ha >= 1000]
+  
+  if (length(voldoet_ids) > 0) {
+    # Maskeer het raster op basis van de geldige cluster-IDs
+    otter_biotopen1000_max <- terra::mask(otter_biotopen_max, r_clusters %in% voldoet_ids, maskvalues = FALSE)
+    otter_biotopen1000_opp <- terra::mask(otter_biotopen_opp, otter_biotopen1000_max)
+  } else {
+    otter_biotopen1000_max <- template_TV * NA
+    otter_biotopen1000_opp <- template_TV * NA
+  }
+  
+  rm(poly_land, poly_buf, poly_net, r_clusters, zonal_ha)
 } else {
-  kp_landbiotoop_finaal_opp <- id_raster_KH * NA
+  otter_biotopen1000_max <- template_TV * NA
+  otter_biotopen1000_opp <- template_TV * NA
 }
 
-# Gecertificeerd waterbiotoop
-if (length(goedgekeurde_water_ids) > 0) {
-  kp_waterbiotoop_finaal_max <- cl_id_max %in% goedgekeurde_water_ids
-  kp_waterbiotoop_finaal_max <- terra::ifel(kp_waterbiotoop_finaal_max == 1, 1, NA)
-  kp_waterbiotoop_finaal_opp <- terra::mask(kp_waterbiotoop2_opp, kp_waterbiotoop_finaal_max)
-} else {
-  kp_waterbiotoop_finaal_opp <- id_raster_KH * NA
-}
-
-suppressWarnings(rm(cl_land_bruto, r_land_patches, water_poly, land_poly, water_poly_clean, 
-                    land_poly_clean, water_buffer_250m, intersect_matrix))
+# Geheugen weer netjes vrijmaken
+suppressWarnings(rm(otter_biotopen_max, otter_biotopen_opp))
 gc()
 ```
 
-```{r finale combinatie en eindclustering knoflookpad}
+```{r Otter Stap 3 - Ruimtelijke waterkoppeling en finalesering}
 # ==============================================================================
-# COMBINATIE EN FINALE LANDSCHAPSCLUSTERING (>= 50 HA)
+# OTTER STAP 3: COMMUTER WATERKOPPELING (< 1000M) EN HABITAT-FINALESERING
 # ==============================================================================
-message("-> Geïntegreerd bruto leefgebied knoflookpad samenstellen...")
+message("-> Otter Spoor 3: Wederzijdse afstandsmetingen uitvoeren (max. 1000m)...")
 
-kp_leefgebied1_max <- terra::cover(kp_waterbiotoop_finaal_max, kp_landbiotoop_finaal_max)
-kp_leefgebied1_max <- terra::ifel(kp_leefgebied1_max == 1, 1, NA)
+final_max <- template_TV * NA
+final_opp <- template_TV * NA
 
-# Fractionele optelsom en aftoppen op max 1.0 (100% celbedekking)
-water_f_cl <- terra::ifel(is.na(kp_waterbiotoop_finaal_opp), 0, kp_waterbiotoop_finaal_opp)
-land_f_cl  <- terra::ifel(is.na(kp_landbiotoop_finaal_opp), 0, kp_landbiotoop_finaal_opp)
-kp_leefgebied1_opp <- terra::clamp(water_f_cl + land_f_cl, upper = 1.0) %>% terra::mask(kp_leefgebied1_max)
-
-# --- FINALE LANDSCHAPSCLUSTERING (50M FUZZY, MIN 50 HA) ---
-message("-> Netwerkwolken clusteren (fuzzy 50m) en toetsen op min. 50 ha...")
-leefgebied_buffered   <- terra::buffer(kp_leefgebied1_max, width = 25) # 50m fuzzy overbrugging
-r_leefgebied_clusters <- terra::patches(leefgebied_buffered, directions = 8, zeroAsNA = TRUE)
-r_scherpe_clusters    <- terra::mask(r_leefgebied_clusters, kp_leefgebied1_max)
-
-cluster_freq <- terra::freq(r_scherpe_clusters)
-cluster_freq$area_ha <- cluster_freq$count * 0.01
-goedgekeurde_kp_ids  <- cluster_freq$value[cluster_freq$area_ha >= 50.0] # 50 ha einddrempel ANB
-
-if (length(goedgekeurde_kp_ids) > 0) {
-  knoflookpad_leefgebied_max <- r_scherpe_clusters %in% goedgekeurde_kp_ids
-  knoflookpad_leefgebied_max <- terra::ifel(knoflookpad_leefgebied_max == 1, 1, NA) %>% terra::crop(template_KH)
-  knoflookpad_leefgebied_opp <- terra::mask(kp_leefgebied1_opp, knoflookpad_leefgebied_max) %>% terra::crop(template_KH)
+if (exists("otter_biotopen1000_max") && !all(is.na(terra::values(otter_biotopen1000_max, mat=FALSE))) &&
+    exists("otter_water_max") && !all(is.na(terra::values(otter_water_max, mat=FALSE)))) {
   
-  # STRUIKELKOPPELING NAAR JOUW FINALE TABELLEN EN KAARTEN
-  final_max <- knoflookpad_leefgebied_max
-  final_opp <- knoflookpad_leefgebied_opp
+  # 1. Afstandsrasters berekenen (geheugenzuinig)
+  dist_tot_water <- terra::distance(otter_water_max)
+  dist_tot_land  <- terra::distance(otter_biotopen1000_max)
+  
+  # GDX: europeseotter_leefgebied3 = and(biotopen1000, cellDistanceLe(water, 1000m))
+  leefgebied3_max <- otter_biotopen1000_max == 1 & dist_tot_water <= 1000
+  leefgebied3_opp <- terra::mask(otter_biotopen1000_opp, leefgebied3_max)
+  
+  # Afstandsraster meteen opruimen uit geheugen!
+  rm(dist_tot_water)
+  gc()
+  
+  # GDX: europeseotter_leefgebied4 = and(water, cellDistanceLe(biotopen1000, 1000m))
+  leefgebied4_max <- otter_water_max == 1 & dist_tot_land <= 1000
+  
+  rm(dist_tot_land)
+  gc()
+  
+  # Water krijgt een volledige dekkingsfractie van 1.0 per pixel
+  r_water_opp_full <- terra::ifel(otter_water_max == 1, 1.0, NA)
+  leefgebied4_opp  <- terra::mask(r_water_opp_full, leefgebied4_max)
+  
+  # GDX: or(leefgebied3, leefgebied4)
+  otter_leefgebied_max <- leefgebied3_max | leefgebied4_max
+  otter_leefgebied_max <- terra::ifel(otter_leefgebied_max == 1, 1, NA) %>% terra::crop(template_TV)
+  
+  # Fractionele cover-combinatie
+  l3_clean <- terra::ifel(is.na(leefgebied3_opp), 0, leefgebied3_opp)
+  l4_clean <- terra::ifel(is.na(leefgebied4_opp), 0, leefgebied4_opp)
+  otter_leefgebied_opp <- terra::clamp(l3_clean + l4_clean, upper = 1.0) %>% 
+    terra::mask(otter_leefgebied_max) %>% 
+    terra::crop(template_TV)
+  
+  # --- KOPPELING NAAR FINALE TABELLEN EN KAARTEN ---
+  final_max <- otter_leefgebied_max
+  final_opp <- otter_leefgebied_opp
   cl_max    <- final_max
   bwk_opp   <- final_opp
+  
+  cat("\n=========================================================\n")
+  cat("          RESULTATEN MODEL EUROPESE OTTER                 \n")
+  cat("=========================================================\n")
+  cat("Totaal stabiel leefgebied Otter (ha):", round(calc_ha_exact(final_opp), 2), "\n")
+  cat("=========================================================\n\n")
+  
+  suppressWarnings(rm(leefgebied3_max, leefgebied3_opp, 
+                      leefgebied4_max, leefgebied4_opp, r_water_opp_full, l3_clean, l4_clean,
+                      otter_leefgebied_max, otter_leefgebied_opp))
 } else {
-  message("⚠️ Knelpunt: Geen enkele leefgebiedswolk haalt cumulatief de strenge 50 ha grens!")
-  final_max <- template_KH * NA
-  final_opp <- template_KH * NA
-  cl_max    <- final_max
-  bwk_opp   <- final_opp
+  message("⚠️ Knelpunt: Er is geen landnetwerk >1000 ha óf geen water aanwezig in de actieve regio!")
+  cl_max  <- final_max
+  bwk_opp <- final_opp
 }
 
-cat("\n--- MODEL KNOFLOOKPAD SUCCESVOL AFGEROND ---\n")
-cat("Definitief stabiel leefgebied Knoflookpad (ha):", round(calc_ha_exact(final_opp), 2), "\n")
-
-# Back-up aliasing voor je bestaande leaflet-renderer onderaan
+# Back-up variabelen voor renderer en kaarten-mal onderaan
 r_status  <- final_max
-cl_id_max <- terra::patches(final_max, directions = 8, zeroAsNA = TRUE)
-cl_id_opp <- cl_id_max
-knoflookpad_waterbiotoop1_finaal_max <- kp_waterbiotoop_finaal_max # Display poelenmatrix in felblauw
+cl_max    <- final_max # Wordt in de volgende chunk via polygonen gebufferd naar unieke netwerken
 
-suppressWarnings(rm(kp_waterbiotoop_finaal_max, kp_landbiotoop_finaal_max, kp_waterbiotoop_finaal_opp, 
-                    kp_landbiotoop_finaal_opp, water_f_cl, land_f_cl, kp_leefgebied1_max, 
-                    kp_leefgebied1_opp, leefgebied_buffered, r_leefgebied_clusters, 
-                    r_scherpe_clusters, cluster_freq, goedgekeurde_kp_ids))
+# Bewaar finale waterbiotoop-laag voor Leaflet als die bestaat
+if (exists("otter_water_max")) {
+  otter_waterbiotoop1_finaal_max <- otter_water_max 
+}
+
+suppressWarnings(rm(otter_biotopen1000_max, otter_biotopen1000_opp, otter_water_max))
 gc()
 ```
 
 # Resultaten en Statistiek
-```{r Resultaten en statistiek gefixt voor knoflookpad}
+```{r Resultaten en statistiek gefixt voor otter}
 # ==============================================================================
-# ECO-STATISTISCHE FINALESERING EN KOPPELING NAAMGEVING KNOFLOOKPAD
+# ECO-STATISTISCHE FINALESERING EN KOPPELING NAAMGEVING otter
 # ==============================================================================
-message("-> Resultatensectie: Knoflookpad-model-uitgangen koppelen aan de statistiek-mal...")
+message("-> Resultatensectie: otter-model-uitgangen koppelen aan de statistiek-mal...")
 
 # BRONKOPPELING FIX: Wijs de succesvolle eindrasters uit je modelchunk rechtstreeks toe!
 if (exists("final_max") && !all(is.na(terra::values(final_max, mat=FALSE)))) {
@@ -485,13 +449,13 @@ if (exists("final_max") && !all(is.na(terra::values(final_max, mat=FALSE)))) {
   opp_bron  <- final_opp
 } else {
   message("⚠️ Knelpunt: final_max is volledig leeg of bestaat niet. Fallback naar NA-rasters.")
-  final_max <- template_KH * NA
-  final_opp <- template_KH * NA
-  opp_bron  <- template_KH * NA
+  final_max <- template_TV * NA
+  final_opp <- template_TV * NA
+  opp_bron  <- template_TV * NA
 }
 
-# Dynamisch pad naar de waarnemingen van de knoflookpad
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Kalmthoutse_Heide/Waarnemingen_Knoflookpad.csv")
+# Dynamisch pad naar de waarnemingen van de otter
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_otter.csv")
 
 # ==============================================================================
 # ECO-VISUELE FIX: Clusters definiëren via de echte 500m model-zoekstraal!
@@ -519,8 +483,8 @@ if (!all(is.na(terra::values(final_max, mat=FALSE)))) {
   cl_max <- final_max * NA
 }
 
-# Maak een binaire mal van Kalmthoutse Heide ZONDER de buffer (Gebruik de grens van Kalmthoutse Heide)
-binnen_masker <- terra::rasterize(area_shape_proj, id_raster_KH, field = 1, background = 0)
+# Maak een binaire mal van Turnhouts Vennegebied ZONDER de buffer (Gebruik de grens van Turnhouts Vennegebied)
+binnen_masker <- terra::rasterize(area_shape_proj, id_raster_TV, field = 1, background = 0)
 
 # --- WAARNEMINGEN INLEZEN ---
 if (file.exists(waarnemingen_path)) {
@@ -538,7 +502,7 @@ if (file.exists(waarnemingen_path)) {
   has_observations <- FALSE
 }
 
-verspreiding_raster <- terra::rast(template_KH, vals = NA)
+verspreiding_raster <- terra::rast(template_TV, vals = NA)
 verspreiding_netwerk_count <- 0
 
 if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
@@ -562,19 +526,19 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   # 3. Welke clusters raken het actieve studiegebied
   zonal_zone <- terra::zonal(binnen_masker, cl_max, fun = "max", na.rm = TRUE)
   zonal_zone <- as.data.frame(zonal_zone)
-  colnames(zonal_zone) <- c("ID", "In_KH")
-  ids_die_KH_raken <- zonal_zone$ID[!is.na(zonal_zone$In_KH) & zonal_zone$In_KH > 0]
+  colnames(zonal_zone) <- c("ID", "In_TV")
+  ids_die_TV_raken <- zonal_zone$ID[!is.na(zonal_zone$In_TV) & zonal_zone$In_TV > 0]
   
   # 4. DYNAMISCHE FILTERING
   ids_potentieel_totaal <- stats_gecombineerd$ID
   ids_werkelijk_totaal  <- stats_gecombineerd$ID[stats_gecombineerd$Werk_ha >= oppervlakte_ha]
   
-  # 5. Opsplitsing naar Binnen/Buiten Kalmthoutse Heide
-  ids_pot_bin   <- intersect(ids_potentieel_totaal, ids_die_KH_raken)
-  ids_pot_buit  <- setdiff(ids_potentieel_totaal, ids_die_KH_raken)
+  # 5. Opsplitsing naar Binnen/Buiten Turnhouts Vennegebied
+  ids_pot_bin   <- intersect(ids_potentieel_totaal, ids_die_TV_raken)
+  ids_pot_buit  <- setdiff(ids_potentieel_totaal, ids_die_TV_raken)
   
-  ids_werk_bin  <- intersect(ids_werkelijk_totaal, ids_die_KH_raken)
-  ids_werk_buit <- setdiff(ids_werkelijk_totaal, ids_die_KH_raken)
+  ids_werk_bin  <- intersect(ids_werkelijk_totaal, ids_die_TV_raken)
+  ids_werk_buit <- setdiff(ids_werkelijk_totaal, ids_die_TV_raken)
   
   # A. ARPL Extractie
   if(has_observations && nrow(df_points_sf) > 0) {
@@ -619,9 +583,9 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
 } else {
   ids_pot_bin <- ids_pot_buit <- ids_werk_bin <- ids_werk_buit <- ids_actueel_relevant <- c()
   ha_pot_bin <- ha_pot_buit <- ha_werk_bin <- ha_werk_buit <- ha_arpl <- ha_verspreiding <- 0
-  arpl_raster <- terra::rast(template_KH, vals = NA)
+  arpl_raster <- terra::rast(template_TV, vals = NA)
   stats_gecombineerd <- data.frame(ID = integer(), Pot_ha = numeric(), Werk_ha = numeric())
-  zonal_zone <- data.frame(ID = integer(), In_KH = numeric())
+  zonal_zone <- data.frame(ID = integer(), In_TV = numeric())
 }
 
 tabel_totaal <- data.frame(
@@ -653,7 +617,7 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   cluster_info <- stats_gecombineerd %>%
     left_join(zonal_zone, by = "ID") %>% 
     mutate(
-      Zone = ifelse(!is.na(In_KH) & In_KH > 0, "Binnen KH", "Buiten KH (Buffer)"),
+      Zone = ifelse(!is.na(In_TV) & In_TV > 0, "Binnen TV", "Buiten TV (Buffer)"),
       ARPL = ID %in% ids_actueel_relevant,
       Type = ifelse(ID %in% ids_werkelijk_totaal, "Werkelijk Habitat", "Potentieel (Niet Werkelijk)"),
       Popup = paste0(
@@ -737,7 +701,7 @@ map %>%
 ```
 
 ```{r export}
-base_dir <- here("data/output/Kalmthoutse_Heide/Rasters_Soorten")
+base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
 folders <- list(
   potentie     = file.path(base_dir, "01_Maximale_Potentie"),
   werkelijk    = file.path(base_dir, "02_Werkelijke_Oppervlakte"),
@@ -751,13 +715,13 @@ if(length(ids_actueel_relevant) > 0) {
   arpl_export_rast <- cl_max %in% ids_actueel_relevant
   arpl_export_rast <- terra::ifel(arpl_export_rast, 1, NA)
 } else {
-  arpl_export_rast <- terra::rast(template_KH, vals = NA)
+  arpl_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
 if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
   werkelijk_export_rast <- terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA)
 } else {
-  werkelijk_export_rast <- terra::rast(template_KH, vals = NA)
+  werkelijk_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
 export_config <- list(
