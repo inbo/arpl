@@ -131,7 +131,6 @@ rm(df, resultaat)
 area_shape  <- vect(here("data/input/Turnhouts_Vennegebied.shp"))
 master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
 
-# Inlezen van de CSV-sleutel (gebruikt om tabel-indices te mappen naar codes)
 df_namen_sleutel <- read_csv(here("data/input/Excel_files/BWK_Laag_Namen_2025.csv"), show_col_types = FALSE)
 gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
 
@@ -144,28 +143,16 @@ id_raster_TV <- crop(master_grid, area_buffer_fix, snap = "near")
 globale_id_raster <- master_grid
 values(globale_id_raster) <- 1:ncell(globale_id_raster)
 
-# ==============================================================================
-# ULTRA-SNELLE METHODE: Direct naar data.frame met celnummers in C++
-# ==============================================================================
 id_raster_TV_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
 id_raster_TV_masked <- mask(id_raster_TV_globale_values, area_buffer_fix)
 
 message("-> Vertaaltabel bliksemsnel opbouwen via C++ dataframe extractie...")
 
-# 'cells = TRUE' zorgt ervoor dat terra direct een kolom 'cell' (lokale id) 
-# en een kolom met de waarde (globale id) genereert voor alle niet-NA cellen.
 df_extractie <- as.data.frame(id_raster_TV_masked, cells = TRUE)
-
-# Direct omzetten naar data.table en de kolommen juist benoemen
 vertaal_df <- as.data.table(df_extractie)
-
-# De kolommen heten nu standaard 'cell' en de naam van je raster (lyr.1 of gelijkaardig)
-# We hernoemen ze direct naar jouw vertrouwde structuur:
 setnames(vertaal_df, c(1, 2), c("lokale_id", "globale_id"))
 
-# Filter eventuele resterende NA's eruit
 vertaal_df <- vertaal_df[!is.na(globale_id)]
-
 studiegebied_globale_ids <- unique(vertaal_df$globale_id)
 
 values(id_raster_TV) <- NA
@@ -173,7 +160,7 @@ template_TV <- terra::rasterize(area_buffer_fix, id_raster_TV, field = 1, backgr
 
 grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
 
-rm(globale_id_raster, id_raster_TV_globale_values, id_raster_TV_masked)
+rm(globale_id_raster, id_raster_TV_globale_values, id_raster_TV_masked, df_extractie)
 gc()
 ```
 
@@ -262,141 +249,172 @@ gc()
 
 ```{r omgevingslagen}
 # ==============================================================================
-# STAP 1: OMGEVINGSLAAG CONFIGURATIE (DRAINAGE & ECOREGIO VIA CATEGORIETABELLEN)
+# STAP 1: OMGEVINGSLAAG CONFIGURATIE (PARALLEL)
 # ==============================================================================
 message("-> Drainage- en ecoregiorasters inlezen en synchroniseren...")
 
 r_drainage_raw <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_drainage_10m.tif"))
+r_drainage     <- terra::resample(r_drainage_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
 
-r_drainage <- terra::resample(r_drainage_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
-
-# --- 1. CONFIGURATIE OP BASIS VAN BIOLOGISCHE LABELS (GEEN HARDE CODES GOKKEN) ---
-# Net als bij de wulp: kies de natte drainageklassen vanaf letter 'd' (d t.e.m. i en complexe klasses)
 gewenste_drainage_letters <- c("d", "e", "f", "g", "h", "i", "e-f", "h-i", "e-i")
 
-# --- 2. DYNAMISCHE SELECTION VIA HET RASTER-PASPOORT (CATS) ---
-drain_cats <- terra::cats(r_drainage)[[1]]
+drain_cats       <- terra::cats(r_drainage)[[1]]
 ids_drainage_nat <- drain_cats$value[drain_cats$Label %in% gewenste_drainage_letters]
 
-# Omzetten naar volwaardige binaire SpatRasters voor de matrixrekening
 zadelsprinkhaan_drainage_ok <- r_drainage %in% ids_drainage_nat
 
 message("-> Omgevingsmaskers combineren met het basisbiotoop...")
-# Combineer het BWK-basisbiotoop met de gecorrigeerde drainage en de ecoregio-begrenzing
+
+# Spoor A: MAX
 zadelsprinkhaan_basis_max <- (bwk_max == 1) & zadelsprinkhaan_drainage_ok
 zadelsprinkhaan_basis_max <- terra::ifel(zadelsprinkhaan_basis_max == 1, 1, NA)
+
+# Spoor B: OPP
 zadelsprinkhaan_basis_opp <- terra::mask(bwk_opp, zadelsprinkhaan_basis_max)
 
-rm(r_drainage_raw, r_drainage, drain_cats,  
-   ids_drainage_nat, zadelsprinkhaan_drainage_ok)
+rm(r_drainage_raw, r_drainage, drain_cats, ids_drainage_nat, zadelsprinkhaan_drainage_ok)
+gc()
 ```
 
 ```{r primaire clustering}
 # ==============================================================================
-# STAP 2: PRIMAIRE LANDSCHAPSCLUSTERING (50 METER FUZZY CLUSTER)
+# STAP 2: PRIMAIRE LANDSCHAPSCLUSTERING (50 METER FUZZY CLUSTER - PARALLEL)
 # ==============================================================================
 message("-> Patches groeperen op basis van 50m onderlinge afstand...")
 
-# Geschikte cellen binnen 50m horen geografisch bij dezelfde patch. 
-# We filteren hier eerst op de absolute basisondergrens van 1 ha (10.000 m²) voor de metapopulatie.
-zadelsprinkhaan_clusters <- cluster_filter_compleet(
-  masker       = zadelsprinkhaan_basis_max,
-  opp_laag     = zadelsprinkhaan_basis_opp,
-  drempel_m2   = 10000,   
-  dist_m       = 50,       
-  werkelijk    = FALSE     
+# Spoor A: MAX
+zadelsprinkhaan_clusters_max <- cluster_filter_compleet(
+  masker     = zadelsprinkhaan_basis_max,
+  opp_laag   = zadelsprinkhaan_basis_opp,
+  drempel_m2 = 10000,   # 1 ha minimum
+  dist_m     = 50,       
+  werkelijk  = FALSE      
 )
+r_patches_max <- zadelsprinkhaan_clusters_max$clusters
 
-r_patches <- zadelsprinkhaan_clusters$clusters
+# Spoor B: OPP (Parallel & Autonoom)
+r_binair_basis_opp <- terra::ifel(!is.na(zadelsprinkhaan_basis_opp) & zadelsprinkhaan_basis_opp > 0, 1, NA)
+zadelsprinkhaan_clusters_opp <- cluster_filter_compleet(
+  masker     = r_binair_basis_opp,
+  opp_laag   = zadelsprinkhaan_basis_opp,
+  drempel_m2 = 10000,   # 1 ha minimum
+  dist_m     = 50,       
+  werkelijk  = TRUE      
+)
+r_patches_opp <- zadelsprinkhaan_clusters_opp$clusters
+
+rm(r_binair_basis_opp)
+gc()
 ```
 
 ```{r metapopulatie analyse}
 # ==============================================================================
-# STAP 3: METAPOPULATIE STRUCTUUR ANALYSE (1-5 HA + MATRIX COMPONENT)
+# STAP 3: METAPOPULATIE STRUCTUUR ANALYSE (PARALLEL)
 # ==============================================================================
 message("-> Grote patches (>= 5 ha) scheiden van kleine netwerkpatches (1-5 ha)...")
 
-# Failsafe initialisatie van de resultaatrasters voor deze stap
-r_leefgebied_5ha     <- template_TV * NA
-r_leefgebied_metapop <- template_TV * NA
+# --- SPOOR A: MAX ---
+r_leefgebied_5ha_max   <- template_TV * NA
+r_leefgebied_metapop_max <- template_TV * NA
 
-if (!all(is.na(terra::values(r_patches, mat=FALSE)))) {
+if (!all(is.na(terra::values(r_patches_max, mat=FALSE)))) {
+  stats_ha_max <- terra::freq(r_patches_max)
+  stats_ha_max$Grootte_ha <- stats_ha_max$count * 0.01
   
-  # 1. Bereken de exacte oppervlakte (ha) per unieke cluster via de cellSize-helper
-  area_raster <- r_patches * terra::cellSize(r_patches, unit = "ha")
-  stats_ha <- terra::zonal(area_raster, r_patches, fun = "sum", na.rm = TRUE)
-  colnames(stats_ha) <- c("ID", "Grootte_ha")
+  ids_groot_5ha_max    <- stats_ha_max$value[stats_ha_max$Grootte_ha >= 5]
+  ids_klein_1to5ha_max <- stats_ha_max$value[stats_ha_max$Grootte_ha >= 1 & stats_ha_max$Grootte_ha < 5]
   
-  # Splits de unieke ID's op basis van de 5 hectare drempelwaarde
-  ids_groot_5ha    <- stats_ha$ID[stats_ha$Grootte_ha >= 5]
-  ids_klein_1to5ha <- stats_ha$ID[stats_ha$Grootte_ha >= 1 & stats_ha$Grootte_ha < 5]
-  
-  # SPOOR A: Grote robuuste patches (>= 5 ha) overleven direct de test
-  if (length(ids_groot_5ha) > 0) {
-    message(paste("->", length(ids_groot_5ha), "grote patch(es) (>= 5 ha) overleaven direct de selectie."))
-    r_leefgebied_5ha <- terra::ifel(r_patches %in% ids_groot_5ha, 1, NA)
+  if (length(ids_groot_5ha_max) > 0) {
+    r_leefgebied_5ha_max <- terra::ifel(r_patches_max %in% ids_groot_5ha_max, 1, NA)
   }
   
-  # SPOOR B: Kleine patches (1-5 ha) checken via de kogelvrije buren-matrix check
-  if (length(ids_klein_1to5ha) > 0) {
-    message(paste("->", length(ids_klein_1to5ha), "kleine patch-ID's gevonden. Netwerkburen controleren..."))
+  if (length(ids_klein_1to5ha_max) > 0) {
+    r_klein_patches_max <- terra::ifel(r_patches_max %in% ids_klein_1to5ha_max, r_patches_max, NA)
+    p_klein_max <- terra::as.polygons(r_klein_patches_max, dissolve = FALSE)
     
-    r_klein_patches <- terra::ifel(r_patches %in% ids_klein_1to5ha, r_patches, NA)
-    
-    # Omzetten naar polygonen (dissolve = FALSE behoudt de unieke losse elementen voor de teller)
-    p_klein <- terra::as.polygons(r_klein_patches, dissolve = FALSE)
-    
-    if (!is.null(p_klein) && nrow(p_klein) > 0) {
-      # Trek de dispersiebuffer van 500 meter rondom de kleine patches
-      poly_buffer <- terra::buffer(p_klein, width = 500)
+    if (!is.null(p_klein_max) && nrow(p_klein_max) > 0) {
+      poly_buffer_max <- terra::buffer(p_klein_max, width = 500)
+      intersect_matrix_max <- matrix(terra::is.related(poly_buffer_max, p_klein_max, "intersects"), 
+                                     nrow = nrow(poly_buffer_max), ncol = nrow(p_klein_max))
       
-      # Gebruik de dimensieveilige amfibieën-methode om de intersectiematrix op te bouwen
-      intersect_matrix <- terra::is.related(poly_buffer, p_klein, "intersects")
-      intersect_matrix <- matrix(intersect_matrix, nrow = nrow(poly_buffer), ncol = nrow(p_klein))
+      p_klein_max$unieke_buren_count <- rowSums(intersect_matrix_max)
+      goedgekeurde_metapop_max <- p_klein_max[p_klein_max$unieke_buren_count >= 6, ]
       
-      # Tel per rij hoeveel patches binnen het bereik liggen (inclusief zichzelf)
-      patches_in_range_count <- rowSums(intersect_matrix)
-      p_klein$unieke_buren_count <- patches_in_range_count
-      
-      # Criterium: Moet deel uitmaken van een metapopulatiestructuur (minimaal 6 patches in totaal)
-      goedgekeurde_metapop_poly <- p_klein[p_klein$unieke_buren_count >= 6, ]
-      
-      if (nrow(goedgekeurde_metapop_poly) > 0) {
-        message(paste("->", nrow(goedgekeurde_metapop_poly), "kleine patches goedgekeurd binnen het metapopulatienetwerk."))
-        r_leefgebied_metapop <- terra::rasterize(
-          goedgekeurde_metapop_poly, 
-          template_TV, 
-          field = 1, 
-          background = NA
-        )
-      } else {
-        message("⚠️ Waarschuwing: Geen van de kleine patches heeft voldoende buren (min. 5 buren).")
+      if (nrow(goedgekeurde_metapop_max) > 0) {
+        r_leefgebied_metapop_max <- terra::rasterize(goedgekeurde_metapop_max, template_TV, field = 1, background = NA)
       }
-      suppressWarnings(rm(poly_buffer, intersect_matrix, patches_in_range_count, goedgekeurde_metapop_poly))
+      suppressWarnings(rm(poly_buffer_max, intersect_matrix_max, goedgekeurde_metapop_max))
     }
-    rm(r_klein_patches, p_klein)
+    rm(r_klein_patches_max, p_klein_max)
   }
-  rm(area_raster, stats_ha)
+  rm(stats_ha_max)
 }
+
+# --- SPOOR B: OPP (Parallel & Autonoom) ---
+r_leefgebied_5ha_opp   <- template_TV * NA
+r_leefgebied_metapop_opp <- template_TV * NA
+
+if (!all(is.na(terra::values(r_patches_opp, mat=FALSE)))) {
+  stats_ha_opp <- terra::zonal(zadelsprinkhaan_basis_opp, r_patches_opp, fun = "sum", na.rm = TRUE)
+  colnames(stats_ha_opp) <- c("ID", "Grootte_ha")
+  stats_ha_opp$Grootte_ha <- stats_ha_opp$Grootte_ha * 0.01
+  
+  ids_groot_5ha_opp    <- stats_ha_opp$ID[stats_ha_opp$Grootte_ha >= 5]
+  ids_klein_1to5ha_opp <- stats_ha_opp$ID[stats_ha_opp$Grootte_ha >= 1 & stats_ha_opp$Grootte_ha < 5]
+  
+  if (length(ids_groot_5ha_opp) > 0) {
+    r_leefgebied_5ha_opp <- terra::mask(zadelsprinkhaan_basis_opp, r_patches_opp %in% ids_groot_5ha_opp)
+  }
+  
+  if (length(ids_klein_1to5ha_opp) > 0) {
+    r_klein_patches_opp <- terra::ifel(r_patches_opp %in% ids_klein_1to5ha_opp, r_patches_opp, NA)
+    p_klein_opp <- terra::as.polygons(r_klein_patches_opp, dissolve = FALSE)
+    
+    if (!is.null(p_klein_opp) && nrow(p_klein_opp) > 0) {
+      poly_buffer_opp <- terra::buffer(p_klein_opp, width = 500)
+      intersect_matrix_opp <- matrix(terra::is.related(poly_buffer_opp, p_klein_opp, "intersects"), 
+                                     nrow = nrow(poly_buffer_opp), ncol = nrow(p_klein_opp))
+      
+      p_klein_opp$unieke_buren_count <- rowSums(intersect_matrix_opp)
+      goedgekeurde_metapop_opp <- p_klein_opp[p_klein_opp$unieke_buren_count >= 6, ]
+      
+      if (nrow(goedgekeurde_metapop_opp) > 0) {
+        r_meta_mask_opp <- terra::rasterize(goedgekeurde_metapop_opp, template_TV, field = 1, background = NA)
+        r_leefgebied_metapop_opp <- terra::mask(zadelsprinkhaan_basis_opp, r_meta_mask_opp)
+      }
+      suppressWarnings(rm(poly_buffer_opp, intersect_matrix_opp, goedgekeurde_metapop_opp))
+    }
+    rm(r_klein_patches_opp, p_klein_opp)
+  }
+  rm(stats_ha_opp)
+}
+gc()
 ```
 
 ```{r finale samensmelting}
 # ==============================================================================
-# STAP 4: FINALE SAMENVOEGING EN PARALLEL OPPERVLAKTESPOOR
+# STAP 4: FINALE SAMENVOEGING (PARALLEL)
 # ==============================================================================
 message("-> Grote kernen en goedgekeurde netwerken samensmelten tot leefgebied...")
 
-# MAX-spoor (Binaire aanwezigheid): Logische OF-schakeling
-zadelsprinkhaan_leefgebied_max <- terra::ifel(!is.na(r_leefgebied_5ha) | !is.na(r_leefgebied_metapop), 1, NA)
+# Spoor A: MAX
+zadelsprinkhaan_leefgebied_max <- terra::ifel(!is.na(r_leefgebied_5ha_max) | !is.na(r_leefgebied_metapop_max), 1, NA)
 zadelsprinkhaan_leefgebied_max <- terra::crop(zadelsprinkhaan_leefgebied_max, template_TV)
 
-# OPP-spoor: Het finale werkelijke oppervlaktespoor snijdt de ECHTE fracties uit!
-zadelsprinkhaan_leefgebied_opp <- terra::mask(zadelsprinkhaan_basis_opp, zadelsprinkhaan_leefgebied_max)
-zadelsprinkhaan_leefgebied_opp <- terra::crop(zadelsprinkhaan_leefgebied_opp, template_TV)
+# Spoor B: OPP (Parallel & Autonoom)
+b_clean <- terra::ifel(is.na(r_leefgebied_5ha_opp), 0, r_leefgebied_5ha_opp)
+m_clean <- terra::ifel(is.na(r_leefgebied_metapop_opp), 0, r_leefgebied_metapop_opp)
+som_raw <- b_clean + m_clean
+som_cl  <- terra::clamp(som_raw, upper = 1.0)
 
-# Grote eindschoonmaak van het geheugen
-rm(zadelsprinkhaan_basis_max, zadelsprinkhaan_basis_opp, zadelsprinkhaan_clusters, 
-   r_patches, r_leefgebied_5ha, r_leefgebied_metapop)
+zadelsprinkhaan_leefgebied_opp <- terra::ifel(som_cl > 0, som_cl, NA) %>% terra::crop(template_TV)
+
+cat("Definitief leefgebied Zadelsprinkhaan MAX (ha):", round(calc_ha_exact(zadelsprinkhaan_leefgebied_max), 2), "\n")
+cat("Definitief leefgebied Zadelsprinkhaan OPP (ha):", round(calc_ha_exact(zadelsprinkhaan_leefgebied_opp), 2), "\n")
+
+rm(zadelsprinkhaan_basis_max, zadelsprinkhaan_basis_opp, zadelsprinkhaan_clusters_max, zadelsprinkhaan_clusters_opp, 
+   r_patches_max, r_patches_opp, r_leefgebied_5ha_max, r_leefgebied_5ha_opp, r_leefgebied_metapop_max, r_leefgebied_metapop_opp,
+   b_clean, m_clean, som_raw, som_cl)
 gc()
 ```
 
@@ -559,9 +577,6 @@ tabel_totaal %>%
 ```
 
 ```{r, export}
-# --- EXPORT MET KOGELVRIJE NUL-OPVULLING & CONTRACT FIX (zadelsprinkhaan) ---
-message("-> Start geformatteerde export met nul-opvulling voor zadelsprinkhaan...")
-
 base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
 folders <- list(
   potentie     = file.path(base_dir, "01_Maximale_Potentie"),
@@ -569,38 +584,29 @@ folders <- list(
   arpl         = file.path(base_dir, "03_ARPL"),
   verspreiding = file.path(base_dir, "04_Actuele_Verspreiding")
 )
+
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-# 1. Spoor B: Werkelijke Oppervlakte formatteren naar 1/NA
-if(!all(is.na(terra::values(zadelsprinkhaan_leefgebied_opp, mat=FALSE)))) {
-  werkelijk_export_rast <- terra::ifel(!is.na(zadelsprinkhaan_leefgebied_opp) & zadelsprinkhaan_leefgebied_opp > 0, 1, NA)
-} else {
-  werkelijk_export_rast <- terra::rast(template_TV, vals = NA)
-}
-
-# 2. ARPL formatteren naar 1/NA
-if(exists("zadelsprinkhaan_arpl_opp") && !all(is.na(terra::values(zadelsprinkhaan_arpl_opp, mat=FALSE)))) {
-  arpl_export_rast <- terra::ifel(zadelsprinkhaan_arpl_opp > 0, 1, NA)
+if(length(ids_actueel_relevant) > 0) {
+  arpl_export_rast <- cl_max %in% ids_actueel_relevant
+  arpl_export_rast <- terra::ifel(arpl_export_rast, 1, NA)
 } else {
   arpl_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# 3. Actuele Verspreiding formatteren naar 1/NA
-if(!all(is.na(terra::values(zadelsprinkhaan_verspreiding_bin, mat=FALSE)))) {
-  verspreiding_export_rast <- terra::ifel(zadelsprinkhaan_verspreiding_bin > 0, 1, NA)
+if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
+  werkelijk_export_rast <- terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA)
 } else {
-  verspreiding_export_rast <- terra::rast(template_TV, vals = NA)
+  werkelijk_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# 4. De vernieuwde export_config bundel voor zadelsprinkhaan
 export_config <- list(
-  list(rast = zadelsprinkhaan_leefgebied_max,   naam = "Maximale_Potentie",       folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast,       naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,            naam = "ARPL",                    folder = folders$arpl,         type = "INT1U"),
-  list(rast = verspreiding_export_rast,    naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
+  list(rast = final_max,              naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
+  list(rast = werkelijk_export_rast, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
+  list(rast = arpl_export_rast,      naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
+  list(rast = verspreiding_raster,   naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 
-# De export-loop voegt netjes een nullen-omranding toe op de 50km buffer
 for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
@@ -619,18 +625,10 @@ for(item in export_config) {
               overwrite = TRUE, 
               gdal = c("COMPRESS=LZW"), 
               datatype = item$type)
-              
-  message(paste("   [OK] Geëxporteerd:", basename(file_path)))
 }
 
-# Finale grote schoonmaak van het RAM-geheugen om RStudio fris te houden
-rm(
-  werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast,
-  export_config, export_rast
-)
+rm(werkelijk_export_rast, arpl_export_rast, verspreiding_raster, export_config, export_rast)
 gc()
-
-message("🏁 SCRIPT EN EXPORT VOLLEDIG EN SUCCESVOL AFGEROND VOOR zadelsprinkhaan!")
 ```
 
 ```{r Interactieve kaart}

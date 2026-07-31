@@ -116,7 +116,6 @@ rm(df, resultaat)
 area_shape  <- vect(here("data/input/Turnhouts_Vennegebied.shp"))
 master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
 
-# Inlezen van de CSV-sleutel (gebruikt om tabel-indices te mappen naar codes)
 df_namen_sleutel <- read_csv(here("data/input/Excel_files/BWK_Laag_Namen_2025.csv"), show_col_types = FALSE)
 gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
 
@@ -129,42 +128,26 @@ id_raster_TV <- crop(master_grid, area_buffer_fix, snap = "near")
 globale_id_raster <- master_grid
 values(globale_id_raster) <- 1:ncell(globale_id_raster)
 
-# ==============================================================================
-# ULTRA-SNELLE METHODE: Direct naar data.frame met celnummers in C++
-# ==============================================================================
 id_raster_TV_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
 id_raster_TV_masked <- mask(id_raster_TV_globale_values, area_buffer_fix)
 
 message("-> Vertaaltabel bliksemsnel opbouwen via C++ dataframe extractie...")
 
-# 'cells = TRUE' zorgt ervoor dat terra direct een kolom 'cell' (lokale id) 
-# en een kolom met de waarde (globale id) genereert voor alle niet-NA cellen.
 df_extractie <- as.data.frame(id_raster_TV_masked, cells = TRUE)
-
-# Direct omzetten naar data.table en de kolommen juist benoemen
 vertaal_df <- as.data.table(df_extractie)
-
-# De kolommen heten nu standaard 'cell' en de naam van je raster (lyr.1 of gelijkaardig)
-# We hernoemen ze direct naar jouw vertrouwde structuur:
 setnames(vertaal_df, c(1, 2), c("lokale_id", "globale_id"))
 
-# Filter eventuele resterende NA's eruit
 vertaal_df <- vertaal_df[!is.na(globale_id)]
-
 studiegebied_globale_ids <- unique(vertaal_df$globale_id)
 
 values(id_raster_TV) <- NA
-# --- DE CRUCIALE TEMPLATE REPARATIE ---
-# In plaats van alles op NA te zetten, maken we een binaire 'mal' van het studiegebied.
-# We rasteriseren de shapefile van het Turnhouts Vennegebied (area_buffer_fix) op het uitgesneden raster.
 template_TV <- terra::rasterize(area_buffer_fix, id_raster_TV, field = 1, background = 0)
 
-# Controleer of het nu wél cellen bevat:
 cat("Gecorrigeerd aantal pixels in template_TV: ", sum(terra::values(template_TV) == 1, na.rm=TRUE), "\n")
 
 grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
 
-rm(globale_id_raster, id_raster_TV_globale_values, id_raster_TV_masked)
+rm(globale_id_raster, id_raster_TV_globale_values, id_raster_TV_masked, df_extractie)
 gc()
 ```
 
@@ -251,123 +234,165 @@ gc()
 
 ```{r voortplantingsgebied en water}
 # ==============================================================================
-# STAP 1: VOORTPLANTINGSCLUSTERS (30 HA) & WATERLICHAMEN (2 HA) BIJ 50M FUZZY
+# STAP 1: VOORTPLANTINGSCLUSTERS (30 HA) & WATERLICHAMEN (2 HA) - PARALLEL
 # ==============================================================================
 message("-> Voortplantingsgebieden groeperen (50m fuzzy) en filteren op min. 30 ha...")
-# Voortplantingsgebied moet minimaal 30 ha (300.000 m²) groot zijn
-voort_clusters <- cluster_filter_compleet(
-  masker       = voortplanting1_max,
-  opp_laag     = voortplanting1_opp,
-  drempel_m2   = 300000,   
-  dist_m       = 50,       
-  werkelijk    = FALSE      
-)
-r_voort_30ha_max <- voort_clusters$raster
-r_voort_30ha_opp <- terra::mask(voortplanting1_opp, r_voort_30ha_max)
 
-message("-> Waterlichamen groeperen (50m fuzzy) en filteren op min. 2 ha...")
-# Waterlichamen moeten minimaal 2 ha (20.000 m²) groot zijn
-water_clusters <- cluster_filter_compleet(
-  masker       = water1_max,
-  opp_laag     = water1_opp,
-  drempel_m2   = 20000,   
-  dist_m       = 50,       
-  werkelijk    = FALSE      
+# --- SPOOR A: MAX ---
+voort_clusters_max <- cluster_filter_compleet(
+  masker     = voortplanting1_max,
+  opp_laag   = voortplanting1_opp,
+  drempel_m2 = 300000,   
+  dist_m     = 50,       
+  werkelijk  = FALSE      
 )
-r_water_2ha_max <- water_clusters$raster
+r_voort_30ha_max <- voort_clusters_max$raster
 
-rm(voort_clusters, water_clusters)
+water_clusters_max <- cluster_filter_compleet(
+  masker     = water1_max,
+  opp_laag   = water1_opp,
+  drempel_m2 = 20000,    
+  dist_m     = 50,       
+  werkelijk  = FALSE      
+)
+r_water_2ha_max <- water_clusters_max$raster
+
+# --- SPOOR B: OPP (Parallel & Autonoom) ---
+r_binair_voort_opp <- terra::ifel(!is.na(voortplanting1_opp) & voortplanting1_opp > 0, 1, NA)
+voort_clusters_opp <- cluster_filter_compleet(
+  masker     = r_binair_voort_opp,
+  opp_laag   = voortplanting1_opp,
+  drempel_m2 = 300000,   
+  dist_m     = 50,       
+  werkelijk  = TRUE      
+)
+r_voort_30ha_opp <- voort_clusters_opp$raster
+
+r_binair_water_opp <- terra::ifel(!is.na(water1_opp) & water1_opp > 0, 1, NA)
+water_clusters_opp <- cluster_filter_compleet(
+  masker     = r_binair_water_opp,
+  opp_laag   = water1_opp,
+  drempel_m2 = 20000,    
+  dist_m     = 50,       
+  werkelijk  = TRUE      
+)
+r_water_2ha_opp <- water_clusters_opp$raster
+
+rm(voort_clusters_max, water_clusters_max, voort_clusters_opp, water_clusters_opp, r_binair_voort_opp, r_binair_water_opp)
+gc()
 ```
-
 
 ```{r interactie met open water}
 # ==============================================================================
-# STAP 2: INTERACTIE KOPPELING TUSSEN BROEDGEBIED EN WATER (5 KM ACTIERADIUS)
+# STAP 2: INTERACTIE KOPPELING TUSSEN BROEDGEBIED EN WATER (5 KM - PARALLEL)
 # ==============================================================================
 message("-> Afstandsrelaties berekenen tussen broedgebied en water (5000m)...")
 
-# Failsafe initialisatie
+# --- SPOOR A: MAX ---
 r_voort_vlakbij_water_max <- template_TV * NA
-r_voort_vlakbij_water_opp <- template_TV * NA
 
 if (!all(is.na(terra::values(r_voort_30ha_max, mat=FALSE))) && !all(is.na(terra::values(r_water_2ha_max, mat=FALSE)))) {
-  # Trek een binaire buffer van 5 km rondom de goedgekeurde waterlichamen
-  buffer_5km_water <- terra::buffer(r_water_2ha_max, width = 5000)
-  
-  # Filter het voortplantingsgebied: moet binnen 5 km van water liggen
-  r_voort_vlakbij_water_max <- terra::mask(r_voort_30ha_max, buffer_5km_water)
-  r_voort_vlakbij_water_opp <- terra::mask(r_voort_30ha_opp, buffer_5km_water)
-  
-  rm(buffer_5km_water)
+  buffer_5km_water_max <- terra::buffer(r_water_2ha_max, width = 5000)
+  r_voort_vlakbij_water_max <- terra::mask(r_voort_30ha_max, buffer_5km_water_max)
+  rm(buffer_5km_water_max)
 }
 
-rm(r_voort_30ha_max, r_voort_30ha_opp, r_water_2ha_max)
+# --- SPOOR B: OPP (Parallel & Autonoom) ---
+r_voort_vlakbij_water_opp <- template_TV * NA
+
+if (!all(is.na(terra::values(r_voort_30ha_opp, mat=FALSE))) && !all(is.na(terra::values(r_water_2ha_opp, mat=FALSE)))) {
+  r_binair_water2_opp  <- terra::ifel(!is.na(r_water_2ha_opp) & r_water_2ha_opp > 0, 1, NA)
+  buffer_5km_water_opp <- terra::buffer(r_binair_water2_opp, width = 5000)
+  
+  r_voort_vlakbij_water_opp <- terra::mask(r_voort_30ha_opp, buffer_5km_water_opp)
+  rm(r_binair_water2_opp, buffer_5km_water_opp)
+}
+
+rm(r_voort_30ha_max, r_voort_30ha_opp, r_water_2ha_max, r_water_2ha_opp)
+gc()
 ```
 
 ```{r foerageergebied en netwerk}
 # ==============================================================================
-# STAP 3: FOERAGEERGEBIED (200 HA) & INTERACTIE MET BROEDGEBIED (20 KM)
+# STAP 3: FOERAGEERGEBIED (200 HA) & INTERACTIE MET BROEDGEBIED (20 KM - PARALLEL)
 # ==============================================================================
 message("-> Foerageergebieden (weilanden) groeperen (50m fuzzy) en filteren op min. 200 ha...")
-# Vochtige weilanden moeten een open foerageercomplex vormen van minimaal 200 ha (2.000.000 m²)
-foer_clusters <- cluster_filter_compleet(
-  masker       = foerageer1_max,
-  opp_laag     = foerageer1_opp,
-  drempel_m2   = 2000000,   
-  dist_m       = 50,       
-  werkelijk    = FALSE      
+
+# --- SPOOR A: MAX ---
+foer_clusters_max <- cluster_filter_compleet(
+  masker     = foerageer1_max,
+  opp_laag   = foerageer1_opp,
+  drempel_m2 = 2000000, 
+  dist_m     = 50,      
+  werkelijk  = FALSE    
 )
-r_foer_200ha_max <- foer_clusters$raster
-r_foer_200ha_opp <- terra::mask(foerageer1_opp, r_foer_200ha_max)
+r_foer_200ha_max <- foer_clusters_max$raster
+
+# --- SPOOR B: OPP (Parallel & Autonoom) ---
+r_binair_foer1_opp <- terra::ifel(!is.na(foerageer1_opp) & foerageer1_opp > 0, 1, NA)
+foer_clusters_opp <- cluster_filter_compleet(
+  masker     = r_binair_foer1_opp,
+  opp_laag   = foerageer1_opp,
+  drempel_m2 = 2000000, 
+  dist_m     = 50,      
+  werkelijk  = TRUE    
+)
+r_foer_200ha_opp <- foer_clusters_opp$raster
 
 message("-> Functionele actieradiuskoppeling (20 km) berekenen tussen broed- en foerageergebied...")
-# Failsafe initialisatie van de interactie-uitkomsten
+
+# --- SPOOR A INTERACTIE ---
 r_voort_finaal_max <- template_TV * NA
-r_voort_finaal_opp <- template_TV * NA
 r_foer_finaal_max  <- template_TV * NA
-r_foer_finaal_opp  <- template_TV * NA
 
 if (!all(is.na(terra::values(r_voort_vlakbij_water_max, mat=FALSE))) && !all(is.na(terra::values(r_foer_200ha_max, mat=FALSE)))) {
-  # Trek de wederzijdse grote foerageerbuffers van 20 km (20.000 meter)
-  buffer_20km_foer  <- terra::buffer(r_foer_200ha_max, width = 20000)
-  buffer_20km_voort <- terra::buffer(r_voort_vlakbij_water_max, width = 20000)
+  buffer_20km_foer_max  <- terra::buffer(r_foer_200ha_max, width = 20000)
+  buffer_20km_voort_max <- terra::buffer(r_voort_vlakbij_water_max, width = 20000)
   
-  # Filter de broedgebieden nabij foerageergebied (en omgekeerd)
-  r_voort_finaal_max <- terra::mask(r_voort_vlakbij_water_max, buffer_20km_foer)
-  r_voort_finaal_opp <- terra::mask(r_voort_vlakbij_water_opp, buffer_20km_foer)
+  r_voort_finaal_max <- terra::mask(r_voort_vlakbij_water_max, buffer_20km_foer_max)
+  r_foer_finaal_max  <- terra::mask(r_foer_200ha_max, buffer_20km_voort_max)
   
-  r_foer_finaal_max  <- terra::mask(r_foer_200ha_max, buffer_20km_voort)
-  r_foer_finaal_opp  <- terra::mask(r_foer_200ha_opp, buffer_20km_voort)
-  
-  rm(buffer_20km_foer, buffer_20km_voort)
+  rm(buffer_20km_foer_max, buffer_20km_voort_max)
 }
 
-rm(foer_clusters, r_voort_vlakbij_water_max, r_voort_vlakbij_water_opp, r_foer_200ha_max, r_foer_200ha_opp)
+# --- SPOOR B INTERACTIE ---
+r_voort_finaal_opp <- template_TV * NA
+r_foer_finaal_opp  <- template_TV * NA
+
+if (!all(is.na(terra::values(r_voort_vlakbij_water_opp, mat=FALSE))) && !all(is.na(terra::values(r_foer_200ha_opp, mat=FALSE)))) {
+  r_binair_voort2_opp <- terra::ifel(!is.na(r_voort_vlakbij_water_opp) & r_voort_vlakbij_water_opp > 0, 1, NA)
+  r_binair_foer200_opp <- terra::ifel(!is.na(r_foer_200ha_opp) & r_foer_200ha_opp > 0, 1, NA)
+  
+  buffer_20km_foer_opp  <- terra::buffer(r_binair_foer200_opp, width = 20000)
+  buffer_20km_voort_opp <- terra::buffer(r_binair_voort2_opp, width = 20000)
+  
+  r_voort_finaal_opp <- terra::mask(r_voort_vlakbij_water_opp, buffer_20km_foer_opp)
+  r_foer_finaal_opp  <- terra::mask(r_foer_200ha_opp, buffer_20km_voort_opp)
+  
+  rm(r_binair_voort2_opp, r_binair_foer200_opp, buffer_20km_foer_opp, buffer_20km_voort_opp)
+}
+
+rm(foer_clusters_max, foer_clusters_opp, r_binair_foer1_opp, r_voort_vlakbij_water_max, r_voort_vlakbij_water_opp, 
+   r_foer_200ha_max, r_foer_200ha_opp)
+gc()
 ```
 
 ```{r finale samensmelting}
 # ==============================================================================
-# STAP 4: FINALE SAMENVOEGING EN COMPACTHEIDS-CHECK (200 HA OP COMPONENT)
+# STAP 4: FINALE SAMENVOEGING (PARALLEL)
 # ==============================================================================
-message("-> Leefgebieden (voortplanting + foerageren) logisch samensmelten...")
+message("-> Leefgebieden (voortplanting) logisch samensmelten...")
 
-# MAX-spoor: Het leefgebied IS het goedgekeurde voortplantingsgebied
-leefgebied_basis_max <- r_voort_finaal_max
+# Spoor A: MAX
+zwartkopmeeuw_leefgebied_max <- r_voort_finaal_max %>% terra::crop(template_TV)
 
-# OPP-spoor: De oppervlaktefractie is enkel die van de voortplantingshabitat
-leefgebied_basis_opp <- r_voort_finaal_opp
-leefgebied_basis_opp <- terra::mask(leefgebied_basis_opp, leefgebied_basis_max)
-leefgebied_basis_opp <- terra::ifel(leefgebied_basis_opp == 0, NA, leefgebied_basis_opp)
+# Spoor B: OPP
+zwartkopmeeuw_leefgebied_opp <- r_voort_finaal_opp %>% terra::crop(template_TV)
+
+cat("Definitief leefgebied Zwartkopmeeuw MAX (ha):", round(calc_ha_exact(zwartkopmeeuw_leefgebied_max), 2), "\n")
+cat("Definitief leefgebied Zwartkopmeeuw OPP (ha):", round(calc_ha_exact(zwartkopmeeuw_leefgebied_opp), 2), "\n")
 
 rm(r_voort_finaal_max, r_voort_finaal_opp, r_foer_finaal_max, r_foer_finaal_opp)
-
-
-# Vastleggen en croppen naar het Turnhoutse master template
-zwartkopmeeuw_leefgebied_max <-leefgebied_basis_max
-zwartkopmeeuw_leefgebied_opp <- leefgebied_basis_opp
-
-# Grote eindschoonmaak van het R-geheugen
-rm(leefgebied_basis_max, leefgebied_basis_opp, finaal_leefgebied_clusters)
 gc()
 ```
 
@@ -651,7 +676,7 @@ if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
 export_config <- list(
   list(rast = final_max,              naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
   list(rast = werkelijk_export_rast, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,      naam = "ARPL",                     folder = folders$arpl,        type = "INT1U"),
+  list(rast = arpl_export_rast,      naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
   list(rast = verspreiding_raster,   naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 
@@ -674,4 +699,7 @@ for(item in export_config) {
               gdal = c("COMPRESS=LZW"), 
               datatype = item$type)
 }
+
+rm(werkelijk_export_rast, arpl_export_rast, verspreiding_raster, export_config, export_rast)
+gc()
 ```

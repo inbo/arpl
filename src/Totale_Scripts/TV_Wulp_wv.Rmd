@@ -261,7 +261,6 @@ gebied_geselecteerd <- sf_wulp_regio %>%
 
 message("-> Geselecteerde vogelgebieden rasteriseren op de stabiele template...")
 
-# --- CRUCIALE FIX: Gebruik template_TV (y) in plaats van het defecte id_raster_TV ---
 r_watervogelgebied_max <- terra::rasterize(
   x = terra::vect(gebied_geselecteerd),
   y = template_TV,
@@ -269,7 +268,6 @@ r_watervogelgebied_max <- terra::rasterize(
   background = NA
 )
 
-# Kogelvrije fallback: Mocht de rasterisatie om wat voor reden dan ook NULL opleveren, maak er dan een leeg raster van
 if (is.null(r_watervogelgebied_max)) {
   r_watervogelgebied_max <- template_TV * NA
 }
@@ -278,58 +276,65 @@ rm(sf_wulp_vlaanderen, sf_wulp_regio, locatie_aantallen, gebied_geselecteerd, sf
 gc()
 ```
 
-
 ```{r leefgebied clustering en intersectie gefixt}
 # ==============================================================================
-# STAP 2 - LEEFGEBIED CLUSTEREN (30 HA) EN BEGRENZEN (FAILSAFE INGEBOUWD)
+# STAP 2 - LEEFGEBIED CLUSTEREN (30 HA) EN BEGRENZEN (PARALLEL)
 # ==============================================================================
 message("-> 1. Open foerageerhabitat clusteren (50m fuzzy, drempel 30 ha)...")
 
 wulp_leefgebied_max <- template_TV * NA
 wulp_leefgebied_opp <- template_TV * NA
 
+# --- SPOOR A: MAXIMALE POTENTIE (Binair) ---
 if (exists("foerageer_bwk_max") && !is.null(foerageer_bwk_max) && !all(is.na(terra::values(foerageer_bwk_max, mat=FALSE)))) {
   
-  # GDX-stap: wulp_leefgebied0 (foerageer1_cluster 50m, 30 hectare)
-  wulp_clusters <- cluster_filter_compleet(
+  wulp_clusters_max <- cluster_filter_compleet(
     masker     = foerageer_bwk_max,
     opp_laag   = foerageer_bwk_opp,
     drempel_m2 = 30 * 10000, 
-    dist_m     = 50,         
+    dist_m     = 50,          
     werkelijk  = FALSE
   )
-  
-  r_wulp_30ha_max <- wulp_clusters$raster
-  r_wulp_30ha_opp <- terra::mask(foerageer_bwk_opp, r_wulp_30ha_max)
+  r_wulp_30ha_max <- wulp_clusters_max$raster
   
   if (!is.null(r_wulp_30ha_max) && !all(is.na(terra::values(r_wulp_30ha_max, mat=FALSE)))) {
-    
-    message("-> 2. Intersectie: Alleen geschikt habitat BINNEN de wulp-telgebieden behouden...")
-    
-    # --- VEILIGHEIDSCHECK: Voorkom de values() crash op NULL objecten ---
     if (exists("r_watervogelgebied_max") && !is.null(r_watervogelgebied_max) && !all(is.na(terra::values(r_watervogelgebied_max, mat=FALSE)))) {
-      
       wulp_leefgebied_max <- terra::mask(r_wulp_30ha_max, r_watervogelgebied_max) %>% terra::crop(template_TV)
-      wulp_leefgebied_opp = terra::mask(r_wulp_30ha_opp, r_watervogelgebied_max) %>% terra::crop(template_TV)
-      
-      message("--- WULP MODEL SUCCESVOL AFGEROND ---")
-      cat("Totaal stabiel leefgebied Wulp (ha):", round(calc_ha_exact(wulp_leefgebied_opp), 2), "\n")
-      
     } else {
-      message("⚠️ Waarschuwing: r_watervogelgebied_max is leeg of NULL. We vallen biologisch terug op het bruto 30 ha landschap binnen TV.")
       wulp_leefgebied_max <- r_wulp_30ha_max %>% terra::crop(template_TV)
-      wulp_leefgebied_opp <- r_wulp_30ha_opp %>% terra::crop(template_TV)
     }
-    
-  } else {
-    message("⚠️ Knelpunt: Er zijn geen aaneengesloten open weidevogelgebieden van minimaal 30 ha gevonden!")
   }
-} else {
-  message("⚠️ Knelpunt: Bruto foerageerhabitat (foerageer_bwk) ontbreekt of is NULL!")
+  if (exists("wulp_clusters_max")) rm(wulp_clusters_max, r_wulp_30ha_max)
 }
 
-# Geheugen netjes opruimen
-if(exists("wulp_clusters")) rm(wulp_clusters, r_wulp_30ha_max, r_wulp_30ha_opp)
+# --- SPOOR B: WERKELIJKE OPPERVLAKTE (Parallel & Autonoom) ---
+if (exists("foerageer_bwk_opp") && !is.null(foerageer_bwk_opp) && !all(is.na(terra::values(foerageer_bwk_opp, mat=FALSE)))) {
+  
+  r_binair_foer_opp <- terra::ifel(!is.na(foerageer_bwk_opp) & foerageer_bwk_opp > 0, 1, NA)
+  
+  wulp_clusters_opp <- cluster_filter_compleet(
+    masker     = r_binair_foer_opp,
+    opp_laag   = foerageer_bwk_opp,
+    drempel_m2 = 30 * 10000, 
+    dist_m     = 50,          
+    werkelijk  = TRUE
+  )
+  r_wulp_30ha_opp <- wulp_clusters_opp$raster
+  
+  if (!is.null(r_wulp_30ha_opp) && !all(is.na(terra::values(r_wulp_30ha_opp, mat=FALSE)))) {
+    if (exists("r_watervogelgebied_max") && !is.null(r_watervogelgebied_max) && !all(is.na(terra::values(r_watervogelgebied_max, mat=FALSE)))) {
+      wulp_leefgebied_opp <- terra::mask(r_wulp_30ha_opp, r_watervogelgebied_max) %>% terra::crop(template_TV)
+    } else {
+      wulp_leefgebied_opp <- r_wulp_30ha_opp %>% terra::crop(template_TV)
+    }
+  }
+  if (exists("wulp_clusters_opp")) rm(wulp_clusters_opp, r_wulp_30ha_opp, r_binair_foer_opp)
+}
+
+message("--- WULP MODEL SUCCESVOL AFGEROND ---")
+cat("Totaal stabiel leefgebied Wulp MAX (ha):", round(calc_ha_exact(wulp_leefgebied_max), 2), "\n")
+cat("Totaal stabiel leefgebied Wulp OPP (ha):", round(calc_ha_exact(wulp_leefgebied_opp), 2), "\n")
+
 if(exists("r_watervogelgebied_max")) rm(r_watervogelgebied_max)
 gc()
 ```
@@ -604,10 +609,10 @@ if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
 }
 
 export_config <- list(
-  list(rast = final_max,              naam = "Maximale_Potentie",     folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast,  naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,       naam = "ARPL",                    folder = folders$arpl,         type = "INT1U"),
-  list(rast = verspreiding_raster,    naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
+  list(rast = final_max,              naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
+  list(rast = werkelijk_export_rast, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
+  list(rast = arpl_export_rast,          naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
+  list(rast = verspreiding_raster,   naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 
 for(item in export_config) {
@@ -629,4 +634,6 @@ for(item in export_config) {
               gdal = c("COMPRESS=LZW"), 
               datatype = item$type)
 }
+
+rm(werkelijk_export_rast, arpl_export_rast, verspreiding_raster, export_config, export_rast)
 ```
