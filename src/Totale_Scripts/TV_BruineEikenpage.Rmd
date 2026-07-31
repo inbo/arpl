@@ -130,10 +130,10 @@ rm(df, resultaat)
 
 # Gebied voorbereiden (Turnhouts Vennegebied)
 ```{r Gebied Voorbereiden}
+```{r Gebied Voorbereiden}
 area_shape  <- vect(here("data/input/Turnhouts_Vennegebied.shp"))
 master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
 
-# Inlezen van de CSV-sleutel (gebruikt om tabel-indices te mappen naar codes)
 df_namen_sleutel <- read_csv(here("data/input/Excel_files/BWK_Laag_Namen_2025.csv"), show_col_types = FALSE)
 gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
 
@@ -146,32 +146,20 @@ id_raster_TV <- crop(master_grid, area_buffer_fix, snap = "near")
 globale_id_raster <- master_grid
 values(globale_id_raster) <- 1:ncell(globale_id_raster)
 
-# ==============================================================================
-# ULTRA-SNELLE METHODE: Direct naar data.frame met celnummers in C++
-# ==============================================================================
 id_raster_TV_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
 id_raster_TV_masked <- mask(id_raster_TV_globale_values, area_buffer_fix)
 
 message("-> Vertaaltabel bliksemsnel opbouwen via C++ dataframe extractie...")
-
-# 'cells = TRUE' zorgt ervoor dat terra direct een kolom 'cell' (lokale id) 
-# en een kolom met de waarde (globale id) genereert voor alle niet-NA cellen.
 df_extractie <- as.data.frame(id_raster_TV_masked, cells = TRUE)
 
-# Direct omzetten naar data.table en de kolommen juist benoemen
 vertaal_df <- as.data.table(df_extractie)
-
-# De kolommen heten nu standaard 'cell' en de naam van je raster (lyr.1 of gelijkaardig)
-# We hernoemen ze direct naar jouw vertrouwde structuur:
 setnames(vertaal_df, c(1, 2), c("lokale_id", "globale_id"))
 
-# Filter eventuele resterende NA's eruit
 vertaal_df <- vertaal_df[!is.na(globale_id)]
-
 studiegebied_globale_ids <- unique(vertaal_df$globale_id)
 
 values(id_raster_TV) <- NA
-template_TV          <- id_raster_TV * NA
+template_TV <- terra::rasterize(area_buffer_fix, id_raster_TV, field = 1, background = 0)
 
 grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
 
@@ -263,111 +251,146 @@ gc()
 ```
 
 # Helperfunctie & Cluster-analyse
-```{r Cluster}
+```{r Helperfunctie & Cluster-analyse}
 drempel_m2 <- oppervlakte_ha * 10000
 
 verwerk_habitat_met_bosrand <- function(r_habitat_max, r_habitat_opp, r_bos_max, r_bos_opp, dist_m = 20, drempel_m2, afstand_m = 0) {
   
   if (!terra::hasValues(r_habitat_max) || terra::global(r_habitat_max, "notNA")$notNA == 0) {
-    return(list(max = template_TV * NA, opp = template_TV * NA, clusters = template_TV * NA))
+    return(list(max = template_TV * NA, opp = template_TV * NA, clusters_max = template_TV * NA, clusters_opp = template_TV * NA))
   }
 
-  # ----------------------------------------------------------------------------
-  # STAP 1: BASISCLUSTERS MAKEN VAN PUUR HET HABITAT
-  # ----------------------------------------------------------------------------
-  temp_mask <- r_habitat_max
-  if (afstand_m > 0) temp_mask <- terra::buffer(r_habitat_max, width = afstand_m / 2)
+  # ============================================================================
+  # SPOOR A: MAXIMALE POTENTIE
+  # ============================================================================
+  temp_mask_max <- r_habitat_max
+  if (afstand_m > 0) temp_mask_max <- terra::buffer(r_habitat_max, width = afstand_m / 2)
   
-  cl_habitat <- terra::patches(temp_mask, directions = 8, zeroAsNA = TRUE)
-  cl_habitat_only <- terra::mask(cl_habitat, r_habitat_max)
+  cl_habitat_max      <- terra::patches(temp_mask_max, directions = 8, zeroAsNA = TRUE)
+  cl_habitat_only_max <- terra::mask(cl_habitat_max, r_habitat_max)
   
-  # ----------------------------------------------------------------------------
-  # STAP 2: OPPERVLAKTECHECK OP HET HABITAT ZELF (bijv. >= 5 ha)
-  # ----------------------------------------------------------------------------
-  f_hab <- terra::freq(cl_habitat_only)
-  stats_hab <- data.frame(ID = f_hab$value, Area_m2 = f_hab$count * 100) # 1 pixel = 100m2
+  f_hab_max     <- terra::freq(cl_habitat_only_max)
+  stats_hab_max <- data.frame(ID = f_hab_max$value, Area_m2 = f_hab_max$count * 100)
   
-  voldoet_opp_ids <- stats_hab$ID[!is.na(stats_hab$ID) & stats_hab$Area_m2 >= drempel_m2]
+  voldoet_opp_ids_max <- stats_hab_max$ID[!is.na(stats_hab_max$ID) & stats_hab_max$Area_m2 >= drempel_m2]
   
-  if (length(voldoet_opp_ids) == 0) {
-    return(list(max = template_TV * NA, opp = template_TV * NA, clusters = template_TV * NA))
-  }
-  
-  # Bewaar alleen de habitatclusters die op zichzelf groot genoeg zijn
-  cl_habitat_groot <- cl_habitat_only %in% voldoet_opp_ids
-  cl_habitat_groot_id <- terra::ifel(cl_habitat_groot == 1, cl_habitat_only, NA)
-  
-  # ----------------------------------------------------------------------------
-  # STAP 3: STRICTE RAAKLIJN-CHECK (Minstens 50m ONAFGEBROKEN RAAKVLAK)
-  # ----------------------------------------------------------------------------
-  voldoet_bos_ids <- c()
-  
-  if (terra::hasValues(r_bos_max) && terra::global(r_bos_max, "notNA")$notNA > 0) {
+  voldoet_bos_ids_max <- c()
+  if (length(voldoet_opp_ids_max) > 0) {
+    cl_habitat_groot_max    <- cl_habitat_only_max %in% voldoet_opp_ids_max
+    cl_habitat_groot_id_max <- terra::ifel(cl_habitat_groot_max == 1, cl_habitat_only_max, NA)
     
-    # 3a. Bepaal de afstand van bosranden tot het goedgekeurde habitat
-    dist_naar_hab <- terra::distance(cl_habitat_groot_id)
-    
-    # 3b. ISOLEER DE CONTACTZONE: Bosrandpixels die DIRECT grenzen aan het habitat (<= 10m)
-    bos_contact_pixels <- terra::ifel(dist_naar_hab <= 10 & !is.na(r_bos_max), 1, NA)
-    
-    if (terra::hasValues(bos_contact_pixels) && terra::global(bos_contact_pixels, "notNA")$notNA > 0) {
+    if (terra::hasValues(r_bos_max) && terra::global(r_bos_max, "notNA")$notNA > 0) {
+      dist_naar_hab_max       <- terra::distance(cl_habitat_groot_id_max)
+      bos_contact_pixels_max  <- terra::ifel(dist_naar_hab_max <= 10 & !is.na(r_bos_max), 1, NA)
       
-      # 3c. Cluster UITSLEUTELING VAN DE CONTACTPIXELS (de raaklijn zelf!)
-      cl_contact_lijnen <- terra::patches(bos_contact_pixels, directions = 8, zeroAsNA = TRUE)
-      
-      # 3d. Bereken de lengte van elke aaneengesloten RAAKLIJN
-      f_contact <- terra::freq(cl_contact_lijnen)
-      stats_contact <- data.frame(ID = f_contact$value, Lengte_m = f_contact$count * 10)
-      
-      # Filter op raaklijnen die minstens 50m lang zijn (>= 5 aaneengesloten contactpixels)
-      raaklijn_50m_ids <- stats_contact$ID[!is.na(stats_contact$ID) & stats_contact$Lengte_m >= 50]
-      
-      if (length(raaklijn_50m_ids) > 0) {
-        # Isoleer de raaklijnen van >= 50m
-        r_raaklijn_50m <- cl_contact_lijnen %in% raaklijn_50m_ids
-        r_raaklijn_50m <- terra::ifel(r_raaklijn_50m == 1, 1, NA)
+      if (terra::hasValues(bos_contact_pixels_max) && terra::global(bos_contact_pixels_max, "notNA")$notNA > 0) {
+        cl_contact_lijnen_max <- terra::patches(bos_contact_pixels_max, directions = 8, zeroAsNA = TRUE)
+        f_contact_max         <- terra::freq(cl_contact_lijnen_max)
+        stats_contact_max     <- data.frame(ID = f_contact_max$value, Lengte_m = f_contact_max$count * 10)
         
-        # 3e. Bepaal welke habitatclusters grenzen aan een RAAKLIJN van >= 50m
-        hab_raakt_50m_lijn <- terra::mask(cl_habitat_groot_id, terra::buffer(r_raaklijn_50m, width = 5))
-        voldoet_bos_ids <- unique(na.omit(terra::values(hab_raakt_50m_lijn, mat = FALSE)))
+        raaklijn_50m_ids_max  <- stats_contact_max$ID[!is.na(stats_contact_max$ID) & stats_contact_max$Lengte_m >= 50]
+        
+        if (length(raaklijn_50m_ids_max) > 0) {
+          r_raaklijn_50m_max     <- cl_contact_lijnen_max %in% raaklijn_50m_ids_max
+          r_raaklijn_50m_max     <- terra::ifel(r_raaklijn_50m_max == 1, 1, NA)
+          hab_raakt_50m_lijn_max <- terra::mask(cl_habitat_groot_id_max, terra::buffer(r_raaklijn_50m_max, width = 5))
+          voldoet_bos_ids_max    <- unique(na.omit(terra::values(hab_raakt_50m_lijn_max, mat = FALSE)))
+        }
       }
     }
   }
   
-  if (length(voldoet_bos_ids) == 0) {
-    return(list(max = template_TV * NA, opp = template_TV * NA, clusters = template_TV * NA))
+  if (length(voldoet_bos_ids_max) > 0) {
+    hab_goedgekeurd_mask_max  <- cl_habitat_groot_id_max %in% voldoet_bos_ids_max
+    r_hab_goedgekeurd_max     <- terra::ifel(hab_goedgekeurd_mask_max == 1, r_habitat_max, NA)
+    
+    dist_naar_hab_finaal_max  <- terra::distance(r_hab_goedgekeurd_max)
+    bos_binnen_20m_max        <- terra::ifel(dist_naar_hab_finaal_max <= dist_m & !is.na(r_bos_max), 1, NA)
+    
+    combo_potentieel_max      <- terra::cover(r_hab_goedgekeurd_max, bos_binnen_20m_max)
+    cl_combo_max              <- terra::patches(combo_potentieel_max, directions = 8, zeroAsNA = TRUE)
+    cl_die_habitat_raken_max  <- terra::mask(cl_combo_max, r_hab_goedgekeurd_max)
+    aangesloten_ids_max       <- unique(na.omit(terra::values(cl_die_habitat_raken_max, mat = FALSE)))
+    
+    combo_finaal_mask_max     <- cl_combo_max %in% aangesloten_ids_max
+    complex_raw_max           <- terra::ifel(combo_finaal_mask_max == 1, 1, NA)
+    cl_finaal_max             <- terra::mask(cl_combo_max, complex_raw_max)
+  } else {
+    complex_raw_max <- template_TV * NA
+    cl_finaal_max   <- template_TV * NA
   }
-  
-  # Sluitende selectie van goedgekeurd habitat
-  hab_goedgekeurd_mask <- cl_habitat_groot_id %in% voldoet_bos_ids
-  r_hab_goedgekeurd_max <- terra::ifel(hab_goedgekeurd_mask == 1, r_habitat_max, NA)
-  r_hab_goedgekeurd_opp <- terra::mask(r_habitat_opp, r_hab_goedgekeurd_max)
 
-  # ----------------------------------------------------------------------------
-  # STAP 4: MAXIMAAL 20M AANSLUITENDE BOSRAND TOEVOEGEN AAN GOEDGEKEURD HABITAT
-  # ----------------------------------------------------------------------------
-  dist_naar_hab_finaal <- terra::distance(r_hab_goedgekeurd_max)
-  bos_binnen_20m <- terra::ifel(dist_naar_hab_finaal <= dist_m & !is.na(r_bos_max), 1, NA)
+  # ============================================================================
+  # SPOOR B: WERKELIJKE OPPERVLAKTE (Onafhankelijk op basis van fracties)
+  # ============================================================================
+  r_habitat_bin_opp <- terra::ifel(!is.na(r_habitat_opp) & r_habitat_opp > 0, 1, NA)
   
-  combo_potentieel_max <- terra::cover(r_hab_goedgekeurd_max, bos_binnen_20m)
-  cl_combo <- terra::patches(combo_potentieel_max, directions = 8, zeroAsNA = TRUE)
-  cl_die_habitat_raken <- terra::mask(cl_combo, r_hab_goedgekeurd_max)
-  aangesloten_ids <- unique(na.omit(terra::values(cl_die_habitat_raken, mat = FALSE)))
-  
-  combo_finaal_mask <- cl_combo %in% aangesloten_ids
-  
-  # Eindresultaat rasters
-  complex_raw_max <- terra::ifel(combo_finaal_mask == 1, 1, NA)
-  
-  hab_opp_nul <- terra::ifel(is.na(r_hab_goedgekeurd_opp), 0, r_hab_goedgekeurd_opp)
-  bos_opp_nul <- terra::ifel(is.na(r_bos_opp) | is.na(bos_binnen_20m), 0, r_bos_opp)
-  
-  complex_raw_opp <- terra::clamp(hab_opp_nul + bos_opp_nul, upper = 1)
-  complex_raw_opp <- terra::ifel(complex_raw_opp == 0 | is.na(complex_raw_max), NA, complex_raw_opp)
-  
-  cl_finaal <- terra::mask(cl_combo, complex_raw_max)
+  if (terra::hasValues(r_habitat_bin_opp) && terra::global(r_habitat_bin_opp, "notNA")$notNA > 0) {
+    temp_mask_opp <- r_habitat_bin_opp
+    if (afstand_m > 0) temp_mask_opp <- terra::buffer(r_habitat_bin_opp, width = afstand_m / 2)
+    
+    cl_habitat_opp      <- terra::patches(temp_mask_opp, directions = 8, zeroAsNA = TRUE)
+    cl_habitat_only_opp <- terra::mask(cl_habitat_opp, r_habitat_bin_opp)
+    
+    stats_hab_opp       <- terra::zonal(r_habitat_opp, cl_habitat_only_opp, fun = "sum", na.rm = TRUE)
+    colnames(stats_hab_opp) <- c("ID", "Waarde")
+    stats_hab_opp$Area_m2   <- stats_hab_opp$Waarde * 100
+    
+    voldoet_opp_ids_opp <- stats_hab_opp$ID[!is.na(stats_hab_opp$ID) & stats_hab_opp$Area_m2 >= drempel_m2]
+    
+    voldoet_bos_ids_opp <- c()
+    if (length(voldoet_opp_ids_opp) > 0) {
+      cl_habitat_groot_opp    <- cl_habitat_only_opp %in% voldoet_opp_ids_opp
+      cl_habitat_groot_id_opp <- terra::ifel(cl_habitat_groot_opp == 1, cl_habitat_only_opp, NA)
+      
+      r_bos_bin_opp <- terra::ifel(!is.na(r_bos_opp) & r_bos_opp > 0, 1, NA)
+      if (terra::hasValues(r_bos_bin_opp) && terra::global(r_bos_bin_opp, "notNA")$notNA > 0) {
+        dist_naar_hab_opp       <- terra::distance(cl_habitat_groot_id_opp)
+        bos_contact_pixels_opp  <- terra::ifel(dist_naar_hab_opp <= 10 & !is.na(r_bos_bin_opp), 1, NA)
+        
+        if (terra::hasValues(bos_contact_pixels_opp) && terra::global(bos_contact_pixels_opp, "notNA")$notNA > 0) {
+          cl_contact_lijnen_opp <- terra::patches(bos_contact_pixels_opp, directions = 8, zeroAsNA = TRUE)
+          f_contact_opp         <- terra::freq(cl_contact_lijnen_opp)
+          stats_contact_opp     <- data.frame(ID = f_contact_opp$value, Lengte_m = f_contact_opp$count * 10)
+          
+          raaklijn_50m_ids_opp  <- stats_contact_opp$ID[!is.na(stats_contact_opp$ID) & stats_contact_opp$Lengte_m >= 50]
+          
+          if (length(raaklijn_50m_ids_opp) > 0) {
+            r_raaklijn_50m_opp     <- cl_contact_lijnen_opp %in% raaklijn_50m_ids_opp
+            r_raaklijn_50m_opp     <- terra::ifel(r_raaklijn_50m_opp == 1, 1, NA)
+            hab_raakt_50m_lijn_opp <- terra::mask(cl_habitat_groot_id_opp, terra::buffer(r_raaklijn_50m_opp, width = 5))
+            voldoet_bos_ids_opp    <- unique(na.omit(terra::values(hab_raakt_50m_lijn_opp, mat = FALSE)))
+          }
+        }
+      }
+    }
+    
+    if (length(voldoet_bos_ids_opp) > 0) {
+      hab_goedgekeurd_mask_opp  <- cl_habitat_groot_id_opp %in% voldoet_bos_ids_opp
+      r_hab_goedgekeurd_opp     <- terra::mask(r_habitat_opp, hab_goedgekeurd_mask_opp)
+      
+      dist_naar_hab_finaal_opp  <- terra::distance(r_hab_goedgekeurd_opp)
+      r_bos_bin_opp             <- terra::ifel(!is.na(r_bos_opp) & r_bos_opp > 0, 1, NA)
+      bos_binnen_20m_opp        <- terra::ifel(dist_naar_hab_finaal_opp <= dist_m & !is.na(r_bos_bin_opp), 1, NA)
+      
+      combo_potentieel_opp      <- terra::cover(r_hab_goedgekeurd_opp, terra::mask(r_bos_opp, bos_binnen_20m_opp))
+      cl_combo_opp              <- terra::patches(terra::ifel(!is.na(combo_potentieel_opp) & combo_potentieel_opp > 0, 1, NA), directions = 8, zeroAsNA = TRUE)
+      cl_die_habitat_raken_opp  <- terra::mask(cl_combo_opp, r_hab_goedgekeurd_opp)
+      aangesloten_ids_opp       <- unique(na.omit(terra::values(cl_die_habitat_raken_opp, mat = FALSE)))
+      
+      combo_finaal_mask_opp     <- cl_combo_opp %in% aangesloten_ids_opp
+      complex_raw_opp           <- terra::mask(combo_potentieel_opp, combo_finaal_mask_opp)
+      cl_finaal_opp             <- terra::mask(cl_combo_opp, complex_raw_opp)
+    } else {
+      complex_raw_opp <- template_TV * NA
+      cl_finaal_opp   <- template_TV * NA
+    }
+  } else {
+    complex_raw_opp <- template_TV * NA
+    cl_finaal_opp   <- template_TV * NA
+  }
 
-  return(list(max = complex_raw_max, opp = complex_raw_opp, clusters = cl_finaal))
+  return(list(max = complex_raw_max, opp = complex_raw_opp, clusters_max = cl_finaal_max, clusters_opp = cl_finaal_opp))
 }
 ```
 
@@ -375,7 +398,6 @@ verwerk_habitat_met_bosrand <- function(r_habitat_max, r_habitat_opp, r_bos_max,
 ```{r combinatie eiafzet en bosranden}
 message("-> EIAFZET: Samenvoegen BWK + Lineair, 5 ha habitat-check, bosrand-voorwaarde & 20m uitbreiding...")
 
-# A. BASISEIAFZET COMBINEREN (BWK + LINEAIR)
 ei_bwk_nul <- terra::ifel(is.na(eiafzet_opp), 0, eiafzet_opp)
 ei_lin_nul <- terra::ifel(is.na(eiafzet_lin_opp), 0, eiafzet_lin_opp)
 
@@ -383,7 +405,6 @@ ei_basis_max <- terra::cover(eiafzet_max, eiafzet_lin_max)
 ei_basis_opp <- terra::clamp(ei_bwk_nul + ei_lin_nul, upper = 1)
 ei_basis_opp <- terra::ifel(ei_basis_opp == 0, NA, ei_basis_opp)
 
-# B. VOLLEDIGE VERWERKING VIA DE NIEUWE HELPERFUNCTIE
 drempel_m2 <- oppervlakte_ha * 10000
 
 ei_complex <- verwerk_habitat_met_bosrand(
@@ -398,9 +419,10 @@ ei_complex <- verwerk_habitat_met_bosrand(
 
 ei_combo_max <- ei_complex$max
 ei_combo_opp <- ei_complex$opp
-cl_max       <- ei_complex$clusters
+cl_max       <- ei_complex$clusters_max
+cl_opp       <- ei_complex$clusters_opp
 
-rm(ei_complex)
+rm(ei_complex, ei_bwk_nul, ei_lin_nul, ei_basis_max, ei_basis_opp)
 gc()
 ```
 
@@ -408,7 +430,6 @@ gc()
 ```{r nectarclusters en afstandsfilter}
 message("-> NECTAR: 5 ha habitat-check, bosrand-voorwaarde, 20m uitbreiding & wederzijdse afstandsfilter...")
 
-# A. VOLLEDIGE VERWERKING NECTAR VIA HELPERFUNCTIE
 nectar_complex <- verwerk_habitat_met_bosrand(
   r_habitat_max = nectar_max,
   r_habitat_opp = nectar_opp,
@@ -421,24 +442,22 @@ nectar_complex <- verwerk_habitat_met_bosrand(
 
 nectar_filter_max <- nectar_complex$max
 nectar_filter_opp <- nectar_complex$opp
-cl_nectar_max     <- nectar_complex$clusters
+cl_nectar_max     <- nectar_complex$clusters_max
+cl_nectar_opp     <- nectar_complex$clusters_opp
 
-# B. WEDERZIJDSE AFSTANDSFILTERS (Eiafzet <250m Nectar, Nectar <500m Eiafzet)
+# --- 1. SPOOR A: MAX ---
 if (terra::hasValues(ei_combo_max) && terra::hasValues(nectar_filter_max) &&
     terra::global(ei_combo_max, "notNA")$notNA > 0 && 
     terra::global(nectar_filter_max, "notNA")$notNA > 0) {
   
-  # Eiafzet-complex moet binnen 250m van gefilterde Nectar liggen
   dist_naar_nectar_max <- terra::distance(nectar_filter_max)
   zone_nectar_250m_max <- terra::ifel(dist_naar_nectar_max <= 250, 1, NA)
   bruineeikenpage_eiafzet_max <- terra::mask(ei_combo_max, zone_nectar_250m_max)
   
-  # Nectar-complex moet binnen 500m van gefilterde Eiafzet liggen
   dist_naar_eiafzet_max <- terra::distance(ei_combo_max)
   zone_eiafzet_500m_max <- terra::ifel(dist_naar_eiafzet_max <= 500, 1, NA)
   bruineeikenpage_nectar_max  <- terra::mask(nectar_filter_max, zone_eiafzet_500m_max)
   
-  # Synchroniseer cluster-rasters
   cl_eiafzet_max <- terra::mask(cl_max, bruineeikenpage_eiafzet_max)
   cl_nectar_max  <- terra::mask(cl_nectar_max, bruineeikenpage_nectar_max)
   
@@ -450,6 +469,30 @@ if (terra::hasValues(ei_combo_max) && terra::hasValues(nectar_filter_max) &&
   cl_nectar_max               <- template_TV * NA
 }
 
+# --- 2. SPOOR B: OPP (Parallel & Autonoom) ---
+if (terra::hasValues(ei_combo_opp) && terra::hasValues(nectar_filter_opp) &&
+    terra::global(ei_combo_opp, "notNA")$notNA > 0 && 
+    terra::global(nectar_filter_opp, "notNA")$notNA > 0) {
+  
+  dist_naar_nectar_opp <- terra::distance(terra::ifel(!is.na(nectar_filter_opp) & nectar_filter_opp > 0, 1, NA))
+  zone_nectar_250m_opp <- terra::ifel(dist_naar_nectar_opp <= 250, 1, NA)
+  bruineeikenpage_eiafzet_opp <- terra::mask(ei_combo_opp, zone_nectar_250m_opp)
+  
+  dist_naar_eiafzet_opp <- terra::distance(terra::ifel(!is.na(ei_combo_opp) & ei_combo_opp > 0, 1, NA))
+  zone_eiafzet_500m_opp <- terra::ifel(dist_naar_eiafzet_opp <= 500, 1, NA)
+  bruineeikenpage_nectar_opp  <- terra::mask(nectar_filter_opp, zone_eiafzet_500m_opp)
+  
+  cl_eiafzet_opp <- terra::mask(cl_opp, bruineeikenpage_eiafzet_opp)
+  cl_nectar_opp  <- terra::mask(cl_nectar_opp, bruineeikenpage_nectar_opp)
+  
+  rm(dist_naar_nectar_opp, zone_nectar_250m_opp, dist_naar_eiafzet_opp, zone_eiafzet_500m_opp)
+} else {
+  bruineeikenpage_eiafzet_opp <- template_TV * NA
+  bruineeikenpage_nectar_opp  <- template_TV * NA
+  cl_eiafzet_opp              <- template_TV * NA
+  cl_nectar_opp               <- template_TV * NA
+}
+
 rm(nectar_complex)
 gc()
 ```
@@ -459,21 +502,12 @@ gc()
 # ==============================================================================
 # 1. SYNCHRONISATIE EN FUSIE VOOR BRUINE EIKENPAGE
 # ==============================================================================
-# Het totale leefgebied is de optelsom (cover) van eiafzet en nectar
 final_max <- terra::cover(bruineeikenpage_eiafzet_max, bruineeikenpage_nectar_max)
-final_opp <- terra::cover(ei_combo_opp, nectar_filter_opp) # Netto reële fracties
+final_opp <- terra::cover(bruineeikenpage_eiafzet_opp, bruineeikenpage_nectar_opp)
 
-# We gebruiken cl_max (de gecombineerde eiafzet-clusters) als master-leefgebied
-opp_bron  <- final_opp
+opp_bron <- final_opp
+binnen_masker <- terra::rasterize(area_shape_proj, template_TV, field = 1, background = NA)
 
-# --- CRUCIALE FIX: Maak het binnen_masker hier direct aan! ---
-# Dit zorgt ervoor dat terra::zonal() direct de grens van Turnhouts Vennegebied herkent.
-binnen_masker <- terra::rasterize(area_shape_proj, template_TV, field = 1)
-
-
-# ==============================================================================
-# 2. BESTAANDE SETUP VOOR WAARNEMINGEN KOPPELEN
-# ==============================================================================
 waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_BruineEikenpage_dummy.csv")
 
 if (file.exists(waarnemingen_path)) {
@@ -510,7 +544,6 @@ if (terra::hasValues(cl_max) && terra::global(cl_max, "notNA")$notNA > 0) {
   
   ids_werkelijk_totaal <- stats_act_raw$ID[stats_act_raw$Werk_ha >= oppervlakte_ha]
   
-  # A. ARPL Extractie (Via blobs met buffer voor maximale trefzekerheid)
   if(has_observations && nrow(df_points_sf) > 0) {
     extract_ids_max <- terra::extract(cl_max, waarneming_blobs_vect, ID = FALSE)
     ids_raken_waarneming <- if(nrow(extract_ids_max) > 0) unique(na.omit(extract_ids_max[[1]])) else c()
@@ -519,7 +552,6 @@ if (terra::hasValues(cl_max) && terra::global(cl_max, "notNA")$notNA > 0) {
   }
   ids_actueel_relevant <- intersect(ids_werkelijk_totaal, ids_raken_waarneming)
 
-  # B. Actuele Verspreiding Extractie (Ook via blobs om netwerken niet te missen)
   if(has_observations && nrow(df_points_sf) > 0) {
     extract_ids_verspr <- terra::extract(cl_max, waarneming_blobs_vect, ID = FALSE)
     ids_raken_punten <- if(nrow(extract_ids_verspr) > 0) unique(na.omit(extract_ids_verspr[[1]])) else c()
@@ -550,22 +582,22 @@ if (terra::hasValues(cl_max) && terra::global(cl_max, "notNA")$notNA > 0) {
     } else {
       r_opp <- terra::mask(opp_bron, masker_ids)
       val <- terra::global(r_opp, "sum", na.rm=TRUE)[[1]]
-      return(round(val * 0.01, 2)) # Vermenigvuldig met 0.01 voor ha fractie
+      return(round(val * 0.01, 2))
     }
   }
 
-  ha_pot_bin   <- calc_ha(ids_pot_bin, "pot")
-  ha_pot_buit  <- calc_ha(ids_pot_buit, "pot")
-  ha_werk_bin  <- calc_ha(ids_werk_bin, "werk")
-  ha_werk_buit <- calc_ha(ids_werk_buit, "werk")
-  ha_arpl      <- calc_ha(ids_actueel_relevant, "werk")
+  ha_pot_bin      <- calc_ha(ids_pot_bin, "pot")
+  ha_pot_buit     <- calc_ha(ids_pot_buit, "pot")
+  ha_werk_bin     <- calc_ha(ids_werk_bin, "werk")
+  ha_werk_buit    <- calc_ha(ids_werk_buit, "werk")
+  ha_arpl         <- calc_ha(ids_actueel_relevant, "werk")
   ha_verspreiding <- calc_ha(ids_verspreiding_clusters, "werk")
 
   if(length(ids_actueel_relevant) > 0) {
     arpl_raster <- terra::match(cl_max, ids_actueel_relevant)
     arpl_raster <- (!is.na(arpl_raster)) * 1
   } else {
-    arpl_raster <- terra::rast(cl_max, vals = NA)
+    arpl_raster <- terra::rast(template_TV, vals = NA)
   }
 
 } else {
@@ -719,7 +751,6 @@ map %>%
 ```
 
 ```{r export}
-# --- EXPORT PAS HELEMAAL OP HET EINDE UITVOEREN ---
 base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
 folders <- list(
   potentie     = file.path(base_dir, "01_Maximale_Potentie"),
@@ -728,10 +759,8 @@ folders <- list(
   verspreiding = file.path(base_dir, "04_Actuele_Verspreiding")
 )
 
-# Zorg dat de mappenstructuur bestaat
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-# Robuuste opbouw van ARPL-raster (voorkomt matching errors)
 if(length(ids_actueel_relevant) > 0) {
   arpl_export_rast <- cl_max %in% ids_actueel_relevant
   arpl_export_rast <- terra::ifel(arpl_export_rast, 1, NA)
@@ -739,30 +768,25 @@ if(length(ids_actueel_relevant) > 0) {
   arpl_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# Robuuste opbouw van Werkelijk Habitat-raster
 if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
   werkelijk_export_rast <- terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA)
 } else {
   werkelijk_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# Configuratielijst voor de loop
 export_config <- list(
-  list(rast = final_max,             naam = "Maximale_Potentie",       folder = folders$potentie,     type = "INT1U"),
+  list(rast = final_max,              naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
   list(rast = werkelijk_export_rast, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,      naam = "ARPL",                    folder = folders$arpl,         type = "INT1U"),
+  list(rast = arpl_export_rast,      naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
   list(rast = verspreiding_raster,   naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 
 for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
-  # Maak een diepe, lokale kopie zodat de hoofdrasters in het R-geheugen onaangetast blijven
   export_rast <- terra::deepcopy(item$rast)
   export_rast <- terra::mask(export_rast, area_buffer_fix)
   
-  # GEFIXT: Als het raster volledig leeg (NA) is, vul het met 0 binnen de buffer 
-  # Dit voorkomt corrupte/onleesbare TIF-bestanden in GIS-software bij nulresultaten.
   if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
     export_rast <- terra::ifel(is.na(export_rast), 0, 0)
     export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
@@ -770,7 +794,6 @@ for(item in export_config) {
     export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
   }
   
-  # Schrijf weg met LZW-compressie (bespaart veel schijfruimte bij binaire rasters)
   writeRaster(export_rast, 
               filename = file_path, 
               overwrite = TRUE, 
