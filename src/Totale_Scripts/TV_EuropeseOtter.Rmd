@@ -284,11 +284,11 @@ gc()
 
 ```{r Otter Stap 2 - Landbiotopen smelten en zeven op 1000 ha}
 # ==============================================================================
-# OTTER STAP 2: LANDBIOTOPEN SMELTEN EN ZEVEN OP 1000 HA (GEOPTIMALISEERD)
+# OTTER STAP 2: LANDBIOTOPEN SMELTEN EN ZEVEN OP 1000 HA (PARALLEL & ONTAFHANKELIJK)
 # ==============================================================================
 message("-> Otter Spoor 2: Alle landbiotopen samenvoegen en opschonen...")
 
-# 1. Hulpfunctie definiëren om NAs en nullen op te schonen
+# 1. Hulpfunctie definiëren om NAs en nullen op te schalen
 clean_max <- function(r) {
   if (is.null(r)) return(template_TV * NA)
   r[is.na(r) | r == 0] <- NA
@@ -301,7 +301,6 @@ opp_stack <- c(
   clean_max(r_opp), clean_max(s_opp), clean_max(t_opp), clean_max(v_opp)
 )
 
-# 3. Bereken de som van de fracties (max. 1.0) en de binaire aanwezigheid
 otter_biotopen_opp <- sum(opp_stack, na.rm = TRUE)
 otter_biotopen_opp <- terra::clamp(otter_biotopen_opp, upper = 1.0)
 otter_biotopen_max <- terra::ifel(otter_biotopen_opp > 0, 1, NA)
@@ -309,50 +308,68 @@ otter_biotopen_max <- terra::ifel(otter_biotopen_opp > 0, 1, NA)
 rm(opp_stack)
 gc()
 
-# 4. SNELLER ALTERNATIEF VOOR CLUSTER FILTERING (Via Vector Polygons)
+# --- SPOOR A: MAXIMALE POTENTIE (Binair zeven op 1000 ha) ---
 if (!all(is.na(terra::values(otter_biotopen_max, mat = FALSE)))) {
-  message("-> Landbiotopen clusteren en zeven op minimale drempel (1000 ha)...")
+  message("-> Spoor A: Landbiotopen clusteren en zeven op 1000 ha (Binair)...")
   
-  # A. Maak ruwe polygonen van de landbiotoop-pixels
-  poly_land <- terra::as.polygons(otter_biotopen_max, aggregate = TRUE) %>% terra::disagg()
+  poly_land_max <- terra::as.polygons(otter_biotopen_max, aggregate = TRUE) %>% terra::disagg()
+  poly_buf_max  <- terra::buffer(poly_land_max, width = 50)
+  poly_net_max  <- terra::aggregate(poly_buf_max) %>% terra::disagg()
+  poly_net_max$Cluster_ID <- 1:nrow(poly_net_max)
   
-  # B. Smelt polygonen samen die binnen 100m van elkaar liggen (buffer 50m)
-  poly_buf <- terra::buffer(poly_land, width = 50)
-  poly_net <- terra::aggregate(poly_buf) %>% terra::disagg()
-  poly_net$Cluster_ID <- 1:nrow(poly_net)
-  
-  # C. Ken de Cluster_IDs toe aan de oorspronkelijke ruimtelijke vlakken
-  poly_land$Cluster_ID <- terra::relate(poly_land, poly_net, "within") %>% 
+  poly_land_max$Cluster_ID <- terra::relate(poly_land_max, poly_net_max, "within") %>% 
     apply(1, function(x) { if(any(x)) which(x)[1] else NA })
   
-  # D. Rasteriseer de Cluster IDs terug naar een tijdelijk raster
-  r_clusters <- terra::rasterize(poly_land, template_TV, field = "Cluster_ID", touches = FALSE)
+  r_clusters_max <- terra::rasterize(poly_land_max, template_TV, field = "Cluster_ID", touches = FALSE)
   
-  # E. Sommeer de effectieve hectare-oppervlakte per cluster
-  zonal_ha <- terra::zonal(otter_biotopen_opp, r_clusters, fun = "sum", na.rm = TRUE)
-  colnames(zonal_ha) <- c("Cluster_ID", "Som_Pixels")
-  zonal_ha$Opp_ha <- zonal_ha$Som_Pixels * 0.01 # 1 pixel (10x10m) = 0.01 ha
+  freq_max <- terra::freq(r_clusters_max)
+  freq_max$Opp_ha <- freq_max$count * 0.01 # 1 pixel = 0.01 ha
   
-  # F. Selecteer alleen clusters met >= 1000 ha werkelijk habitat
-  voldoet_ids <- zonal_ha$Cluster_ID[zonal_ha$Opp_ha >= 1000]
+  voldoet_ids_max <- freq_max$value[freq_max$Opp_ha >= 1000]
   
-  if (length(voldoet_ids) > 0) {
-    # Maskeer het raster op basis van de geldige cluster-IDs
-    otter_biotopen1000_max <- terra::mask(otter_biotopen_max, r_clusters %in% voldoet_ids, maskvalues = FALSE)
-    otter_biotopen1000_opp <- terra::mask(otter_biotopen_opp, otter_biotopen1000_max)
+  if (length(voldoet_ids_max) > 0) {
+    otter_biotopen1000_max <- terra::mask(otter_biotopen_max, r_clusters_max %in% voldoet_ids_max, maskvalues = FALSE)
   } else {
     otter_biotopen1000_max <- template_TV * NA
-    otter_biotopen1000_opp <- template_TV * NA
   }
-  
-  rm(poly_land, poly_buf, poly_net, r_clusters, zonal_ha)
+  rm(poly_land_max, poly_buf_max, poly_net_max, r_clusters_max, freq_max)
 } else {
   otter_biotopen1000_max <- template_TV * NA
+}
+
+# --- SPOOR B: WERKELIJKE OPPERVLAKTE (Parallel & Autonoom zeven op 1000 ha) ---
+r_binair_land_opp <- terra::ifel(!is.na(otter_biotopen_opp) & otter_biotopen_opp > 0, 1, NA)
+
+if (!all(is.na(terra::values(r_binair_land_opp, mat = FALSE)))) {
+  message("-> Spoor B: Landbiotopen clusteren en zeven op 1000 ha (Fracties)...")
+  
+  poly_land_opp <- terra::as.polygons(r_binair_land_opp, aggregate = TRUE) %>% terra::disagg()
+  poly_buf_opp  <- terra::buffer(poly_land_opp, width = 50)
+  poly_net_opp  <- terra::aggregate(poly_buf_opp) %>% terra::disagg()
+  poly_net_opp$Cluster_ID <- 1:nrow(poly_net_opp)
+  
+  poly_land_opp$Cluster_ID <- terra::relate(poly_land_opp, poly_net_opp, "within") %>% 
+    apply(1, function(x) { if(any(x)) which(x)[1] else NA })
+  
+  r_clusters_opp <- terra::rasterize(poly_land_opp, template_TV, field = "Cluster_ID", touches = FALSE)
+  
+  zonal_ha_opp <- terra::zonal(otter_biotopen_opp, r_clusters_opp, fun = "sum", na.rm = TRUE)
+  colnames(zonal_ha_opp) <- c("Cluster_ID", "Som_Pixels")
+  zonal_ha_opp$Opp_ha    <- zonal_ha_opp$Som_Pixels * 0.01
+  
+  voldoet_ids_opp <- zonal_ha_opp$Cluster_ID[zonal_ha_opp$Opp_ha >= 1000]
+  
+  if (length(voldoet_ids_opp) > 0) {
+    otter_biotopen1000_opp <- terra::mask(otter_biotopen_opp, r_clusters_opp %in% voldoet_ids_opp, maskvalues = FALSE)
+  } else {
+    otter_biotopen1000_opp <- template_TV * NA
+  }
+  rm(poly_land_opp, poly_buf_opp, poly_net_opp, r_clusters_opp, zonal_ha_opp)
+} else {
   otter_biotopen1000_opp <- template_TV * NA
 }
 
-# Geheugen weer netjes vrijmaken
-suppressWarnings(rm(otter_biotopen_max, otter_biotopen_opp))
+suppressWarnings(rm(otter_biotopen_max, otter_biotopen_opp, r_binair_land_opp))
 gc()
 ```
 
@@ -365,47 +382,54 @@ message("-> Otter Spoor 3: Wederzijdse afstandsmetingen uitvoeren (max. 1000m)..
 final_max <- template_TV * NA
 final_opp <- template_TV * NA
 
-if (exists("otter_biotopen1000_max") && !all(is.na(terra::values(otter_biotopen1000_max, mat=FALSE))) &&
-    exists("otter_water_max") && !all(is.na(terra::values(otter_water_max, mat=FALSE)))) {
+if (exists("otter_water_max") && !all(is.na(terra::values(otter_water_max, mat=FALSE)))) {
   
-  # 1. Afstandsrasters berekenen (geheugenzuinig)
-  dist_tot_water <- terra::distance(otter_water_max)
-  dist_tot_land  <- terra::distance(otter_biotopen1000_max)
+  # --- SPOOR A: MAXIMALE POTENTIE ---
+  if (exists("otter_biotopen1000_max") && !all(is.na(terra::values(otter_biotopen1000_max, mat=FALSE)))) {
+    dist_tot_water_max <- terra::distance(otter_water_max)
+    dist_tot_land_max  <- terra::distance(otter_biotopen1000_max)
+    
+    leefgebied3_max <- otter_biotopen1000_max == 1 & dist_tot_water_max <= 1000
+    leefgebied4_max <- otter_water_max == 1 & dist_tot_land_max <= 1000
+    
+    otter_leefgebied_max <- leefgebied3_max | leefgebied4_max
+    final_max <- terra::ifel(otter_leefgebied_max == 1, 1, NA) %>% terra::crop(template_TV)
+    
+    rm(dist_tot_water_max, dist_tot_land_max, leefgebied3_max, leefgebied4_max, otter_leefgebied_max)
+  }
   
-  # GDX: europeseotter_leefgebied3 = and(biotopen1000, cellDistanceLe(water, 1000m))
-  leefgebied3_max <- otter_biotopen1000_max == 1 & dist_tot_water <= 1000
-  leefgebied3_opp <- terra::mask(otter_biotopen1000_opp, leefgebied3_max)
+  # --- SPOOR B: WERKELIJKE OPPERVLAKTE (Parallel & Autonoom) ---
+  r_binair_land1000_opp <- terra::ifel(!is.na(otter_biotopen1000_opp) & otter_biotopen1000_opp > 0, 1, NA)
   
-  # Afstandsraster meteen opruimen uit geheugen!
-  rm(dist_tot_water)
+  if (!all(is.na(terra::values(r_binair_land1000_opp, mat=FALSE)))) {
+    dist_tot_water_opp <- terra::distance(otter_water_max)
+    dist_tot_land_opp  <- terra::distance(r_binair_land1000_opp)
+    
+    leefgebied3_opp_mask <- r_binair_land1000_opp == 1 & dist_tot_water_opp <= 1000
+    leefgebied3_opp      <- terra::mask(otter_biotopen1000_opp, leefgebied3_opp_mask)
+    
+    leefgebied4_opp_mask <- otter_water_max == 1 & dist_tot_land_opp <= 1000
+    r_water_opp_full     <- terra::ifel(otter_water_max == 1, 1.0, NA)
+    leefgebied4_opp      <- terra::mask(r_water_opp_full, leefgebied4_opp_mask)
+    
+    l3_clean <- terra::ifel(is.na(leefgebied3_opp), 0, leefgebied3_opp)
+    l4_clean <- terra::ifel(is.na(leefgebied4_opp), 0, leefgebied4_opp)
+    
+    otter_leefgebied_opp_raw <- terra::clamp(l3_clean + l4_clean, upper = 1.0)
+    otter_leefgebied_opp     <- terra::ifel(!is.na(otter_leefgebied_opp_raw) & otter_leefgebied_opp_raw > 0, otter_leefgebied_opp_raw, NA)
+    
+    final_opp <- terra::crop(otter_leefgebied_opp, template_TV)
+    
+    rm(dist_tot_water_opp, dist_tot_land_opp, leefgebied3_opp_mask, leefgebied3_opp, 
+       leefgebied4_opp_mask, r_water_opp_full, l3_clean, l4_clean, otter_leefgebied_opp_raw, otter_leefgebied_opp)
+  }
+  
+  rm(r_binair_land1000_opp)
   gc()
-  
-  # GDX: europeseotter_leefgebied4 = and(water, cellDistanceLe(biotopen1000, 1000m))
-  leefgebied4_max <- otter_water_max == 1 & dist_tot_land <= 1000
-  
-  rm(dist_tot_land)
-  gc()
-  
-  # Water krijgt een volledige dekkingsfractie van 1.0 per pixel
-  r_water_opp_full <- terra::ifel(otter_water_max == 1, 1.0, NA)
-  leefgebied4_opp  <- terra::mask(r_water_opp_full, leefgebied4_max)
-  
-  # GDX: or(leefgebied3, leefgebied4)
-  otter_leefgebied_max <- leefgebied3_max | leefgebied4_max
-  otter_leefgebied_max <- terra::ifel(otter_leefgebied_max == 1, 1, NA) %>% terra::crop(template_TV)
-  
-  # Fractionele cover-combinatie
-  l3_clean <- terra::ifel(is.na(leefgebied3_opp), 0, leefgebied3_opp)
-  l4_clean <- terra::ifel(is.na(leefgebied4_opp), 0, leefgebied4_opp)
-  otter_leefgebied_opp <- terra::clamp(l3_clean + l4_clean, upper = 1.0) %>% 
-    terra::mask(otter_leefgebied_max) %>% 
-    terra::crop(template_TV)
   
   # --- KOPPELING NAAR FINALE TABELLEN EN KAARTEN ---
-  final_max <- otter_leefgebied_max
-  final_opp <- otter_leefgebied_opp
-  cl_max    <- final_max
-  bwk_opp   <- final_opp
+  cl_max  <- final_max
+  bwk_opp <- final_opp
   
   cat("\n=========================================================\n")
   cat("          RESULTATEN MODEL EUROPESE OTTER                 \n")
@@ -413,20 +437,14 @@ if (exists("otter_biotopen1000_max") && !all(is.na(terra::values(otter_biotopen1
   cat("Totaal stabiel leefgebied Otter (ha):", round(calc_ha_exact(final_opp), 2), "\n")
   cat("=========================================================\n\n")
   
-  suppressWarnings(rm(leefgebied3_max, leefgebied3_opp, 
-                      leefgebied4_max, leefgebied4_opp, r_water_opp_full, l3_clean, l4_clean,
-                      otter_leefgebied_max, otter_leefgebied_opp))
 } else {
   message("⚠️ Knelpunt: Er is geen landnetwerk >1000 ha óf geen water aanwezig in de actieve regio!")
   cl_max  <- final_max
   bwk_opp <- final_opp
 }
 
-# Back-up variabelen voor renderer en kaarten-mal onderaan
-r_status  <- final_max
-cl_max    <- final_max # Wordt in de volgende chunk via polygonen gebufferd naar unieke netwerken
+r_status <- final_max
 
-# Bewaar finale waterbiotoop-laag voor Leaflet als die bestaat
 if (exists("otter_water_max")) {
   otter_waterbiotoop1_finaal_max <- otter_water_max 
 }
@@ -727,7 +745,7 @@ if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
 export_config <- list(
   list(rast = final_max,              naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
   list(rast = werkelijk_export_rast, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,      naam = "ARPL",                     folder = folders$arpl,        type = "INT1U"),
+  list(rast = arpl_export_rast,      naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
   list(rast = verspreiding_raster,   naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 

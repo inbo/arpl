@@ -254,42 +254,24 @@ gc()
 ```{r Cluster}
 drempel_m2 <- oppervlakte_ha * 10000
 
-# 1. Bereken de clusters op basis van de maximale binaire potentie
+# --- SPOOR 1: MAX (Binair op basis van aanwezigheid) ---
 res_max <- cluster_filter_compleet(bwk_max, bwk_opp, drempel_m2, afstand_m, werkelijk = FALSE)
 
+# --- SPOOR 2: OPP (Volledig parallel op basis van werkelijke fracties) ---
+r_binair_opp <- terra::ifel(!is.na(bwk_opp) & bwk_opp > 0, 1, NA)
+res_opp <- cluster_filter_compleet(r_binair_opp, bwk_opp, drempel_m2, afstand_m, werkelijk = TRUE)
+
 final_max <- res_max$raster
+final_opp <- res_opp$raster
 cl_max    <- res_max$clusters
+cl_opp    <- res_opp$clusters
 
-# 2. FIX: In plaats van een tweede onafhankelijke cluster_filter_compleet te draaien 
-# (wat voor fragmentatie zorgt), evalueren we de werkelijke oppervlakte binnen de zojuist gemaakte cl_max clusters.
-if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
-  # Bereken de werkelijke oppervlakte (som van fracties) per uniek cluster uit cl_max
-  zonal_werkelijk <- terra::zonal(bwk_opp, cl_max, fun = "sum", na.rm = TRUE)
-  colnames(zonal_werkelijk) <- c("ID", "Werk_m2")
-  # De fractie-som * 100 geeft de oppervlakte in m2
-  zonal_werkelijk$Werk_m2 <- zonal_werkelijk$Werk_m2 * 100
-  
-  # Welke cluster-IDs voldoen aan de werkelijke drempel?
-  ids_werkelijk_voldoet <- zonal_werkelijk$ID[zonal_werkelijk$Werk_m2 >= drempel_m2]
-  
-  if(length(ids_werkelijk_voldoet) > 0) {
-    final_opp <- terra::mask(final_max, cl_max %in% ids_werkelijk_voldoet)
-    cl_opp    <- terra::mask(cl_max, cl_max %in% ids_werkelijk_voldoet)
-  } else {
-    final_opp <- final_max * NA
-    cl_opp    <- cl_max * NA
-  }
-} else {
-  final_opp <- final_max * NA
-  cl_opp    <- cl_max * NA
-}
-
-grens_merged <- terra::aggregate(area_shape_proj)
-buffer_lijn  <- terra::buffer(grens_merged, width = buffer_m)
+grens_merged  <- terra::aggregate(area_shape_proj)
+buffer_lijn   <- terra::buffer(grens_merged, width = buffer_m)
 binnen_masker <- terra::rasterize(grens_merged, template_TV, field = 1)
 
-# Statusraster opbouwen op basis van de gecorrigeerde lagen
-if (terra::global(is.na(final_max), "sum")[[1]] != terra::ncell(final_max)) {
+# Statusraster opbouwen op basis van de gecorrigeerde en ontkoppelde lagen
+if (!all(is.na(terra::values(final_max, mat=FALSE)))) {
   is_loss   <- !is.na(final_max) & is.na(final_opp)
   is_kept   <- !is.na(final_opp)
   is_inside <- !is.na(binnen_masker)
@@ -573,10 +555,9 @@ folders <- list(
   verspreiding = file.path(base_dir, "04_Actuele_Verspreiding")
 )
 
-# Zorg dat de mappenstructuur bestaat
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-# Robuuste opbouw van ARPL-raster (voorkomt matching errors)
+# Robuuste opbouw van ARPL-raster
 if(length(ids_actueel_relevant) > 0) {
   arpl_export_rast <- cl_max %in% ids_actueel_relevant
   arpl_export_rast <- terra::ifel(arpl_export_rast, 1, NA)
@@ -584,7 +565,7 @@ if(length(ids_actueel_relevant) > 0) {
   arpl_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# Robuuste opbouw van Werkelijk Habitat-raster
+# Robuuste opbouw van Werkelijk Habitat-raster (Spoor B)
 if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
   werkelijk_export_rast <- terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA)
 } else {
@@ -593,21 +574,18 @@ if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
 
 # Configuratielijst voor de loop
 export_config <- list(
-  list(rast = final_max,             naam = "Maximale_Potentie",       folder = folders$potentie,     type = "INT1U"),
+  list(rast = final_max,              naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
   list(rast = werkelijk_export_rast, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,      naam = "ARPL",                    folder = folders$arpl,         type = "INT1U"),
+  list(rast = arpl_export_rast,      naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
   list(rast = verspreiding_raster,   naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 
 for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
-  # Maak een diepe, lokale kopie zodat de hoofdrasters in het R-geheugen onaangetast blijven
   export_rast <- terra::deepcopy(item$rast)
   export_rast <- terra::mask(export_rast, area_buffer_fix)
   
-  # GEFIXT: Als het raster volledig leeg (NA) is, vul het met 0 binnen de buffer 
-  # Dit voorkomt corrupte/onleesbare TIF-bestanden in GIS-software bij nulresultaten.
   if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
     export_rast <- terra::ifel(is.na(export_rast), 0, 0)
     export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
@@ -615,7 +593,6 @@ for(item in export_config) {
     export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
   }
   
-  # Schrijf weg met LZW-compressie (bespaart veel schijfruimte bij binaire rasters)
   writeRaster(export_rast, 
               filename = file_path, 
               overwrite = TRUE, 

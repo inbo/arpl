@@ -97,14 +97,12 @@ rm(df, resultaat)
 area_shape  <- vect(here("data/input/Turnhouts_Vennegebied.shp"))
 master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
 
-# Inlezen van de CSV-sleutel (gebruikt om tabel-indices te mappen naar codes)
 df_namen_sleutel <- read_csv(here("data/input/Excel_files/BWK_Laag_Namen_2025.csv"), show_col_types = FALSE)
 gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
 
 area_shape_proj <- project(area_shape, crs(master_grid))
 area_buffer_fix <- buffer(area_shape_proj, width = buffer_m)
 
-# Vertaalraster bouwen (Zonder de zware TIF cube in te laden!)
 message("-> Vertaalraster voor globale/lokale cellen opbouwen...")
 id_raster_TV <- crop(master_grid, area_buffer_fix, snap = "near")
 
@@ -121,11 +119,11 @@ vertaal_df <- vertaal_df[!is.na(globale_id)]
 studiegebied_globale_ids <- unique(vertaal_df$globale_id)
 
 values(id_raster_TV) <- NA
-template_TV          <- id_raster_TV * NA
+template_TV <- terra::rasterize(area_buffer_fix, id_raster_TV, field = 1, background = 0)
 
 grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
 
-rm(globale_id_raster, id_raster_TV_globale_values)
+rm(globale_id_raster, id_raster_TV_globale_values, extractie_ids)
 gc()
 ```
 
@@ -458,12 +456,12 @@ grutto_kern_10ha_max <- terra::mask(grutto_kern_finaal_max, masker_max)
 ```
 
 ```{r Cluster Tabel Werkelijkheid}
-# 1. Clusteren op basis van de fracties/percentages
-r_bridge_opp <- terra::focal(grutto_kern_finaal_opp, w = 5, fun = "max", na.rm = TRUE)
+# 1. Clusteren op basis van de fracties/percentages (Spoor B)
+r_binair_finaal_opp <- terra::ifel(!is.na(grutto_kern_finaal_opp) & grutto_kern_finaal_opp > 0, 1, NA)
+r_bridge_opp <- terra::focal(r_binair_finaal_opp, w = 5, fun = "max", na.rm = TRUE)
 cl_id_opp <- terra::patches(r_bridge_opp, directions = 8, zeroAsNA = TRUE)
 
 # 2. Tabel maken voor Werkelijke Oppervlakte
-# We tellen de som van de fractie-waarden (* 0.01 voor ha)
 habitat_pixels_opp <- grutto_kern_finaal_opp * 0.01
 stats_opp <- terra::zonal(habitat_pixels_opp, cl_id_opp, fun = "sum", na.rm = TRUE)
 colnames(stats_opp) <- c("Cluster_ID", "Werkelijke_ha")
@@ -481,8 +479,11 @@ if(length(ids_winnaars_opp) > 0) {
   masker_opp <- terra::match(cl_id_opp, ids_winnaars_opp)
   grutto_kern_10ha_opp <- terra::mask(grutto_kern_finaal_opp, masker_opp)
 } else {
-  grutto_kern_10ha_opp <- terra::rast(grutto_kern_finaal_opp, vals = NA)
+  grutto_kern_10ha_opp <- terra::rast(template_TV, vals = NA)
 }
+
+rm(r_binair_finaal_opp, r_bridge_opp, habitat_pixels_opp)
+gc()
 ```
 
 ```{r Finale Cijfers}
@@ -620,96 +621,64 @@ kaart_wasstraat
 # --- STAP 7: SAMENVOEGEN BOUWSTENEN (GECORRIGEERDE RASTER MAX LOGICA) ---
 
 # 1. MAXIMALE POTENTIE (Binair)
-# GEFIXT: Losse rasters eerst bundelen met c() tot één stack, daarna max() nemen
-grutto_bouwsteen_totaal_max <- max(c(grutto_cultuur_max, grutto_hooiland_max, grutto_water_max), na.rm = TRUE)
+grutto_bouwsteen_totaal_max <- terra::cover(grutto_cultuur_max, grutto_hooiland_max)
+grutto_bouwsteen_totaal_max <- terra::cover(grutto_bouwsteen_totaal_max, grutto_water_max)
 names(grutto_bouwsteen_totaal_max) <- "bouwsteen_totaal_max"
 
-# 2. WERKELIJKE OPPERVLAKTE (Conservatieve samenvoeging)
-# GEFIXT: Losse rasters gebundeld met c()
-grutto_bouwsteen_totaal_opp <- max(c(grutto_cultuur_opp, grutto_hooiland_opp, grutto_water_opp), na.rm = TRUE)
+# 2. WERKELIJKE OPPERVLAKTE (Conservatieve samenvoeging van fracties)
+grutto_bouwsteen_totaal_opp <- terra::cover(grutto_cultuur_opp, grutto_hooiland_opp)
+grutto_bouwsteen_totaal_opp <- terra::cover(grutto_bouwsteen_totaal_opp, grutto_water_opp)
 names(grutto_bouwsteen_totaal_opp) <- "bouwsteen_totaal_opp"
 
 # 3. Opschonen: pixels zonder habitat op NA zetten
 grutto_bouwsteen_totaal_max <- terra::ifel(grutto_bouwsteen_totaal_max == 0, NA, grutto_bouwsteen_totaal_max)
 grutto_bouwsteen_totaal_opp <- terra::ifel(grutto_bouwsteen_totaal_opp == 0, NA, grutto_bouwsteen_totaal_opp)
 
-# --- CONTROLE ---
 ha_bouw_start <- as.numeric(terra::global(grutto_bouwsteen_totaal_opp, "sum", na.rm=TRUE)[1,1]) * 0.01
 print(paste("Startoppervlakte gecombineerde bouwstenen:", round(ha_bouw_start, 2), "ha"))
 ```
 
 ```{r Cultuurhooi1b}
-# --- STAP 8: CULTUURHOOI1B OPHALEN (SYNC OP MASTER-GRID) ---
+# --- STAP 8: CULTUURHOOI1B OPHALEN & SAMENVOEGEN ---
 
-# 1. Sync de inputs vanuit de centrale data.table lijsten
 grutto_1b_match_sync <- c1b_match
 grutto_1b_opp_sync   <- c1b_opp
 
-# A. MAXIMALE POTENTIE
 grutto_1b_max <- grutto_1b_match_sync
 grutto_1b_max[grutto_1b_max == 0] <- NA
-
-# B. WERKELIJKE OPPERVLAKTE
 grutto_1b_opp <- terra::mask(grutto_1b_opp_sync, grutto_1b_max)
 
 names(grutto_1b_max) <- "1b_max"
 names(grutto_1b_opp) <- "1b_opp"
 
+# --- STAP 9 & 10: SAMENVOEGEN BIJKOMEND HABITAT EN FILTERS ---
+grutto_basis_bouw_1b_max <- terra::cover(grutto_bouwsteen_totaal_max, grutto_1b_max)
 
-# --- STAP 9 & 10: SAMENVOEGEN BIJKOMEND HABITAT EN KLOPPENDE FILTERS (1/NA FIX) ---
-
-# 1. Basis combinatie van de bouwstenen en de 1b-laag
-grutto_basis_bouw_1b_max <- max(c(grutto_bouwsteen_totaal_max, grutto_1b_max), na.rm = TRUE)
-
-
-# 2. SCHONE EN VEILIGE 1/NA FILTERS OPBOUWEN
-# We zorgen dat de uitsluitingszones ENKEL een 1 bevatten, de rest MOET NA zijn!
-
-# Filter A: Akkers (overal waar akker_match == 1 wordt 1, de rest wordt NA)
-filter_akker <- terra::ifel(akker_match == 1, 1, NA)
-
-# Filter B: Bebouwing (waar de 100m buffer TRUE is wordt 1, de rest wordt NA)
+filter_akker  <- terra::ifel(akker_match == 1, 1, NA)
 filter_bebouw <- terra::ifel(masker_bebouw_100m_groot == 1, 1, NA)
+filter_groen  <- terra::ifel(masker_groen_50m_cluster == 1, 1, NA)
 
-# Filter C: Hooggroen (waar de 50m buffer TRUE is wordt 1, de rest wordt NA)
-filter_groen <- terra::ifel(masker_groen_50m_cluster == 1, 1, NA)
-
-
-# 3. WATERDICHTE UITSLUITINGEN UITVOEREN VIA INVERSE MASK
-# Omdat de filters nu zuiver 1 en NA zijn, blijft de 'vrije ruimte' perfect intact!
-
-# Pas Akker-verlies toe
-grutto_c1_m1_max <- terra::mask(grutto_basis_bouw_1b_max, filter_akker, inverse = TRUE)
-
-# Pas Bebouwings-verlies toe
-grutto_c1_m2_max <- terra::mask(grutto_c1_m1_max, filter_bebouw, inverse = TRUE)
-
-# Pas Hooggroen-verlies toe
+# Spoor A: Maximaal Potentieel
+grutto_c1_m1_max     <- terra::mask(grutto_basis_bouw_1b_max, filter_akker, inverse = TRUE)
+grutto_c1_m2_max     <- terra::mask(grutto_c1_m1_max, filter_bebouw, inverse = TRUE)
 grutto_c1_finaal_max <- terra::mask(grutto_c1_m2_max, filter_groen, inverse = TRUE)
 
+# Spoor B: Werkelijke Oppervlakte (Parallel & Autonoom)
+grutto_cultuurhooi1_opp <- terra::cover(grutto_bouwsteen_totaal_opp, grutto_1b_opp)
+grutto_c1_m1_opp        <- terra::mask(grutto_cultuurhooi1_opp, filter_akker, inverse = TRUE)
+grutto_c1_m2_opp        <- terra::mask(grutto_c1_m1_opp, filter_bebouw, inverse = TRUE)
+grutto_c1_finaal_opp    <- terra::mask(grutto_c1_m2_opp, filter_groen, inverse = TRUE)
 
-# 4. HET WERKELIJKE SPOOR (FRACTIES EN PERCENTAGES BEREKENEN)
-grutto_cultuurhooi1_opp <- max(c(grutto_bouwsteen_totaal_opp, grutto_1b_opp), na.rm = TRUE)
-
-# Gebruik de gefilterde max-kaart om de fracties te maskeren
-grutto_c1_finaal_opp <- terra::mask(grutto_cultuurhooi1_opp, grutto_c1_finaal_max)
-
-
-# 5. BACKWARDS COMPATIBILITY VOOR DIEERE BLOKKEN
 grutto_scenA_finaal_max <- grutto_c1_finaal_max
 grutto_scenB_finaal_opp <- grutto_c1_finaal_opp
 
-
-# --- CIJFER CONTROLE & DIAGNOSE ---
 ha_finaal_clean_maxpot <- calc_ha_exact(grutto_c1_finaal_max)
 ha_finaal_clean_opp    <- calc_ha_exact(grutto_c1_finaal_opp)
 
 print(paste("Oppervlakte grutto_cultuurhooi1 max potentie (Zonder akker/bebouw/hooggroen):", round(ha_finaal_clean_maxpot, 2), "ha"))
 print(paste("Oppervlakte grutto_cultuurhooi1 werkelijke oppervlaktes (Zonder akker/bebouw/hooggroen):", round(ha_finaal_clean_opp, 2), "ha"))
 
-
-# --- GRONDIGE RAM SCHOONMAAK VAN TUSSENRESULTATEN ---
-rm(grutto_basis_bouw_1b_max, grutto_c1_m1_max, grutto_c1_m2_max, filter_akker, filter_bebouw, filter_groen,
+rm(grutto_basis_bouw_1b_max, grutto_c1_m1_max, grutto_c1_m2_max, grutto_c1_m1_opp, grutto_c1_m2_opp, filter_akker, filter_bebouw, filter_groen,
    grutto_cultuurhooi1_opp, grutto_bouwsteen_totaal_max, grutto_bouwsteen_totaal_opp)
 gc()
 ```
@@ -1065,69 +1034,57 @@ if(!is.null(resB_strikt) && !all(is.na(terra::values(resB_strikt$kern, mat=FALSE
 # ==============================================================================
 base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
 folders <- list(
-  potentie      = file.path(base_dir, "01_Maximale_Potentie"),
-  werkelijk     = file.path(base_dir, "02_Werkelijke_Oppervlakte"),
-  arpl          = file.path(base_dir, "03_ARPL"),
-  verspreiding  = file.path(base_dir, "04_Actuele_Verspreiding")
+  potentie     = file.path(base_dir, "01_Maximale_Potentie"),
+  werkelijk    = file.path(base_dir, "02_Werkelijke_Oppervlakte"),
+  arpl         = file.path(base_dir, "03_ARPL"),
+  verspreiding = file.path(base_dir, "04_Actuele_Verspreiding")
 )
 
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-# --- STAP 1: VARIABELEN KLAARETZEN EN FORMATTEREN NAAR 1/NA ---
-
-# 1. Spoor A: Maximale Potentie (Combinatie van kern + bouw via grutto_kaart_A)
 if(exists("grutto_kaart_A") && !all(is.na(terra::values(grutto_kaart_A, mat=FALSE)))) {
   potentie_export_rast <- terra::ifel(grutto_kaart_A > 0, 1, NA)
 } else {
   potentie_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# 2. Spoor B: Werkelijke Oppervlakte (Combinatie van de resB_strikt lagen)
-if(!is.null(resB_strikt) && (!all(is.na(terra::values(resB_strikt$kern, mat=FALSE))) || !all(is.na(terra::values(resB_strikt$bouw, mat=FALSE))))) {
-  r_net_totaal_opp <- max(c(resB_strikt$kern, resB_strikt$bouw), na.rm = TRUE)
-  werkelijk_export_rast_clean <- terra::ifel(r_net_totaal_opp > 0, 1, NA)
+if(!is.null(resB_strikt) && (!all(is.na(terra::values(resB_strikt$kern, mat=FALSE))) \vert{}\vert{} !all(is.na(terra::values(resB_strikt$bouw, mat=FALSE))))) {
+  r_net_totaal_opp <- terra::cover(resB_strikt$kern, resB_strikt$bouw)
+  werkelijk_export_rast_clean <- terra::ifel(!is.na(r_net_totaal_opp) & r_net_totaal_opp > 0, 1, NA)
 } else {
   werkelijk_export_rast_clean <- terra::rast(template_TV, vals = NA)
 }
 
-# 3. ARPL: Gekoppeld aan de werkelijke grutto_arpl_opp laag
 if(exists("grutto_arpl_opp") && !all(is.na(terra::values(grutto_arpl_opp, mat=FALSE)))) {
   arpl_export_rast <- terra::ifel(grutto_arpl_opp > 0, 1, NA)
 } else {
   arpl_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# 4. Actuele Verspreiding: Gekoppeld aan de werkelijke grutto_verspreiding_bin laag
 if(exists("grutto_verspreiding_bin") && !all(is.na(terra::values(grutto_verspreiding_bin, mat=FALSE)))) {
   verspreiding_export_rast <- terra::ifel(grutto_verspreiding_bin > 0, 1, NA)
 } else {
   verspreiding_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-
-# --- STAP 2: BUNDEL DE CONFIGURATIE EN SCHRIJF NAAR SCHIJF ---
 export_config <- list(
-  list(rast = potentie_export_rast,        naam = "Maximale_Potentie",       folder = folders$potentie,     type = "INT1U"),
+  list(rast = potentie_export_rast,        naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
   list(rast = werkelijk_export_rast_clean, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,            naam = "ARPL",                    folder = folders$arpl,         type = "INT1U"),
+  list(rast = arpl_export_rast,            naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
   list(rast = verspreiding_export_rast,    naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 
-# De export-loop voegt netjes de nullen-omranding toe op de bufferzone via updatevalue
 for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
-  # Maak een diepe kopie in het RAM om interferentie tussen de loops te vermijden
   export_rast <- terra::deepcopy(item$rast)
   export_rast <- terra::mask(export_rast, area_buffer_fix)
   
   if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
-    # Is de kaart leeg? Vul de bufferzone met harde nullen (0/0 kaart)
     export_rast <- terra::ifel(is.na(export_rast), 0, 0)
     export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
   } else {
-    # Bevat de kaart data? Forceer de NA-achtergrond strak naar een stabiele 0 (1/0 kaart)
-    export_rast = terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
   }
   
   writeRaster(export_rast, 
@@ -1139,12 +1096,11 @@ for(item in export_config) {
   message(paste("   [OK] Geëxporteerd:", basename(file_path)))
 }
 
-# Opschonen van de tijdelijke exportrasters uit het geheugen
 rm(potentie_export_rast, werkelijk_export_rast_clean, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
 if(exists("r_net_totaal_opp")) rm(r_net_totaal_opp)
 gc()
 
-message("✓ Grutto-kaarten succesvol geëxporteerd! Alle bestanden zijn uniform opgebouwd als stabiele binaire INT1U rasters.")
+message("✓ Grutto-kaarten succesvol geëxporteerd!")
 ```
 
 ```{r Stap 13 Interactieve kaart}

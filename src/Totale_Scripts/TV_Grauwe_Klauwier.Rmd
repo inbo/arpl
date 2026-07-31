@@ -395,17 +395,30 @@ impact_map
 # ==============================================================================
 message("-> Kernbiotoop clusteren op 50m en zeven op minimaal 10 ha...")
 
-cl_kern <- cluster_filter_compleet(
+# --- SPOOR A: MAX ---
+cl_kern_max <- cluster_filter_compleet(
   masker     = voortplanting_gezuiverd_max,
   opp_laag   = voortplanting_gezuiverd_opp,
-  drempel_m2 = 10 * 10000, # Expertgrens van 10 hectare
+  drempel_m2 = 10 * 10000,
   dist_m     = 50,
   werkelijk  = FALSE
 )
+r_kern_10ha_max <- cl_kern_max$raster
 
-r_kern_10ha_max <- cl_kern$raster
-r_kern_10ha_opp <- terra::mask(voortplanting_gezuiverd_opp, r_kern_10ha_max)
+# --- SPOOR B: OPP (Parallel & Autonoom) ---
+r_binair_gezuiverd_opp <- terra::ifel(!is.na(voortplanting_gezuiverd_opp) & voortplanting_gezuiverd_opp > 0, 1, NA)
 
+cl_kern_opp <- cluster_filter_compleet(
+  masker     = r_binair_gezuiverd_opp,
+  opp_laag   = voortplanting_gezuiverd_opp,
+  drempel_m2 = 10 * 10000,
+  dist_m     = 50,
+  werkelijk  = TRUE
+)
+r_kern_10ha_opp <- cl_kern_opp$raster
+
+rm(r_binair_gezuiverd_opp)
+gc()
 ```
 
 ```{r kleine landschapselementen via groenkaart}
@@ -419,90 +432,50 @@ r_groen     <- terra::resample(r_groen_raw, id_raster_TV, method = "near") %>% t
 r_hooggroen <- r_groen == 1
 r_laaggroen <- r_groen == 2
 
-# Lijnvormig groen afleiden
 focal_hoog <- terra::focal(r_hooggroen, w = 3, fun = "sum", na.rm = TRUE)
 focal_laag <- terra::focal(r_laaggroen, w = 3, fun = "sum", na.rm = TRUE)
 
 r_lijn_hooggroen <- r_hooggroen == 1 & (focal_hoog >= 1 & focal_hoog <= 6)
 r_lijn_laaggroen <- r_laaggroen == 1 & (focal_laag >= 1 & focal_laag <= 6)
 r_kle_groenkaart <- (r_lijn_hooggroen == 1) | (r_lijn_laaggroen == 1)
-r_kle_binair     <- terra::ifel(r_kle_groenkaart, 1, 0)
+r_kle_binair      <- terra::ifel(r_kle_groenkaart, 1, 0)
 
-# INITIALISATIE: Altijd een leeg raster klaarzetten voor de opvolgende stappen
 r_voortplanting_finaal_max <- id_raster_TV * NA
 r_voortplanting_finaal_opp <- id_raster_TV * NA
 
+# --- SPOOR A: MAX ---
 if (!all(is.na(terra::values(r_kern_10ha_max, mat=FALSE)))) {
-  cl_patches <- terra::patches(r_kern_10ha_max, directions = 8, zeroAsNA = TRUE)
-  kle_counts <- terra::zonal(r_kle_binair, cl_patches, fun = "sum", na.rm = TRUE)
-  colnames(kle_counts) <- c("ID", "KLE_pixels")
+  cl_patches_max <- terra::patches(r_kern_10ha_max, directions = 8, zeroAsNA = TRUE)
+  kle_counts_max <- terra::zonal(r_kle_binair, cl_patches_max, fun = "sum", na.rm = TRUE)
+  colnames(kle_counts_max) <- c("ID", "KLE_pixels")
   
-  # 500m / 10m resolutie = 50 pixels
-  goedgekeurde_patch_ids <- kle_counts$ID[kle_counts$KLE_pixels >= 50]
+  goedgekeurde_patch_ids_max <- kle_counts_max$ID[kle_counts_max$KLE_pixels >= 50]
   
-  if (length(goedgekeurde_patch_ids) > 0) {
-    masker_kle_ok <- cl_patches %in% goedgekeurde_patch_ids
-    r_voortplanting_finaal_max <- terra::ifel(masker_kle_ok == 1, 1, NA)
-    r_voortplanting_finaal_opp <- terra::mask(r_kern_10ha_opp, r_voortplanting_finaal_max)
+  if (length(goedgekeurde_patch_ids_max) > 0) {
+    masker_kle_ok_max <- cl_patches_max %in% goedgekeurde_patch_ids_max
+    r_voortplanting_finaal_max <- terra::ifel(masker_kle_ok_max == 1, 1, NA)
   }
 }
 
-# ==============================================================================
-# STAP 4: FOERAGEERHABITAT KOPPELEN EN GRASLAND MONOTONITEITSTEST
-# ==============================================================================
-# INITIALISATIE: Voorkom 'object not found' errors in de diagnose
-r_leefgebied_bruto_max        <- id_raster_TV * NA
-grauweklauwier_leefgebied_max <- id_raster_TV * NA
-grauweklauwier_leefgebied_opp <- id_raster_TV * NA
+# --- SPOOR B: OPP (Parallel & Autonoom) ---
+r_binair_kern_opp <- terra::ifel(!is.na(r_kern_10ha_opp) & r_kern_10ha_opp > 0, 1, NA)
 
-if (!all(is.na(terra::values(r_voortplanting_finaal_max, mat=FALSE)))) {
-  buffer_100m_kern <- terra::buffer(r_voortplanting_finaal_max, width = 100)
-  r_foerageer_geclipt_max <- terra::mask(foerageerbiotoop_max, buffer_100m_kern)
+if (!all(is.na(terra::values(r_binair_kern_opp, mat=FALSE)))) {
+  cl_patches_opp <- terra::patches(r_binair_kern_opp, directions = 8, zeroAsNA = TRUE)
+  kle_counts_opp <- terra::zonal(r_kle_binair, cl_patches_opp, fun = "sum", na.rm = TRUE)
+  colnames(kle_counts_opp) <- c("ID", "KLE_pixels")
   
-  r_leefgebied_bruto_max <- (!is.na(r_voortplanting_finaal_max) & r_voortplanting_finaal_max == 1) | 
-                            (!is.na(r_foerageer_geclipt_max) & r_foerageer_geclipt_max == 1)
-  r_leefgebied_bruto_max <- terra::ifel(r_leefgebied_bruto_max == 1, 1, NA)
+  goedgekeurde_patch_ids_opp <- kle_counts_opp$ID[kle_counts_opp$KLE_pixels >= 50]
   
-  cl_leefgebied <- cluster_filter_compleet(
-    masker     = r_leefgebied_bruto_max,
-    opp_laag   = foerageerbiotoop_opp, 
-    drempel_m2 = 15 * 10000, 
-    dist_m     = 50,
-    werkelijk  = FALSE
-  )
-  r_leefgebied_bruto_max <- cl_leefgebied$raster
-  
-  if (!all(is.na(terra::values(r_leefgebied_bruto_max, mat=FALSE)))) {
-    cl_final_patches <- terra::patches(r_leefgebied_bruto_max, directions = 8, zeroAsNA = TRUE)
-    opp_totaal <- terra::zonal(foerageerbiotoop_opp, cl_final_patches, fun = "sum", na.rm = TRUE)
-    colnames(opp_totaal) <- c("ID", "Totaal_ha")
-    
-    tabel_hp <- tabel_vlaanderen[CODE %in% gouden_namenlijst[grepl("^hp", gouden_namenlijst)] & cel_id %in% studiegebied_globale_ids]
-    tabel_hp_som <- tabel_hp[, .(Opp_HP = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
-    
-    r_hp_fractie <- id_raster_TV * NA
-    if (nrow(tabel_hp_som) > 0) {
-      setnames(tabel_hp_som, "cel_id", "globale_id")
-      tabel_hp_mapping <- merge(tabel_hp_som, vertaal_df, by = "globale_id", all.x = TRUE)[!is.na(lokale_id)]
-      if (nrow(tabel_hp_mapping) > 0) r_hp_fractie[tabel_hp_mapping$lokale_id] <- tabel_hp_mapping$Opp_HP
-    }
-    
-    opp_hp_zonal <- terra::zonal(r_hp_fractie, cl_final_patches, fun = "sum", na.rm = TRUE)
-    colnames(opp_hp_zonal) <- c("ID", "HP_ha")
-    
-    grasland_check <- merge(opp_totaal, opp_hp_zonal, by = "ID", all.x = TRUE)
-    grasland_check$HP_ha[is.na(grasland_check$HP_ha)] <- 0
-    grasland_check$GraslandAandeel <- grasland_check$HP_ha / grasland_check$Totaal_ha
-    
-    goedgekeurde_leefgebied_ids <- grasland_check$ID[grasland_check$GraslandAandeel < 0.90]
-    
-    if (length(goedgekeurde_leefgebied_ids) > 0) {
-      masker_leefgebied_ok <- cl_final_patches %in% goedgekeurde_leefgebied_ids
-      grauweklauwier_leefgebied_max <- terra::ifel(masker_leefgebied_ok == 1, 1, NA) %>% terra::crop(template_TV)
-      grauweklauwier_leefgebied_opp <- terra::mask(foerageerbiotoop_opp, grauweklauwier_leefgebied_max) %>% terra::crop(template_TV)
-    }
+  if (length(goedgekeurde_patch_ids_opp) > 0) {
+    masker_kle_ok_opp <- cl_patches_opp %in% goedgekeurde_patch_ids_opp
+    r_voortplanting_finaal_opp <- terra::mask(r_kern_10ha_opp, terra::ifel(masker_kle_ok_opp, 1, NA))
   }
 }
+
+rm(r_groen_raw, r_groen, r_hooggroen, r_laaggroen, focal_hoog, focal_laag, 
+   r_lijn_hooggroen, r_lijn_laaggroen, r_kle_groenkaart, r_kle_binair, r_binair_kern_opp)
+gc()
 ```
 
 ```{r grauweklauwier diagnose - habitat per stap opgelost}
@@ -550,37 +523,32 @@ message("-> Wederzijdse afstandsinteractie berekenen (100m foerageerbereik)...")
 grauweklauwier_leefgebied_max <- id_raster_TV * NA
 grauweklauwier_leefgebied_opp <- id_raster_TV * NA
 
+# ==============================================================================
+# SPOOR A: MAXIMALE POTENTIE
+# ==============================================================================
 if (!all(is.na(terra::values(r_voortplanting_finaal_max, mat=FALSE)))) {
-  # Goedgekeurde kernen (die de 500m Groenkaart-KLE-test hebben overleefd) 100m bufferen
-  buffer_100m_kern <- terra::buffer(r_voortplanting_finaal_max, width = 100)
+  buffer_100m_kern_max <- terra::buffer(r_voortplanting_finaal_max, width = 100)
+  r_foerageer_geclipt_max <- terra::mask(foerageerbiotoop_max, buffer_100m_kern_max)
   
-  # Foerageerhabitat is geldig binnen 100m van een goedgekeurde kern
-  r_foerageer_geclipt_max <- terra::mask(foerageerbiotoop_max, buffer_100m_kern)
-  
-  # Voeg kern en geclipt foerageergebied samen via logische OF
   r_leefgebied_bruto_max <- (!is.na(r_voortplanting_finaal_max) & r_voortplanting_finaal_max == 1) | 
                             (!is.na(r_foerageer_geclipt_max) & r_foerageer_geclipt_max == 1)
   r_leefgebied_bruto_max <- terra::ifel(r_leefgebied_bruto_max == 1, 1, NA)
   
-  # Filter het geheel op de minimale totale leefgebiedsgrootte van GDX: 15 hectare
-  cl_leefgebied <- cluster_filter_compleet(
+  cl_leefgebied_max <- cluster_filter_compleet(
     masker     = r_leefgebied_bruto_max,
     opp_laag   = foerageerbiotoop_opp, 
-    drempel_m2 = 15 * 10000, # Totale oppervlakte van het netwerk moet >= 15 ha zijn
+    drempel_m2 = 15 * 10000,
     dist_m     = 50,
     werkelijk  = FALSE
   )
-  r_leefgebied_netwerk_max <- cl_leefgebied$raster
+  r_leefgebied_netwerk_max <- cl_leefgebied_max$raster
   
-  # --- CRUCIALE MONOTONITEITSTEST: HP-GRASLAND FILTER < 90% ---
   if (!all(is.na(terra::values(r_leefgebied_netwerk_max, mat=FALSE)))) {
-    cl_final_patches <- terra::patches(r_leefgebied_netwerk_max, directions = 8, zeroAsNA = TRUE)
+    cl_final_patches_max <- terra::patches(r_leefgebied_netwerk_max, directions = 8, zeroAsNA = TRUE)
     
-    # Bereken de totale oppervlakte per cluster
-    opp_totaal <- terra::zonal(foerageerbiotoop_opp, cl_final_patches, fun = "sum", na.rm = TRUE)
-    colnames(opp_totaal) <- c("ID", "Totaal_ha")
+    opp_totaal_max <- terra::zonal(foerageerbiotoop_max * 0.01, cl_final_patches_max, fun = "sum", na.rm = TRUE)
+    colnames(opp_totaal_max) <- c("ID", "Totaal_ha")
     
-    # Isoleer de 'hp%' codes (cultuurgrasland) uit de database om het aandeel te berekenen
     tabel_hp <- tabel_vlaanderen[CODE %in% gouden_namenlijst[grepl("^hp", gouden_namenlijst)] & cel_id %in% studiegebied_globale_ids]
     tabel_hp_som <- tabel_hp[, .(Opp_HP = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
     
@@ -591,32 +559,87 @@ if (!all(is.na(terra::values(r_voortplanting_finaal_max, mat=FALSE)))) {
       if (nrow(tabel_hp_mapping) > 0) r_hp_fractie[tabel_hp_mapping$lokale_id] <- tabel_hp_mapping$Opp_HP
     }
     
-    opp_hp_zonal <- terra::zonal(r_hp_fractie, cl_final_patches, fun = "sum", na.rm = TRUE)
-    colnames(opp_hp_zonal) <- c("ID", "HP_ha")
+    opp_hp_zonal_max <- terra::zonal(r_hp_fractie, cl_final_patches_max, fun = "sum", na.rm = TRUE)
+    colnames(opp_hp_zonal_max) <- c("ID", "HP_ha")
     
-    # Bereken het graslandaandeel per cluster
-    grasland_check <- merge(opp_totaal, opp_hp_zonal, by = "ID", all.x = TRUE)
-    grasland_check$HP_ha[is.na(grasland_check$HP_ha)] <- 0
-    grasland_check$GraslandAandeel <- grasland_check$HP_ha / grasland_check$Totaal_ha
+    grasland_check_max <- merge(opp_totaal_max, opp_hp_zonal_max, by = "ID", all.x = TRUE)
+    grasland_check_max$HP_ha[is.na(grasland_check_max$HP_ha)] <- 0
+    grasland_check_max$GraslandAandeel <- grasland_check_max$HP_ha / grasland_check_max$Totaal_ha
     
-    # Alleen clusters waar het aandeel intensief grasland STRICT minder dan 90% is overleven!
-    goedgekeurde_leefgebied_ids <- grasland_check$ID[grasland_check$GraslandAandeel < 0.90]
+    goedgekeurde_leefgebied_ids_max <- grasland_check_max$ID[grasland_check_max$GraslandAandeel < 0.90]
     
-    if (length(goedgekeurde_leefgebied_ids) > 0) {
-      masker_leefgebied_ok <- cl_final_patches %in% goedgekeurde_leefgebied_ids
-      grauweklauwier_leefgebied_max <- terra::ifel(masker_leefgebied_ok == 1, 1, NA) %>% terra::crop(template_TV)
-      grauweklauwier_leefgebied_opp <- terra::mask(foerageerbiotoop_opp, grauweklauwier_leefgebied_max) %>% terra::crop(template_TV)
+    if (length(goedgekeurde_leefgebied_ids_max) > 0) {
+      masker_leefgebied_ok_max <- cl_final_patches_max %in% goedgekeurde_leefgebied_ids_max
+      grauweklauwier_leefgebied_max <- terra::ifel(masker_leefgebied_ok_max == 1, 1, NA) %>% terra::crop(template_TV)
+    }
+  }
+}
+
+# ==============================================================================
+# SPOOR B: WERKELIJKE OPPERVLAKTE (Parallel & Autonoom)
+# ==============================================================================
+if (!all(is.na(terra::values(r_voortplanting_finaal_opp, mat=FALSE)))) {
+  r_binair_vpt_opp     <- terra::ifel(!is.na(r_voortplanting_finaal_opp) & r_voortplanting_finaal_opp > 0, 1, NA)
+  buffer_100m_kern_opp <- terra::buffer(r_binair_vpt_opp, width = 100)
+  
+  r_foerageer_geclipt_opp <- terra::mask(foerageerbiotoop_opp, buffer_100m_kern_opp)
+  
+  vpt_opp_nul  <- terra::ifel(is.na(r_voortplanting_finaal_opp), 0, r_voortplanting_finaal_opp)
+  foer_opp_nul <- terra::ifel(is.na(r_foerageer_geclipt_opp), 0, r_foerageer_geclipt_opp)
+  
+  r_leefgebied_bruto_opp_raw <- terra::clamp(vpt_opp_nul + foer_opp_nul, upper = 1.0)
+  r_leefgebied_bruto_opp     <- terra::ifel(r_leefgebied_bruto_opp_raw > 0, r_leefgebied_bruto_opp_raw, NA)
+  r_binair_bruto_opp         <- terra::ifel(!is.na(r_leefgebied_bruto_opp) & r_leefgebied_bruto_opp > 0, 1, NA)
+  
+  cl_leefgebied_opp <- cluster_filter_compleet(
+    masker     = r_binair_bruto_opp,
+    opp_laag   = r_leefgebied_bruto_opp, 
+    drempel_m2 = 15 * 10000,
+    dist_m     = 50,
+    werkelijk  = TRUE
+  )
+  r_leefgebied_netwerk_opp <- cl_leefgebied_opp$raster
+  
+  if (!all(is.na(terra::values(r_leefgebied_netwerk_opp, mat=FALSE)))) {
+    cl_final_patches_opp <- terra::patches(r_leefgebied_netwerk_opp, directions = 8, zeroAsNA = TRUE)
+    
+    opp_totaal_opp <- terra::zonal(r_leefgebied_bruto_opp, cl_final_patches_opp, fun = "sum", na.rm = TRUE)
+    colnames(opp_totaal_opp) <- c("ID", "Totaal_ha_sum")
+    opp_totaal_opp$Totaal_ha <- opp_totaal_opp$Totaal_ha_sum * 0.01
+    
+    if (!exists("r_hp_fractie")) {
+      tabel_hp <- tabel_vlaanderen[CODE %in% gouden_namenlijst[grepl("^hp", gouden_namenlijst)] & cel_id %in% studiegebied_globale_ids]
+      tabel_hp_som <- tabel_hp[, .(Opp_HP = sum(BWK_FRAC, na.rm = TRUE)), by = .(cel_id)]
+      
+      r_hp_fractie <- id_raster_TV * NA
+      if (nrow(tabel_hp_som) > 0) {
+        setnames(tabel_hp_som, "cel_id", "globale_id")
+        tabel_hp_mapping <- merge(tabel_hp_som, vertaal_df, by = "globale_id", all.x = TRUE)[!is.na(lokale_id)]
+        if (nrow(tabel_hp_mapping) > 0) r_hp_fractie[tabel_hp_mapping$lokale_id] <- tabel_hp_mapping$Opp_HP
+      }
+    }
+    
+    opp_hp_zonal_opp <- terra::zonal(r_hp_fractie, cl_final_patches_opp, fun = "sum", na.rm = TRUE)
+    colnames(opp_hp_zonal_opp) <- c("ID", "HP_ha_sum")
+    opp_hp_zonal_opp$HP_ha     <- opp_hp_zonal_opp$HP_ha_sum * 0.01
+    
+    grasland_check_opp <- merge(opp_totaal_opp, opp_hp_zonal_opp, by = "ID", all.x = TRUE)
+    grasland_check_opp$HP_ha[is.na(grasland_check_opp$HP_ha)] <- 0
+    grasland_check_opp$GraslandAandeel <- grasland_check_opp$HP_ha / grasland_check_opp$Totaal_ha
+    
+    goedgekeurde_leefgebied_ids_opp <- grasland_check_opp$ID[grasland_check_opp$GraslandAandeel < 0.90]
+    
+    if (length(goedgekeurde_leefgebied_ids_opp) > 0) {
+      masker_leefgebied_ok_opp <- cl_final_patches_opp %in% goedgekeurde_leefgebied_ids_opp
+      grauweklauwier_leefgebied_opp <- terra::mask(r_leefgebied_bruto_opp, terra::ifel(masker_leefgebied_ok_opp, 1, NA)) %>% terra::crop(template_TV)
     }
   }
 }
 
 message("--- GRAUWE KLAUWIER MODEL SUCCESVOL AFGEROND ---")
 cat("Totaal stabiel leefgebied Grauwe Klauwier via Groenkaart (ha):", round(calc_ha_exact(grauweklauwier_leefgebied_opp), 2), "\n")
-
-
 ```
 
-# Resultaten en Statistiek
 # Resultaten en Statistiek
 ```{r Resultaten en statistiek}
 # ==============================================================================
@@ -875,7 +898,7 @@ if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
 export_config <- list(
   list(rast = final_max,              naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
   list(rast = werkelijk_export_rast, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,      naam = "ARPL",                     folder = folders$arpl,        type = "INT1U"),
+  list(rast = arpl_export_rast,      naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
   list(rast = verspreiding_raster,   naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 

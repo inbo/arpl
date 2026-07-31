@@ -97,7 +97,6 @@ rm(df, resultaat)
 area_shape  <- vect(here("data/input/Turnhouts_Vennegebied.shp"))
 master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
 
-# Inlezen van de CSV-sleutel (gebruikt om tabel-indices te mappen naar codes)
 df_namen_sleutel <- read_csv(here("data/input/Excel_files/BWK_Laag_Namen_2025.csv"), show_col_types = FALSE)
 gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
 
@@ -106,30 +105,22 @@ area_buffer_fix <- buffer(area_shape_proj, width = buffer_m)
 
 message("-> Vertaalraster voor globale/lokale cellen opbouwen...")
 
-# 1. Crop de master grid naar de buffer (dit gaat heel snel)
 id_raster_TV <- crop(master_grid, area_buffer_fix, snap = "near")
-
-# 2. Rasteriseer de shapefile naar het geknipte grid (geeft 1 binnen de buffer, NA erbuiten)
 buffer_masker <- terra::rasterize(area_buffer_fix, id_raster_TV, field = 1)
 
-# 3. Haal de lokale cel-indices op die effectief binnen de buffer liggen
 lokale_cellen <- terra::cells(buffer_masker)
-
-# 4. Vertaal de lokale cellen in één klap naar globale IDs via XY-coördinaten
-coordinaten <- terra::xyFromCell(id_raster_TV, lokale_cellen)
+coordinaten   <- terra::xyFromCell(id_raster_TV, lokale_cellen)
 studiegebied_globale_ids <- terra::cellFromXY(master_grid, coordinaten)
 
-# 5. Bouw de vertaal_df razendsnel op via data.table
 vertaal_df <- data.table(
-  lokale_id = lokale_cellen,
+  lokale_id  = lokale_cellen,
   globale_id = studiegebied_globale_ids
 )
 
-template_TV <- id_raster_TV * NA
+template_TV <- terra::rasterize(area_buffer_fix, id_raster_TV, field = 1, background = 0)
+grens_web   <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
 
-grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
-
-rm(globale_id_raster, id_raster_TV_globale_values)
+rm(buffer_masker, lokale_cellen, coordinaten)
 gc()
 ```
 
@@ -376,39 +367,34 @@ gc()
 
 ```{r koppeling}
 # ==============================================================================
-# STAP 5: STRIKTE SYMMETRISCHE KOPPELING WATER EN LAND 1 (MET NULPIXEL-FIX)
+# STAP 5: STRIKTE SYMMETRISCHE KOPPELING WATER EN LAND 1
 # ==============================================================================
 message("\n--- START STAP 5: Koppeling Waterbiotoop en Landbiotoop 1 ---")
 
-# --- SCENARIO A: BINAIR (MAXIMALE POTENTIE) ---
-message("   -> Spoor A: Afstanden berekenen en filteren...")
+# --- SPOOR A: BINAIR (MAXIMALE POTENTIE) ---
+message("    -> Spoor A: Afstanden berekenen en filteren...")
 dist_water_max <- terra::distance(bruinekorenbout_voortplanting_bwk_max)
 
-# Filter Land 1: Moet binnen 25m van water liggen, behoud de pure BWK-vorm
 land1_valide_max25m_bin <- terra::ifel(dist_water_max <= 25, 1, NA) %>% 
                                 terra::mask(landbiotoop_bwk1_max)
 
-# Filter Water: Moet binnen 25m van het geselecteerde Land 1 liggen
 dist_land1_max          <- terra::distance(land1_valide_max25m_bin)
 water_valide_max25m_bin <- terra::ifel(dist_land1_max <= 25, 1, NA) %>% 
                                 terra::mask(bruinekorenbout_voortplanting_bwk_max)
 
+# --- SPOOR B: FRACTIONEEL (REËLE OPPERVLAKTE) ---
+message("    -> Spoor B: Afstanden berekenen (nullen negeren) en filteren...")
 
-# --- SCENARIO B: FRACTIONEEL (REËLE OPPERVLAKTE) ---
-message("   -> Spoor B: Afstanden berekenen (nullen negeren) en filteren...")
+# 1. Bepaal de afstand uitsluitend vanaf cellen met fractie > 0
+dist_water_opp <- terra::distance(terra::ifel(!is.na(bruinekorenbout_voortplanting_bwk_opp) & bruinekorenbout_voortplanting_bwk_opp > 0, 1, NA))
 
-# CRUCIALE FIX 1: We berekenen de afstand ALLEEN vanaf cellen die écht groter zijn dan 0!
-# Hierdoor doen de 353.939 nullen niet meer mee als startpunt.
-dist_water_opp <- terra::distance(bruinekorenbout_voortplanting_bwk_opp > 0)
-
-# CRUCIALE FIX 2: Als de afstand <= 25m is, behouden we de pure fractie, oars wordt het NA.
+# 2. Behouden van de pure fractie
 land1_valide_max25m_opp <- terra::ifel(dist_water_opp <= 25, landbiotoop_bwk1_opp, NA)
 
-# Symmetrische controle voor waterfracties (opnieuw: nullen negeren bij afstand)
-dist_land1_opp          <- terra::distance(land1_valide_max25m_opp > 0)
+# 3. Symmetrische afstand naar landbiotoop 1 (nullen negeren)
+dist_land1_opp          <- terra::distance(terra::ifel(!is.na(land1_valide_max25m_opp) & land1_valide_max25m_opp > 0, 1, NA))
 water_valide_max25m_opp <- terra::ifel(dist_land1_opp <= 25, bruinekorenbout_voortplanting_bwk_opp, NA)
 
-# Opschoning
 rm(dist_water_max, dist_land1_max, dist_water_opp, dist_land1_opp)
 gc()
 message("✓ Stap 5 succesvol afgerond: De filters negeren nu de nul-pixels.")
@@ -421,50 +407,39 @@ message("✓ Stap 5 succesvol afgerond: De filters negeren nu de nul-pixels.")
 message("\n--- START STAP 6: Landbiotoop 2 Snelle Aggregatie & Keten Synthese ---")
 
 # ==============================================================================
-# SCENARIO A: BINAIR SPOOR (MAXIMALE POTENTIE)
+# SPOOR A: BINAIR SPOOR (MAXIMALE POTENTIE)
 # ==============================================================================
-message("   -> Spoor A: Razendsnelle 50m aggregatie en NETTO 10 ha filter...")
+message("    -> Spoor A: Razendsnelle 50m aggregatie en NETTO 10 ha filter...")
 
-# 1. Tijdelijk aggregeren van 10m naar 50m cellen (factor 5 dichtsmering voor gap-closure)
 r_ruim_50m_max <- terra::aggregate(landbiotoop_bwk_ruim_max, fact = 5, fun = "max", na.rm = TRUE)
-
-# 2. Bereken de tijdelijke 'flow' patches op 50m schaal
 r_patches_50m_max <- terra::patches(r_ruim_50m_max, directions = 8, zeroAsNA = TRUE)
 
-# 3. Breng de flow-patches direct terug naar 10m EN maskeer met het pure bos
-# Nu hebben de pixels hun scherpe vorm terug, maar delen ze de overkoepelende ID's!
 r_patches_10m_raw <- terra::disagg(r_patches_50m_max, fact = 5) %>% 
                      terra::crop(landbiotoop_bwk_ruim_max) %>% 
                      terra::mask(landbiotoop_bwk_ruim_max)
 
-# 4. DE CRUCIALE OMKERING: Bereken de NETTO oppervlakte per cluster op de 10-meter schaal!
 freq_netto_10m <- terra::freq(r_patches_10m_raw)
 
 if(nrow(freq_netto_10m) > 0) {
-  # 1 pixel = 0.01 ha. Dus 10 ha vereist minimaal 1000 netto bos-pixels!
   ids_ruim_robuust_max <- freq_netto_10m$value[freq_netto_10m$count >= 1000]
 } else { ids_ruim_robuust_max <- c() }
 
-# 5. Filter de kaarten op basis van de vlijmscherpe netto-toets
 if(length(ids_ruim_robuust_max) > 0) {
-  # Alleen de stabiele netwerken die écht 10 ha pure pixels bevatten reizen door
   r_match_10m_max         <- terra::match(r_patches_10m_raw, ids_ruim_robuust_max)
   landbiotoop2_valide_max <- terra::ifel(!is.na(r_match_10m_max), 1, NA)
-  
-  # Bewaar de kogelvrije 50m-flow matrix uitsluitend voor de ID-sturing in Stap 7
   r_bos_patches_50m_flow  <- terra::mask(r_patches_50m_max, terra::match(r_patches_50m_max, ids_ruim_robuust_max))
 } else { 
-  landbiotoop2_valide_max <- id_raster_TV * NA 
-  r_bos_patches_50m_flow  <- id_raster_TV * NA
+  landbiotoop2_valide_max <- template_TV * NA 
+  r_bos_patches_50m_flow  <- template_TV * NA
 }
 
-message("   -> Spoor A: 1 km afstandscheck toepassen (Land 1 <=> Robuust Bos)...")
+message("    -> Spoor A: 1 km afstandscheck toepassen (Land 1 <=> Robuust Bos)...")
 dist_bos_max1km     <- terra::distance(landbiotoop2_valide_max > 0)
 
 land1_gekoppeld_max <- terra::ifel(dist_bos_max1km <= 1000, land1_valide_max25m_bin, NA)
 water_gekoppeld_max <- terra::ifel(dist_bos_max1km <= 1000, water_valide_max25m_bin, NA)
 
-message("   -> Spoor A: Pure, ongeknipte Superclusters samenstellen...")
+message("    -> Spoor A: Pure, ongeknipte Superclusters samenstellen...")
 bruinekorenbout_supercluster_max       <- terra::cover(water_gekoppeld_max, land1_gekoppeld_max)
 bruinekorenbout_supercluster_max       <- terra::cover(bruinekorenbout_supercluster_max, landbiotoop2_valide_max)
 
@@ -474,9 +449,9 @@ landbiotoop_ruim_max                  <- landbiotoop2_valide_max
 
 
 # ==============================================================================
-# SCENARIO B: FRACTIONEEL SPOOR (REËLE OPPERVLAKTE) -> Staat al perfect netto!
+# SPOOR B: FRACTIONEEL SPOOR (REËLE OPPERVLAKTE)
 # ==============================================================================
-message("   -> Spoor B: Fractionele 50m aggregatie en 10 ha filter...")
+message("    -> Spoor B: Fractionele 50m aggregatie en 10 ha filter...")
 
 r_ruim_presence_opp <- !is.na(landbiotoop_bwk_ruim_opp) & landbiotoop_bwk_ruim_opp > 0
 
@@ -495,15 +470,15 @@ if(nrow(df_area_ruim_opp) > 0) {
 if(length(ids_ruim_robuust_opp) > 0) {
   r_match_10m_opp         <- terra::match(r_patches_10m_opp, ids_ruim_robuust_opp)
   landbiotoop2_valide_opp <- terra::mask(landbiotoop_bwk_ruim_opp, r_match_10m_opp)
-} else { landbiotoop2_valide_opp <- id_raster_TV * NA }
+} else { landbiotoop2_valide_opp <- template_TV * NA }
 
-message("   -> Spoor B: 1 km afstandscheck toepassen op fracties...")
-dist_bos_opp1km     <- terra::distance(landbiotoop2_valide_opp > 0)
+message("    -> Spoor B: 1 km afstandscheck toepassen op fracties...")
+dist_bos_opp1km     <- terra::distance(terra::ifel(!is.na(landbiotoop2_valide_opp) & landbiotoop2_valide_opp > 0, 1, NA))
 
 land1_gekoppeld_opp <- terra::ifel(dist_bos_opp1km <= 1000, land1_valide_max25m_opp, NA)
 water_gekoppeld_opp <- terra::ifel(dist_bos_opp1km <= 1000, water_valide_max25m_opp, NA)
 
-message("   -> Spoor B: Pure fractionele Superclusters samenstellen...")
+message("    -> Spoor B: Pure fractionele Superclusters samenstellen...")
 bruinekorenbout_supercluster_opp       <- terra::cover(water_gekoppeld_opp, land1_gekoppeld_opp)
 bruinekorenbout_supercluster_opp       <- terra::cover(bruinekorenbout_supercluster_opp, landbiotoop2_valide_opp)
 
@@ -511,7 +486,6 @@ bruinekorenbout_waterbiotoop_opp      <- water_gekoppeld_opp
 bruinekorenbout_landbiotoop_nabij_opp <- land1_gekoppeld_opp
 landbiotoop_ruim_opp                  <- landbiotoop2_valide_opp
 
-# Opschoning
 rm(r_ruim_50m_max, r_patches_50m_max, r_patches_10m_raw, r_match_10m_max, dist_bos_max1km, land1_gekoppeld_max, water_gekoppeld_max,
    r_ruim_presence_opp, r_ruim_50m_opp, r_patches_50m_opp, r_patches_10m_opp, area_per_cel_ruim_opp, df_area_ruim_opp, r_match_10m_opp, dist_bos_opp1km, land1_gekoppeld_opp, water_gekoppeld_opp)
 gc()
@@ -726,7 +700,7 @@ purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
 # 1. Spoor A: Maximale Potentie formatteren naar 1/NA
 if(!all(is.na(terra::values(bruinekorenbout_supercluster_max, mat=FALSE)))) {
-  potentie_export_rast <- terra::ifel(bruinekorenbout_supercluster_max > 0, 1, NA)
+  potentie_export_rast <- terra::ifel(!is.na(bruinekorenbout_supercluster_max) & bruinekorenbout_supercluster_max > 0, 1, NA)
 } else {
   potentie_export_rast <- terra::rast(template_TV, vals = NA)
 }
@@ -752,11 +726,10 @@ if(exists("bruinekorenbout_verspreiding_bin") && !all(is.na(terra::values(bruine
   verspreiding_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# Bundelen in de export configuratie loop
 export_config <- list(
-  list(rast = potentie_export_rast,    naam = "Maximale_Potentie",        folder = folders$potentie,    type = "INT1U"),
+  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
   list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,        naam = "ARPL",                    folder = folders$arpl,        type = "INT1U"),
+  list(rast = arpl_export_rast,         naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
   list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 
@@ -766,7 +739,6 @@ for(item in export_config) {
   export_rast <- terra::deepcopy(item$rast)
   export_rast <- terra::mask(export_rast, area_buffer_fix)
   
-  # Als het raster leeg is, vul de buffer volledig met enen/nullen conform contract
   if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
     export_rast <- terra::ifel(is.na(export_rast), 0, 0)
     export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
@@ -779,11 +751,8 @@ for(item in export_config) {
               overwrite = TRUE, 
               gdal = c("COMPRESS=LZW"), 
               datatype = item$type)
-              
-  message(paste("    [OK] Geëxporteerd:", basename(file_path)))
 }
 
-# Grote schoonmaak van de zware deellagen
 rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast,
    bruinekorenbout_supercluster_max, bruinekorenbout_supercluster_opp)
 gc()
