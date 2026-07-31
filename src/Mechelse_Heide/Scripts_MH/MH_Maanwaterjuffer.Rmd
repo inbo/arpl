@@ -1,0 +1,844 @@
+---
+title: "Leefgebiedenscript in R: Mechelse Heide"
+author: "Bert Van Hecke"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    self_contained: true
+    toc: true
+    theme: flatly
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE
+)
+
+library(here)
+# CRUCIALE FIX: Dwing R Markdown om te werken vanaf de hoofdmap (arpl/)
+knitr::opts_knit$set(root.dir = here())
+
+library(knitr)
+library(tidyverse)
+library(sf)
+library(terra)
+library(readxl)
+library(tidyterra)
+library(leaflet)
+library(kableExtra)
+library(data.table)
+
+conflicted::conflicts_prefer(dplyr::filter)
+conflicted::conflicts_prefer(dplyr::select)
+conflicted::conflicts_prefer(dplyr::first)
+conflicted::conflicts_prefer(terra::intersect)
+conflicted::conflicts_prefer(terra::any)
+
+# Exacte hectare-berekening behouden (cellSize voor 100% precisie)
+calc_ha_exact <- function(r) {
+  if(is.null(r)) return(0)
+  if(all(is.na(terra::values(r, mat=FALSE)))) return(0)
+  area_raster <- r * terra::cellSize(r, unit = "ha")
+  val <- terra::global(area_raster, "sum", na.rm = TRUE)[[1]]
+  return(as.numeric(val))
+}
+
+# Geoptimaliseerde get_stats helper
+get_stats <- function(cat_id, label) {
+  cid <- cat_id
+  target_mask <- r_status == cid
+  f_pix <- terra::freq(target_mask)
+  n_pix <- if(nrow(f_pix) > 0) sum(f_pix$count[f_pix$value == 1], na.rm=TRUE) else 0
+  area_ha <- (n_pix * 100) / 10000
+  
+  cl_src <- if(cid %in% c(1, 2)) cl_id_max else cl_id_opp
+  cl_zone <- terra::mask(cl_src, target_mask)
+  f_cl <- terra::freq(cl_zone)
+  n_cl <- if(!is.null(f_cl) && nrow(f_cl) > 0) nrow(f_cl) else 0
+  
+  return(data.frame(Type = label, Clusters = n_cl, Oppervlakte_ha = round(area_ha, 2)))
+}
+
+maak_kaart_laag <- function(res_list) {
+  if(is.null(res_list)) return(NULL)
+  kernen <- terra::ifel(!is.na(res_list$kern), 1, NA)
+  if(!is.null(res_list$bouw)) {
+    bouw <- terra::ifel(!is.na(res_list$bouw), 2, NA)
+    finaal <- terra::cover(kernen, bouw)
+  } else {
+    finaal = kernen
+  }
+  return(finaal)
+}
+
+cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
+  if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
+    return(list(raster = masker * NA, clusters = masker * NA))
+  }
+  
+  temp_mask <- masker
+  if(dist_m > 0) temp_mask <- terra::buffer(masker, width = dist_m / 2)
+  
+  cl <- terra::patches(temp_mask, directions = 8, zeroAsNA = TRUE) %>% terra::mask(masker)
+  
+  if(werkelijk) {
+    stats_df <- terra::zonal(opp_laag, cl, fun = "sum", na.rm = TRUE)
+    colnames(stats_df) <- c("ID", "Waarde")
+    stats_df$Area_m2 <- stats_df$Waarde * 100 
+  } else {
+    f <- terra::freq(cl)
+    stats_df <- data.frame(ID = f$value, Waarde = f$count)
+    stats_df$Area_m2 <- stats_df$Waarde * 100
+  }
+  
+  stats_df <- stats_df[!is.na(stats_df$ID), ]
+  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = cl * NA))
+  
+  voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
+  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = cl * NA))
+  
+  masker_binair <- cl %in% voldoet_ids
+  final_mask <- terra::ifel(masker_binair == 1, 1, NA)
+  
+  return(list(raster = terra::mask(masker, final_mask), clusters = cl))
+}
+```
+
+# Soort informatie ophalen
+```{r Soort informatie}
+df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
+soort <- "maanwaterjuffer"
+
+resultaat <- df %>%
+filter(Soort == soort) %>%
+select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
+
+# Variabelen definiëren
+buffer_m <- resultaat$Dispersiecap_m[1]
+
+print(resultaat)
+rm(df, resultaat)
+```
+
+# Gebied voorbereiden (Mechelse Heide)
+```{r Gebied Voorbereiden}
+area_shape  <- vect(here("data/input/Mechelse_Heide.shp"))
+master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
+
+df_namen_sleutel <- read_csv(here("data/input/Excel_files/BWK_Laag_Namen_2025.csv"), show_col_types = FALSE)
+gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
+
+area_shape_proj <- project(area_shape, crs(master_grid))
+area_buffer_fix <- buffer(area_shape_proj, width = buffer_m)
+
+message("-> Vertaalraster voor globale/lokale cellen opbouwen via snelle MASK methode...")
+id_raster_MH <- crop(master_grid, area_buffer_fix, snap = "near")
+
+globale_id_raster <- master_grid
+values(globale_id_raster) <- 1:ncell(globale_id_raster)
+
+id_raster_MH_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
+id_raster_MH_masked <- mask(id_raster_MH_globale_values, area_buffer_fix)
+
+message("-> Vertaaltabel bliksemsnel opbouwen via C++ dataframe extractie...")
+df_extractie <- as.data.frame(id_raster_MH_masked, cells = TRUE)
+vertaal_df <- as.data.table(df_extractie)
+setnames(vertaal_df, c(1, 2), c("lokale_id", "globale_id"))
+
+vertaal_df <- vertaal_df[!is.na(globale_id)]
+studiegebied_globale_ids <- unique(vertaal_df$globale_id)
+
+values(id_raster_MH) <- NA
+template_MH <- terra::rasterize(area_buffer_fix, id_raster_MH, field = 1, background = 0)
+
+cat("Gecorrigeerd aantal pixels in template_MH: ", sum(terra::values(template_MH) == 1, na.rm=TRUE), "\n")
+
+grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
+
+rm(globale_id_raster, id_raster_MH_globale_values, id_raster_MH_masked, df_extractie)
+gc()
+```
+
+# Biotoopfiltering (BWK-codes)
+```{r Biotoopfiltering}
+# 1. LAAD DE BRON-CROSSWALK/DICTIONARY IN
+df_nieuw <- read_csv(here("data/input/Excel_files/Resultaten_Totaal_Samengevoegd.csv"), show_col_types = FALSE)
+
+resultaten_gegroepeerd <- df_nieuw %>%
+  mutate(Soort_clean = tolower(trimws(Soort))) %>%
+  filter(Soort_clean == soort) %>%
+  group_by(Type) %>%
+  nest(Data = c(Code, Match))
+
+tabel_vlaanderen <- readRDS(here("data/input/Raster_Vlaanderen/BWK_Tabel_Mechelse_Heide_Plus_50km.rds"))
+setDT(tabel_vlaanderen)
+tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
+
+lijst_matches      <- list()
+lijst_oppervlaktes <- list()
+
+for(i in 1:nrow(resultaten_gegroepeerd)) {
+  h_type <- resultaten_gegroepeerd$Type[i]
+  h_data <- resultaten_gegroepeerd$Data[[i]]
+  
+  exact_codes <- tolower(trimws(h_data$Code[h_data$Match == "exact"]))
+  bevat_codes <- tolower(trimws(h_data$Code[h_data$Match == "bevat"]))
+  
+  if(length(bevat_codes) > 0) {
+    bevat_codes_escaped <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
+    bevat_codes_anchored <- paste0("^", bevat_codes_escaped)
+    regex_term <- paste0(bevat_codes_anchored, collapse = "|")
+    
+    tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes | grepl(regex_term, CODE)]
+  } else {
+    tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes]
+  }
+  
+  tabel_MH <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
+  tabel_MH_unique <- unique(tabel_MH, by = c("cel_id", "CODE"))
+
+  # 2. Bereken de som per cel_id en cap de maximale waarde hard op 1.0 (100%)
+  tabel_cel_som <- tabel_MH_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)),by = .(cel_id)]
+  
+  r_match_type <- id_raster_MH * NA
+  r_opp_type   <- id_raster_MH * NA
+  
+  if(nrow(tabel_cel_som) > 0) {
+    tabel_cel_som[, Oppervlakte := pmin(Oppervlakte, 1)]
+    
+    # --- STRENGERE FRACTIEDREMPEL VOOR WATERBIOTOOP ---
+    # Voorkomt dat een bospolygoon met een minuscuul water-elementje (bv. 5% gracht/ven)
+    # als volwaardig waterbiotoop wordt aangemerkt.
+    min_drempel <- if(grepl("waterbiotoop_bwk1", h_type, ignore.case = TRUE)) 0.20 else 0.01
+    
+    tabel_cel_som[, Match := ifelse(Oppervlakte >= min_drempel, 1, 0)]
+    
+    setnames(tabel_cel_som, "cel_id", "globale_id")
+    tabel_finaal_mapping <- merge(tabel_cel_som, vertaal_df, by = "globale_id", all.x = TRUE)
+    tabel_finaal_mapping <- tabel_finaal_mapping[!is.na(lokale_id)]
+    
+    if(nrow(tabel_finaal_mapping) > 0) {
+      tabel_matches_clean <- tabel_finaal_mapping[Match == 1]
+      if(nrow(tabel_matches_clean) > 0) {
+        r_match_type[tabel_matches_clean$lokale_id] <- tabel_matches_clean$Match
+      }
+      r_opp_type[tabel_finaal_mapping$lokale_id] <- tabel_finaal_mapping$Oppervlakte
+      
+      lijst_matches[[h_type]]      <- r_match_type
+      lijst_oppervlaktes[[h_type]] <- r_opp_type
+    }
+  }
+}
+
+waterbiotoop_bwk1_max    <- lijst_matches[["waterbiotoop_bwk1"]]
+waterbiotoop_bwk1_opp    <- lijst_oppervlaktes[["waterbiotoop_bwk1"]]
+waterbiotoop_notbwk_max  <- lijst_matches[["waterbiotoop_notbwk"]]
+waterbiotoop_notbwk_opp  <- lijst_oppervlaktes[["waterbiotoop_notbwk"]]
+landbiotoop_bwk1_max     <- lijst_matches[["landbiotoop_bwk1"]]
+landbiotoop_bwk1_opp     <- lijst_oppervlaktes[["landbiotoop_bwk1"]]
+landbiotoop_notbwk_max   <- lijst_matches[["landbiotoop_notbwk"]]
+landbiotoop_notbwk_opp   <- lijst_oppervlaktes[["landbiotoop_notbwk"]]
+landbiotoop_bos_max      <- lijst_matches[["landbiotoop_bos"]]
+landbiotoop_bos_opp      <- lijst_oppervlaktes[["landbiotoop_bos"]]
+landbiotoop_bwk_ruim_max <- lijst_matches[["landbiotoop_bwk_ruim"]]
+landbiotoop_bwk_ruim_opp <- lijst_oppervlaktes[["landbiotoop_bwk_ruim"]]
+
+rm(df_nieuw, lijst_matches, lijst_oppervlaktes)
+gc()
+```
+
+```{r waterbiotoop bepalen}
+message("-> Waterbiotoop berekenen (Spoor Max & Opp)...")
+
+# Basisbepaling (Geschikte minus ongeschikte cellen)
+waterbiotoop_bwk_basis_max <- terra::ifel(!is.na(waterbiotoop_bwk1_max) & is.na(waterbiotoop_notbwk_max), 1, NA)
+waterbiotoop_bwk_basis_opp <- terra::ifel(!is.na(waterbiotoop_bwk1_opp) & waterbiotoop_bwk1_opp > 0 & (is.na(waterbiotoop_notbwk_opp) | waterbiotoop_notbwk_opp == 0), 1, NA)
+
+# --- SPOOR 1: MAXIMALE POTENTIE ---
+waterbiotoop1_max_list <- cluster_filter_compleet(
+  masker     = waterbiotoop_bwk_basis_max, 
+  opp_laag   = waterbiotoop_bwk1_max, 
+  drempel_m2 = 200,                  # 0.02 ha = 200 m²
+  dist_m     = 10, 
+  werkelijk  = FALSE
+)
+waterbiotoop1_max <- waterbiotoop1_max_list$raster
+
+# --- SPOOR 2: WERKELIJKE OPPERVLAKTE (VOLLEDIG PARALLEL) ---
+r_binair_water_opp <- terra::ifel(!is.na(waterbiotoop_bwk_basis_opp) & waterbiotoop_bwk_basis_opp > 0, 1, NA)
+waterbiotoop1_opp_list <- cluster_filter_compleet(
+  masker     = r_binair_water_opp, 
+  opp_laag   = waterbiotoop_bwk1_opp, 
+  drempel_m2 = 200, 
+  dist_m     = 10, 
+  werkelijk  = TRUE
+)
+waterbiotoop1_opp <- waterbiotoop1_opp_list$raster
+
+cl_id_max <- waterbiotoop1_max_list$clusters
+cl_id_opp <- waterbiotoop1_opp_list$clusters
+
+rm(r_binair_water_opp, waterbiotoop_bwk_basis_max, waterbiotoop_bwk_basis_opp)
+gc()
+```
+
+```{r landbiotoop nabije omgeving}
+message("-> Landbiotoop nabije omgeving berekenen (Minimaal 50% bosconditie per cluster)...")
+
+# --- SPOOR 1: MAXIMALE POTENTIE ---
+landbiotoop_bwk_basis_max <- terra::ifel(!is.na(landbiotoop_bwk1_max) & is.na(landbiotoop_notbwk_max), 1, NA)
+
+landbiotoop1_max_list <- cluster_filter_compleet(
+  masker = landbiotoop_bwk_basis_max, opp_laag = landbiotoop_bwk1_max, 
+  drempel_m2 = 50000, dist_m = 50, werkelijk = FALSE
+)
+r_land_max_src <- landbiotoop1_max_list$raster
+r_land_max_src[is.na(r_land_max_src) | r_land_max_src == 0] <- NA
+
+r_bos_max_src <- landbiotoop_bos_max
+r_bos_max_src[is.na(r_bos_max_src) | r_bos_max_src == 0] <- NA
+
+cl_id_land_max <- terra::patches(r_land_max_src, directions = 8, zeroAsNA = TRUE)
+
+stats_land_totaal_max <- terra::zonal(r_land_max_src * 0.01, cl_id_land_max, fun = "sum", na.rm = TRUE)
+colnames(stats_land_totaal_max) <- c("Cluster_ID", "Totaal_Land_ha")
+
+bos_in_land_max <- terra::mask(r_bos_max_src, cl_id_land_max)
+stats_bos_in_land_max <- terra::zonal(bos_in_land_max * 0.01, cl_id_land_max, fun = "sum", na.rm = TRUE)
+colnames(stats_bos_in_land_max) <- c("Cluster_ID", "Bos_ha")
+
+df_samenstelling_max <- merge(stats_land_totaal_max, stats_bos_in_land_max, by = "Cluster_ID", all.x = TRUE)
+df_samenstelling_max$Bos_ha[is.na(df_samenstelling_max$Bos_ha)] <- 0
+df_samenstelling_max$Percentage_Bos <- (df_samenstelling_max$Bos_ha / df_samenstelling_max$Totaal_Land_ha) * 100
+
+valide_land_ids_max <- df_samenstelling_max$Cluster_ID[df_samenstelling_max$Percentage_Bos >= 50]
+
+if(length(valide_land_ids_max) > 0) {
+  masker_land_max <- cl_id_land_max %in% valide_land_ids_max
+  landbiotoop_nabij_max <- terra::mask(r_land_max_src, terra::ifel(masker_land_max, 1, NA))
+} else {
+  message("⚠️ Waarschuwing: Geen enkel landbiotoop-cluster voldoet aan de 50% bos-eis in Spoor A.")
+  landbiotoop_nabij_max <- template_MH * NA
+}
+
+# --- SPOOR 2: WERKELIJKE OPPERVLAKTE (AUTONOOM EN PARALLEL) ---
+landbiotoop_bwk_basis_opp <- terra::ifel(!is.na(landbiotoop_bwk1_opp) & landbiotoop_bwk1_opp > 0 & (is.na(landbiotoop_notbwk_opp) | landbiotoop_notbwk_opp == 0), 1, NA)
+
+r_binair_land_opp_init <- terra::ifel(!is.na(landbiotoop_bwk_basis_opp) & landbiotoop_bwk_basis_opp > 0, 1, NA)
+
+landbiotoop1_opp_list <- cluster_filter_compleet(
+  masker = r_binair_land_opp_init, opp_laag = landbiotoop_bwk1_opp, 
+  drempel_m2 = 50000, dist_m = 50, werkelijk = TRUE
+)
+
+r_land_opp_src <- landbiotoop1_opp_list$raster
+r_land_opp_bin <- terra::ifel(!is.na(r_land_opp_src) & r_land_opp_src > 0, 1, NA)
+
+if(!all(is.na(terra::values(r_land_opp_bin, mat=FALSE)))) {
+  cl_id_land_opp <- terra::patches(r_land_opp_bin, directions = 8, zeroAsNA = TRUE)
+  
+  stats_land_totaal_opp <- terra::zonal(r_land_opp_src, cl_id_land_opp, fun = "sum", na.rm = TRUE)
+  colnames(stats_land_totaal_opp) <- c("Cluster_ID", "Totaal_Land_ha")
+  stats_land_totaal_opp$Totaal_Land_ha <- stats_land_totaal_opp$Totaal_Land_ha * 0.01
+  
+  bos_in_land_opp <- terra::mask(landbiotoop_bos_opp, cl_id_land_opp)
+  stats_bos_in_land_opp <- terra::zonal(bos_in_land_opp, cl_id_land_opp, fun = "sum", na.rm = TRUE)
+  colnames(stats_bos_in_land_opp) <- c("Cluster_ID", "Bos_ha")
+  stats_bos_in_land_opp$Bos_ha <- stats_bos_in_land_opp$Bos_ha * 0.01
+  
+  df_samenstelling_opp <- merge(stats_land_totaal_opp, stats_bos_in_land_opp, by = "Cluster_ID", all.x = TRUE)
+  df_samenstelling_opp$Bos_ha[is.na(df_samenstelling_opp$Bos_ha)] <- 0
+  df_samenstelling_opp$Percentage_Bos <- (df_samenstelling_opp$Bos_ha / df_samenstelling_opp$Totaal_Land_ha) * 100
+  
+  valide_land_ids_opp <- df_samenstelling_opp$Cluster_ID[df_samenstelling_opp$Percentage_Bos >= 50]
+  
+  if(length(valide_land_ids_opp) > 0) {
+    masker_land_opp <- cl_id_land_opp %in% valide_land_ids_opp
+    landbiotoop_nabij_opp <- terra::mask(r_land_opp_src, terra::ifel(masker_land_opp, 1, NA))
+  } else {
+    landbiotoop_nabij_opp <- template_MH * NA
+  }
+} else {
+  landbiotoop_nabij_opp <- template_MH * NA
+}
+
+message("   - Aantal geëvalueerde landbiotoop-clusters (MAX): ", nrow(df_samenstelling_max))
+message("   - Aantal clusters dat voldoet (>= 50% bos MAX): ", length(valide_land_ids_max))
+
+rm(landbiotoop_bwk_basis_max, landbiotoop_bwk_basis_opp, landbiotoop1_max_list, r_land_max_src, r_bos_max_src, cl_id_land_max,
+   stats_land_totaal_max, bos_in_land_max, stats_bos_in_land_max, df_samenstelling_max, landbiotoop1_opp_list, r_binair_land_opp_init,
+   r_land_opp_src, r_land_opp_bin, cl_id_land_opp, stats_land_totaal_opp, bos_in_land_opp, stats_bos_in_land_opp, df_samenstelling_opp)
+gc()
+```
+
+```{r landbiotoop ruime omgeving}
+message("-> Landbiotoop ruimere omgeving berekenen (Spoor Max & Opp)...")
+
+# --- SPOOR 1: MAXIMALE POTENTIE ---
+landbiotoop_ruim_max_list <- cluster_filter_compleet(
+  masker = landbiotoop_bwk_ruim_max, opp_laag = landbiotoop_bwk_ruim_max, 
+  drempel_m2 = 400000, dist_m = 50, werkelijk = FALSE
+)
+landbiotoop_ruim_max <- landbiotoop_ruim_max_list$raster
+
+# --- SPOOR 2: WERKELIJKE OPPERVLAKTE ---
+r_binair_ruim_opp <- terra::ifel(!is.na(landbiotoop_bwk_ruim_opp) & landbiotoop_bwk_ruim_opp > 0, 1, NA)
+
+landbiotoop_ruim_opp_list <- cluster_filter_compleet(
+  masker = r_binair_ruim_opp, opp_laag = landbiotoop_bwk_ruim_opp, 
+  drempel_m2 = 400000, dist_m = 50, werkelijk = TRUE
+)
+landbiotoop_ruim_opp <- landbiotoop_ruim_opp_list$raster
+
+rm(r_binair_ruim_opp, landbiotoop_ruim_max_list, landbiotoop_ruim_opp_list)
+gc()
+```
+
+```{r interactie water en land}
+message("-> Ruimtelijke interacties en eindsynthese per spoor uitvoeren...")
+
+# ==============================================================================
+# VERWERKING SPOOR 1: MAXIMALE POTENTIE
+# ==============================================================================
+water_buffer20_max <- terra::buffer(waterbiotoop1_max, width = 20)
+land_buffer20_max  <- terra::buffer(landbiotoop_nabij_max, width = 20)
+
+waterbiotoop2_max <- terra::mask(waterbiotoop1_max, land_buffer20_max)
+landbiotoop2_max  <- terra::mask(landbiotoop_nabij_max, water_buffer20_max)
+
+ruim_buffer500_max <- terra::buffer(landbiotoop_ruim_max, width = 500)
+
+waterbiotoop_finaal_max <- terra::mask(waterbiotoop2_max, ruim_buffer500_max)
+landbiotoop_finaal_max  <- terra::mask(landbiotoop2_max, ruim_buffer500_max)
+
+leefgebied_max <- terra::cover(waterbiotoop_finaal_max, landbiotoop_finaal_max)
+finaal_max_binair <- terra::ifel(!is.na(leefgebied_max), 1, NA)
+
+# ==============================================================================
+# VERWERKING SPOOR 2: WERKELIJKE OPPERVLAKTE (PARALLEL)
+# ==============================================================================
+water_buffer20_opp <- terra::buffer(!is.na(waterbiotoop1_opp) & waterbiotoop1_opp > 0, width = 20)
+land_buffer20_opp  <- terra::buffer(!is.na(landbiotoop_nabij_opp) & landbiotoop_nabij_opp > 0, width = 20)
+
+waterbiotoop2_opp <- terra::mask(waterbiotoop1_opp, land_buffer20_opp)
+landbiotoop2_opp  <- terra::mask(landbiotoop_nabij_opp, water_buffer20_opp)
+
+ruim_buffer500_opp <- terra::buffer(!is.na(landbiotoop_ruim_opp) & landbiotoop_ruim_opp > 0, width = 500)
+
+waterbiotoop_finaal_opp <- terra::mask(waterbiotoop2_opp, ruim_buffer500_opp)
+landbiotoop_finaal_opp  <- terra::mask(landbiotoop2_opp, ruim_buffer500_opp)
+
+leefgebied_opp <- terra::cover(waterbiotoop_finaal_opp, landbiotoop_finaal_opp)
+finaal_opp_binair <- terra::ifel(!is.na(leefgebied_opp) & leefgebied_opp > 0, 1, NA)
+
+land_buffer100_opp <- terra::buffer(!is.na(landbiotoop_nabij_opp) & landbiotoop_nabij_opp > 0, width = 100)
+
+rm(water_buffer20_max, land_buffer20_max, waterbiotoop2_max, landbiotoop2_max, 
+   waterbiotoop_finaal_max, landbiotoop_finaal_max, leefgebied_max,
+   water_buffer20_opp, land_buffer20_opp, waterbiotoop2_opp, landbiotoop2_opp,
+   waterbiotoop_finaal_opp, landbiotoop_finaal_opp, leefgebied_opp)
+gc()
+
+message("-> Parallelle modellering succesvol voltooid! Lagen opgeslagen in RAM.")
+```
+
+```{r waarnemingen inlezen en ARPL maanwaterjuffer}
+# ==============================================================================
+# STAP 6: ACTUELE VERSPREIDING & ARPL OP BASIS VAN WERKLIJKE OPPERVLAKTES (OPP)
+# ==============================================================================
+message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor maanwaterjuffer...")
+
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Mechelse_Heide/Waarnemingen_Maanwaterjuffer.csv")
+
+if (file.exists(waarnemingen_path)) {
+  waarnemingen_raw    <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)
+  df_points_sf        <- st_as_sf(waarnemingen_raw, coords = c("x", "y"), crs = 31370)
+  waarneming_smear_sf <- st_buffer(df_points_sf, dist = buffer_m) %>% st_union() %>% st_sf()
+  waarneming_blobs_vect  <- vect(waarneming_smear_sf)
+  waarneming_punten_vect <- vect(df_points_sf) 
+  has_observations    <- TRUE
+  message("-> Waarnemingsbestand succesvol geladen.")
+} else {
+  message(paste("⚠️ Waarschuwing: Geen waarnemingsbestand gevonden op pad:", waarnemingen_path))
+  df_points_sf        <- st_sf(st_sfc(crs = 31370)) 
+  waarneming_smear_sf <- st_sf(st_sfc(crs = 31370))
+  waarneming_blobs_vect  <- vect(st_sf(st_sfc(crs = 31370)))
+  waarneming_punten_vect <- vect(st_sf(st_sfc(crs = 31370)))
+  has_observations    <- FALSE
+}
+
+maanwaterjuffer_arpl_opp    <- terra::rast(template_MH, vals = NA)
+maanwaterjuffer_verspr_opp  <- terra::rast(template_MH, vals = NA)
+
+n_frag_max_bin <- n_frag_max_buit <- n_frag_opp_bin <- n_frag_opp_buit <- 0
+ha_max_bin <- ha_max_buit <- ha_opp_bin <- ha_opp_buit <- 0
+n_frag_arpl_opp <- n_frag_vers_opp <- ha_arpl_opp <- ha_vers_opp <- 0
+
+biotoop_voor_netwerk <- terra::ifel(!is.na(finaal_opp_binair) & finaal_opp_binair > 0, 1, NA)
+
+if (!all(is.na(terra::values(biotoop_voor_netwerk, mat=FALSE)))) {
+  
+  message("-> Metapopulatie-netwerkwolken bouwen op basis van WERKLIJKE OPPERVLAKTE...")
+  p_ruw_opp <- terra::as.polygons(biotoop_voor_netwerk, aggregate = TRUE) %>% terra::disagg()
+  
+  p_buf_opp        <- terra::buffer(p_ruw_opp, width = buffer_m / 2)
+  p_net_opp_wolken <- terra::aggregate(p_buf_opp) %>% terra::disagg()
+  p_net_opp_wolken$Netwerk_ID <- 1:nrow(p_net_opp_wolken)
+  
+  p_ruw_opp$Netwerk_ID <- terra::relate(p_ruw_opp, p_net_opp_wolken, "within") %>% 
+    apply(1, function(x) { if(any(x)) which(x)[1] else NA })
+  
+  r_opp_net_ids <- biotoop_voor_netwerk * NA
+  r_opp_net_ids <- terra::rasterize(p_ruw_opp, r_opp_net_ids, field = "Netwerk_ID", touches = FALSE)
+  
+  relatie_matrix <- terra::relate(p_net_opp_wolken, area_shape_proj, "intersects")
+  ids_binnen <- p_net_opp_wolken$Netwerk_ID[apply(relatie_matrix, 1, any)]
+  ids_buiten <- setdiff(p_net_opp_wolken$Netwerk_ID, ids_binnen)
+  
+  cl_id_scherp_max <- terra::mask(cl_id_max, finaal_max_binair)
+  cl_id_scherp_opp <- terra::mask(cl_id_opp, finaal_opp_binair)
+  
+  # --- EXTRACTION A: ARPL ---
+  if (has_observations && nrow(df_points_sf) > 0) {
+    extract_ids_arpl <- terra::extract(r_opp_net_ids, waarneming_blobs_vect)
+    ids_netwerken_raken_arpl <- unique(na.omit(extract_ids_arpl[[2]]))
+  } else { ids_netwerken_raken_arpl <- c() }
+  ids_actueel_relevant <- intersect(ids_binnen, ids_netwerken_raken_arpl)
+  
+  if(length(ids_actueel_relevant) > 0) {
+    m_arpl <- r_opp_net_ids %in% ids_actueel_relevant
+    m_arpl_tv <- terra::crop(terra::ifel(m_arpl == 1, 1, NA), template_MH)
+    maanwaterjuffer_arpl_opp <- terra::mask(terra::crop(finaal_opp_binair, template_MH), m_arpl_tv)
+    ha_arpl_opp <- calc_ha_exact(maanwaterjuffer_arpl_opp)
+    
+    n_frag_arpl_opp <- length(na.omit(terra::unique(terra::mask(cl_id_scherp_opp, m_arpl_tv))[[1]]))
+  }
+  
+  # --- EXTRACTION B: ACTUELE VERSPREIDING ---
+  if (has_observations && nrow(df_points_sf) > 0) {
+    extract_ids_verspr <- terra::extract(r_opp_net_ids, waarneming_punten_vect)
+    ids_netwerken_raken_punten <- unique(na.omit(extract_ids_verspr[[2]]))
+  } else { ids_netwerken_raken_punten <- c() }
+  ids_verspreiding_clusters <- intersect(ids_binnen, ids_netwerken_raken_punten)
+  
+  if(length(ids_verspreiding_clusters) > 0) {
+    m_verspr <- r_opp_net_ids %in% ids_verspreiding_clusters
+    m_verspr_tv <- terra::crop(terra::ifel(m_verspr == 1, 1, NA), template_MH)
+    clusters_actueel_tv <- terra::crop(terra::mask(finaal_opp_binair, m_verspr_tv), template_MH)
+    maanwaterjuffer_verspr_opp <- terra::ifel(!is.na(clusters_actueel_tv) & clusters_actueel_tv > 0, 1, NA)
+    ha_vers_opp <- calc_ha_exact(clusters_actueel_tv)
+    
+    n_frag_vers_opp <- length(na.omit(terra::unique(terra::mask(cl_id_scherp_opp, m_verspr_tv))[[1]]))
+  }
+  
+  r_net_ids_tv <- terra::crop(r_opp_net_ids, template_MH)
+  
+  calc_ha_zone_style <- function(ids, target_raster) {
+    if(length(ids) == 0) return(0)
+    masker <- r_net_ids_tv %in% ids
+    r_gefilterd <- terra::mask(target_raster, terra::ifel(masker == 1, 1, NA))
+    return(round(calc_ha_exact(r_gefilterd), 2))
+  }
+  
+  count_frags_zone_style <- function(ids, cl_raster) {
+    if(length(ids) == 0) return(0)
+    masker <- r_net_ids_tv %in% ids
+    frags  <- terra::mask(cl_raster, terra::ifel(masker == 1, 1, NA))
+    return(length(na.omit(terra::unique(frags)[[1]])))
+  }
+
+  if(length(ids_binnen) > 0) {
+    n_frag_max_bin <- count_frags_zone_style(ids_binnen, cl_id_scherp_max)
+    n_frag_opp_bin <- count_frags_zone_style(ids_binnen, cl_id_scherp_opp)
+    ha_max_bin      <- calc_ha_zone_style(ids_binnen, finaal_max_binair)
+    ha_opp_bin      <- calc_ha_zone_style(ids_binnen, finaal_opp_binair)
+  }
+  if(length(ids_buiten) > 0) {
+    n_frag_max_buit <- count_frags_zone_style(ids_buiten, cl_id_scherp_max)
+    n_frag_opp_buit <- count_frags_zone_style(ids_buiten, cl_id_scherp_opp)
+    ha_max_buit     <- calc_ha_zone_style(ids_buiten, finaal_max_binair)
+    ha_opp_buit     <- calc_ha_zone_style(ids_buiten, finaal_opp_binair)
+  }
+  
+  rm(p_ruw_opp, p_buf_opp, p_net_opp_wolken, relatie_matrix)
+}
+
+# ==============================================================================
+# PIXEL STATUSKAART OPBOUWEN
+# ==============================================================================
+r_status <- terra::rast(template_MH, vals = NA)
+if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE)))) {
+  r_net_ids_tv_sync <- terra::resample(r_net_ids_tv, template_MH, method = "near")
+  r_opp_tv_sync     <- terra::resample(finaal_opp_binair, template_MH, method = "near")
+  
+  if(exists("ids_binnen") && length(ids_binnen) > 0) {
+    m_pot_bin   <- !is.na(terra::match(r_net_ids_tv_sync, ids_binnen))
+    r_status <- terra::ifel(m_pot_bin, 1, r_status) 
+    r_status <- terra::ifel(m_pot_bin & r_opp_tv_sync > 0, 3, r_status) 
+  }
+  rm(r_net_ids_tv_sync, r_opp_tv_sync)
+}
+
+totaal_caption <- paste("Totaaloverzicht habitat & verspreiding:", soort)
+tabel_totaal <- data.frame(
+  Type = c("Maximaal Potentieel (Binnen MH)", "Maximaal Potentieel (Buiten MH)",
+           "Werkelijk Habitat (Binnen MH)", "Werkelijk Habitat (Buiten MH)",
+           "Actueel Relevant (ARPL - Reële ha)", 
+           "Actuele Verspreiding (Werkelijke ha)"),
+  Clusters_Fragmenten = c(n_frag_max_bin, n_frag_max_buit, n_frag_opp_bin, n_frag_opp_buit, n_frag_arpl_opp, n_frag_vers_opp),
+  Oppervlakte_ha = c(ha_max_bin, ha_max_buit, ha_opp_bin, ha_opp_buit, round(ha_arpl_opp, 2), round(ha_vers_opp, 2))
+)
+
+tabel_totaal %>% 
+  knitr::kable(caption = totaal_caption) %>% 
+  kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+```{r Interactieve kaart maanwaterjuffer}
+# ==============================================================================
+# STAP 7: INTERACTIEVE KAART (LEAFLET)
+# ==============================================================================
+if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE)))) {
+  
+  message("-> Clusterstatistieken en polygonen genereren voor maanwaterjuffer...")
+  
+  cl_poly <- terra::as.polygons(r_net_ids_tv, aggregate = TRUE) %>% 
+    st_as_sf() %>% 
+    st_transform(4326)
+  
+  colnames(cl_poly)[1] <- "Netwerk_ID"
+  
+  cl_poly_final <- cl_poly %>%
+    mutate(
+      ARPL_Status = Netwerk_ID %in% ids_actueel_relevant,
+      Type = ifelse(ARPL_Status, "Werkelijk Habitat (ARPL)", "Potentieel (Geen ARPL)"),
+      Popup = paste0(
+        "<div style='font-family: Arial; min-width: 220px;'>",
+        "<strong>Netwerk Complex ID:</strong> ", Netwerk_ID, "<br>",
+        "<strong>Soort:</strong> Maanwaterjuffer<br><hr>",
+        "<strong>Status:</strong> ", Type, "<br>",
+        "</div>"
+      )
+    )
+    
+  if (exists("waterbiotoop1_opp") && exists("ruim_buffer500_opp") && exists("land_buffer100_opp")) {
+    
+    water_finaal_kaart <- terra::mask(waterbiotoop1_opp, land_buffer100_opp)
+    water_finaal_kaart <- terra::mask(water_finaal_kaart, ruim_buffer500_opp)
+    
+    water_binair_int <- terra::as.int(terra::ifel(!is.na(water_finaal_kaart) & water_finaal_kaart > 0, 1, NA))
+    
+    if (!all(is.na(terra::values(water_binair_int, mat=FALSE)))) {
+      water_poly <- terra::as.polygons(water_binair_int, aggregate = TRUE) %>% 
+        st_as_sf() %>% 
+        st_transform(4326) %>% 
+        st_make_valid()
+      
+      has_water_layer <- TRUE
+      message(paste("-> [LEAFLET SUCCESS] Er worden nu", nrow(water_poly), "blauwe vennen getekend op de kaart!"))
+    } else {
+      has_water_layer <- FALSE
+      message("⚠️ [LEAFLET WARN] Geen van de waterpixels overleefde de combinatie met de land-buffers.")
+    }
+  } else {
+    has_water_layer <- FALSE
+    message("⚠️ [LEAFLET WARN] Een van de vereiste biotooplasten of buffers ontbreekt in het geheugen.")
+  }
+}  
+
+r_web_status <- terra::project(r_status, "EPSG:4326", method = "near")
+
+if(has_observations && nrow(df_points_sf) > 0) {
+  waarneming_smear_web <- st_transform(waarneming_smear_sf, 4326)
+  points_web           <- st_transform(df_points_sf, 4326)
+} else {
+  waarneming_smear_web <- st_sf(st_sfc(crs = 4326))
+  points_web           <- st_sf(st_sfc(crs = 4326))
+}
+
+# --- PALETTEN DEFINIËREN ---
+# Palet voor r_status rasterpixels (1 = Potentieel binnen MH, 3 = Werkelijk binnen MH)
+pal_pixels <- colorFactor(
+  palette = c("#984ea3", "#FF8C00", "#4daf4a", "#377eb8"), 
+  domain = c(1, 2, 3, 4), 
+  na.color = "transparent"
+)
+
+# Palet voor netwerk-polygonen (ARPL vs Geen ARPL)
+pal_biotoop <- colorFactor(
+  palette = c("#4daf4a", "#984ea3"), 
+  levels = c("Werkelijk Habitat (ARPL)", "Potentieel (Geen ARPL)")
+)
+
+# --- LEAFLET KAART BOUWEN ---
+map <- leaflet() %>%
+  addTiles(group = "OSM (Kaart)") %>%
+  addProviderTiles(providers$OpenTopoMap, group = "OpenTopoMap") %>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet")
+
+# Rasterlaag met pixelkwaliteit
+if(!all(is.na(terra::values(r_web_status, mat=FALSE)))) {
+  map <- map %>% addRasterImage(
+    terra::as.int(r_web_status), 
+    colors = pal_pixels, 
+    opacity = 0.5, 
+    group = "Kwaliteit (Pixels)"
+  )
+}
+
+# Netwerkpolygonen
+if(exists("cl_poly_final") && nrow(cl_poly_final) > 0) {
+  map <- map %>% addPolygons(
+    data = cl_poly_final, 
+    fillColor = ~pal_biotoop(Type), 
+    fillOpacity = 0.5, 
+    color = ~ifelse(ARPL_Status, "#DFFF00", "white"), 
+    weight = ~ifelse(ARPL_Status, 2, 0.8),                       
+    popup = ~Popup,
+    label = ~paste0(Type, " (#", Netwerk_ID, ")"),
+    group = "Gefilterd Leefgebied"
+  )
+}
+
+# Blauwe vennen (indien aanwezig)
+if(exists("has_water_layer") && has_water_layer) {
+  map <- map %>% addPolygons(
+    data = water_poly,
+    color = "#1E90FF",
+    weight = 1,
+    fillColor = "#00BFFF",
+    fillOpacity = 0.8,
+    group = "Gefilterd Leefgebied"
+  )
+}
+
+# Dispersiebereik (Smear)
+if (nrow(waarneming_smear_web) > 0) {
+  map <- map %>% addPolygons(
+    data = waarneming_smear_web, 
+    color = "#3498DB", 
+    weight = 2, 
+    fill = FALSE, 
+    dashArray = "10, 5", 
+    group = "Dispersiebereik (Smear)"
+  )
+}
+
+# Waarnemingspunten
+if (nrow(points_web) > 0) {
+  map <- map %>% addCircles(
+    data = points_web, 
+    color = "black", 
+    weight = 1, 
+    fillColor = "yellow", 
+    fillOpacity = 1, 
+    radius = 25, 
+    group = "Waarnemingen"
+  )
+}
+
+# Grens en Legende
+map <- map %>%
+  addPolygons(
+    data = grens_web, 
+    fill = FALSE, 
+    color = "black", 
+    weight = 3, 
+    group = "Grens Studiegebied"
+  ) %>%
+  addLegend(
+    pal = pal_biotoop, 
+    values = c("Werkelijk Habitat (ARPL)", "Potentieel (Geen ARPL)"), 
+    title = "Status Habitat", 
+    position = "bottomright", 
+    group = "Gefilterd Leefgebied"
+  ) %>%
+  addLayersControl(
+    baseGroups = c("OpenTopoMap", "OSM (Kaart)", "Satelliet"),
+    overlayGroups = c("Gefilterd Leefgebied", "Dispersiebereik (Smear)", "Waarnemingen", "Kwaliteit (Pixels)", "Grens Studiegebied"),
+    options = layersControlOptions(collapsed = FALSE)
+  ) %>%
+  hideGroup(c("Kwaliteit (Pixels)"))
+
+map
+```
+
+```{r export maanwaterjuffer}
+# ==============================================================================
+# STAP 8: EXPORT MET SCHRIJFACTIE VOOR MAANWATERJUFFER
+# ==============================================================================
+message("-> Start geformatteerde export met nul-opvulling voor maanwaterjuffer...")
+
+base_dir <- here("data/output/Mechelse_Heide/Rasters_Soorten")
+folders <- list(
+  potentie     = file.path(base_dir, "01_Maximale_Potentie"),
+  werkelijk    = file.path(base_dir, "02_Werkelijke_Oppervlakte"),
+  arpl         = file.path(base_dir, "03_ARPL"),
+  verspreiding = file.path(base_dir, "04_Actuele_Verspreiding")
+)
+purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
+
+if(!all(is.na(terra::values(finaal_max_binair, mat=FALSE)))) {
+  potentie_export_rast <- terra::ifel(!is.na(finaal_max_binair) & finaal_max_binair > 0, 1, NA)
+} else {
+  potentie_export_rast <- terra::rast(template_MH, vals = NA)
+}
+
+if(!all(is.na(terra::values(finaal_opp_binair, mat=FALSE)))) {
+  werkelijk_export_rast <- terra::ifel(!is.na(finaal_opp_binair) & finaal_opp_binair > 0, 1, NA)
+} else {
+  werkelijk_export_rast <- terra::rast(template_MH, vals = NA)
+}
+
+if(exists("maanwaterjuffer_arpl_opp") && !all(is.na(terra::values(maanwaterjuffer_arpl_opp, mat=FALSE)))) {
+  arpl_export_rast <- terra::ifel(maanwaterjuffer_arpl_opp > 0, 1, NA)
+} else {
+  arpl_export_rast <- terra::rast(template_MH, vals = NA)
+}
+
+if(exists("maanwaterjuffer_verspr_opp") && !all(is.na(terra::values(maanwaterjuffer_verspr_opp, mat=FALSE)))) {
+  verspreiding_export_rast <- terra::ifel(maanwaterjuffer_verspr_opp > 0, 1, NA)
+} else {
+  verspreiding_export_rast <- terra::rast(template_MH, vals = NA)
+}
+
+export_config <- list(
+  list(rast = potentie_export_rast,      naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
+  list(rast = werkelijk_export_rast,     naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
+  list(rast = arpl_export_rast,          naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
+  list(rast = verspreiding_export_rast,  naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
+)
+
+for(item in export_config) {
+  file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
+  
+  export_rast <- terra::deepcopy(item$rast)
+  export_rast <- terra::mask(export_rast, area_buffer_fix)
+  
+  if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
+    export_rast <- terra::ifel(is.na(export_rast), 0, 0)
+    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+  } else {
+    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+  }
+  
+  terra::writeRaster(export_rast, 
+                     filename = file_path, 
+                     overwrite = TRUE, 
+                     gdal = c("COMPRESS=LZW"), 
+                     datatype = item$type)
+                     
+  message(paste("   [OK] Geëxporteerd naar schijf:", basename(file_path)))
+}
+
+suppressWarnings(
+  rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast,
+     waterbiotoop1_opp, land_buffer100_opp, ruim_buffer500_opp)
+)
+gc()
+
+message("🏁 SCRIPT EN EXPORT VOLLEDIG EN SUCCESVOL AFGEROND VOOR MAANWATERJUFFER!")
+```
+
