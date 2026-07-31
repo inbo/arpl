@@ -116,7 +116,6 @@ rm(df, resultaat)
 area_shape  <- vect(here("data/input/Turnhouts_Vennegebied.shp"))
 master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
 
-# Inlezen van de CSV-sleutel (gebruikt om tabel-indices te mappen naar codes)
 df_namen_sleutel <- read_csv(here("data/input/Excel_files/BWK_Laag_Namen_2025.csv"), show_col_types = FALSE)
 gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
 
@@ -129,42 +128,26 @@ id_raster_TV <- crop(master_grid, area_buffer_fix, snap = "near")
 globale_id_raster <- master_grid
 values(globale_id_raster) <- 1:ncell(globale_id_raster)
 
-# ==============================================================================
-# ULTRA-SNELLE METHODE: Direct naar data.frame met celnummers in C++
-# ==============================================================================
 id_raster_TV_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
 id_raster_TV_masked <- mask(id_raster_TV_globale_values, area_buffer_fix)
 
 message("-> Vertaaltabel bliksemsnel opbouwen via C++ dataframe extractie...")
 
-# 'cells = TRUE' zorgt ervoor dat terra direct een kolom 'cell' (lokale id) 
-# en een kolom met de waarde (globale id) genereert voor alle niet-NA cellen.
 df_extractie <- as.data.frame(id_raster_TV_masked, cells = TRUE)
-
-# Direct omzetten naar data.table en de kolommen juist benoemen
 vertaal_df <- as.data.table(df_extractie)
-
-# De kolommen heten nu standaard 'cell' en de naam van je raster (lyr.1 of gelijkaardig)
-# We hernoemen ze direct naar jouw vertrouwde structuur:
 setnames(vertaal_df, c(1, 2), c("lokale_id", "globale_id"))
 
-# Filter eventuele resterende NA's eruit
 vertaal_df <- vertaal_df[!is.na(globale_id)]
-
 studiegebied_globale_ids <- unique(vertaal_df$globale_id)
 
 values(id_raster_TV) <- NA
-# --- DE CRUCIALE TEMPLATE REPARATIE ---
-# In plaats van alles op NA te zetten, maken we een binaire 'mal' van het studiegebied.
-# We rasteriseren de shapefile van het Turnhouts Vennegebied (area_buffer_fix) op het uitgesneden raster.
 template_TV <- terra::rasterize(area_buffer_fix, id_raster_TV, field = 1, background = 0)
 
-# Controleer of het nu wél cellen bevat:
 cat("Gecorrigeerd aantal pixels in template_TV: ", sum(terra::values(template_TV) == 1, na.rm=TRUE), "\n")
 
 grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
 
-rm(globale_id_raster, id_raster_TV_globale_values, id_raster_TV_masked)
+rm(globale_id_raster, id_raster_TV_globale_values, id_raster_TV_masked, df_extractie)
 gc()
 ```
 
@@ -285,28 +268,20 @@ r_watervogelgebied_max <- terra::rasterize(
 rm(sf_wintertaling_vlaanderen, sf_wintertaling_regio, locatie_aantallen, gebied_geselecteerd, sf_regio_template)
 ```
 
-
 ```{r wintertaling stap 2 - waterlopen en clustering met exacte codes}
 # ==============================================================================
-# STAP 2: WINTERTALING - WATERLOPEN INTEGREREN (EXACTE CODES), FUZZY CLUSTERING (5 HA)
+# STAP 2: WINTERTALING - WATERLOPEN INTEGREREN (EXACTE CODES), FUZZY CLUSTERING (5 HA - PARALLEL)
 # ==============================================================================
 message("-> Huetzon-raster inlezen en tabelcategorieën matchen met exacte codes...")
 r_huetzon_raw <- terra::rast(here("data/input/Raster_Vlaanderen/vlaanderen_huetzon_10m.tif"))
 r_huetzon     <- terra::resample(r_huetzon_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
 
-# Haal de categorieëntabel van het Huetzon-raster op
 huetzon_cats <- terra::cats(r_huetzon)[[1]]
-
-# De gewenste waterloopcodes voor de wintertaling
 gewenste_water_codes <- c("Mlz", "O1brak", "O1o", "O2zout", "Rg", "Rk")
-
-# We trimmen en negeren hoofdletterverschillen voor maximale betrouwbaarheid
 gewenste_water_clean <- tolower(trimws(gewenste_water_codes))
 
-# We checken de labels in de rastertabel van Huetzon
 ids_waterlopen_ok <- huetzon_cats$value[tolower(trimws(huetzon_cats$Label)) %in% gewenste_water_clean]
 
-# Mocht de tabelkolom anders heten, dan doorzoeken we de hele tabelrij
 if (length(ids_waterlopen_ok) == 0) {
   tabel_rijen_check <- apply(huetzon_cats, 1, function(row) {
     any(tolower(trimws(row)) %in% gewenste_water_clean)
@@ -314,7 +289,6 @@ if (length(ids_waterlopen_ok) == 0) {
   ids_waterlopen_ok <- huetzon_cats$value[tabel_rijen_check]
 }
 
-# Kogelvrije fallback naar de numerieke klassen 11 t/m 14 en 17, 18
 if (length(ids_waterlopen_ok) == 0) {
   message("⚠️ Waarschuwing: Gewenste codes niet gevonden in Huetzon-tabel. We vallen terug op klassieke waterloopklassen.")
   ids_waterlopen_ok <- c(11, 12, 13, 14, 17, 18)
@@ -322,30 +296,37 @@ if (length(ids_waterlopen_ok) == 0) {
   message(paste("-> Waterloop ID's succesvol gematcht op basis van je codes:", paste(ids_waterlopen_ok, collapse = ", ")))
 }
 
-# Selecteer de waterloop-pixels uit het raster
 r_waterlopen <- r_huetzon %in% ids_waterlopen_ok
 
-# Voeg waterlopen toe aan het foerageer-BWK via logische OF
+# --- SPOOR A: MAXIMALE POTENTIE (Binair) ---
 foerageer_compleet_max <- (!is.na(foerageer_bwk_max) & foerageer_bwk_max == 1) | (r_waterlopen == 1)
 foerageer_compleet_max <- terra::ifel(foerageer_compleet_max == 1, 1, NA)
 
-# Koppel de oppervlakte-fracties (water krijgt volledige pixelsomming = 1.0)
-r_waterlopen_opp <- terra::ifel(r_waterlopen == 1, 1.0, NA)
-foerageer_compleet_opp <- terra::cover(foerageer_bwk_opp, r_waterlopen_opp)
-
-message("-> Landschapsclustering op hersteld habitat (50m fuzzy, drempel 5 ha)...")
 drempel_m2 <- oppervlakte_ha * 10000
 
-wintertaling_clusters <- cluster_filter_compleet(
+wintertaling_clusters_max <- cluster_filter_compleet(
   masker       = foerageer_compleet_max,
-  opp_laag     = foerageer_compleet_opp,
+  opp_laag     = foerageer_compleet_max,
   drempel_m2   = drempel_m2, 
   dist_m       = 50,
   werkelijk    = FALSE
 )
+r_foer_5ha_max <- wintertaling_clusters_max$raster
 
-r_foer_5ha_max <- wintertaling_clusters$raster
-r_foer_5ha_opp <- terra::mask(foerageer_compleet_opp, r_foer_5ha_max)
+# --- SPOOR B: WERKELIJKE OPPERVLAKTE (Parallel & Autonoom) ---
+r_waterlopen_opp <- terra::ifel(r_waterlopen == 1, 1.0, NA)
+foerageer_compleet_opp <- terra::cover(foerageer_bwk_opp, r_waterlopen_opp)
+
+r_binair_foer_opp <- terra::ifel(!is.na(foerageer_compleet_opp) & foerageer_compleet_opp > 0, 1, NA)
+
+wintertaling_clusters_opp <- cluster_filter_compleet(
+  masker       = r_binair_foer_opp,
+  opp_laag     = foerageer_compleet_opp,
+  drempel_m2   = drempel_m2, 
+  dist_m       = 50,
+  werkelijk    = TRUE
+)
+r_foer_5ha_opp <- wintertaling_clusters_opp$raster
 
 message("-> Intersectie: Alleen geschikt habitat BINNEN de gereserveerde watervogelgebieden...")
 wintertaling_leefgebied_max <- terra::mask(r_foer_5ha_max, r_watervogelgebied_max) %>% terra::crop(template_TV)
@@ -355,7 +336,7 @@ message("--- WINTERTALING MODEL SUCCESVOL AFGEROND ---")
 cat("Totaal stabiel leefgebied Wintertaling (ha):", round(calc_ha_exact(wintertaling_leefgebied_opp), 2), "\n")
 
 rm(r_huetzon_raw, r_huetzon, huetzon_cats, ids_waterlopen_ok, r_waterlopen, r_waterlopen_opp, 
-   foerageer_compleet_max, foerageer_compleet_opp, wintertaling_clusters, r_foer_5ha_max, r_foer_5ha_opp, r_watervogelgebied_max)
+   foerageer_compleet_max, foerageer_compleet_opp, r_binair_foer_opp, wintertaling_clusters_max, wintertaling_clusters_opp, r_foer_5ha_max, r_foer_5ha_opp, r_watervogelgebied_max)
 gc()
 ```
 
@@ -629,10 +610,10 @@ if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
 }
 
 export_config <- list(
-  list(rast = final_max,              naam = "Maximale_Potentie",     folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast,  naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,       naam = "ARPL",                    folder = folders$arpl,         type = "INT1U"),
-  list(rast = verspreiding_raster,    naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
+  list(rast = final_max,              naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
+  list(rast = werkelijk_export_rast, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
+  list(rast = arpl_export_rast,      naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
+  list(rast = verspreiding_raster,   naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 
 for(item in export_config) {
@@ -654,4 +635,7 @@ for(item in export_config) {
               gdal = c("COMPRESS=LZW"), 
               datatype = item$type)
 }
+
+rm(werkelijk_export_rast, arpl_export_rast, verspreiding_raster, export_config, export_rast)
+gc()
 ```

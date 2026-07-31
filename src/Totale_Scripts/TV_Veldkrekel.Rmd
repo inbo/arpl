@@ -131,7 +131,6 @@ rm(df, resultaat)
 area_shape  <- vect(here("data/input/Turnhouts_Vennegebied.shp"))
 master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
 
-# Inlezen van de CSV-sleutel (gebruikt om tabel-indices te mappen naar codes)
 df_namen_sleutel <- read_csv(here("data/input/Excel_files/BWK_Laag_Namen_2025.csv"), show_col_types = FALSE)
 gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
 
@@ -144,28 +143,16 @@ id_raster_TV <- crop(master_grid, area_buffer_fix, snap = "near")
 globale_id_raster <- master_grid
 values(globale_id_raster) <- 1:ncell(globale_id_raster)
 
-# ==============================================================================
-# ULTRA-SNELLE METHODE: Direct naar data.frame met celnummers in C++
-# ==============================================================================
 id_raster_TV_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
 id_raster_TV_masked <- mask(id_raster_TV_globale_values, area_buffer_fix)
 
 message("-> Vertaaltabel bliksemsnel opbouwen via C++ dataframe extractie...")
 
-# 'cells = TRUE' zorgt ervoor dat terra direct een kolom 'cell' (lokale id) 
-# en een kolom met de waarde (globale id) genereert voor alle niet-NA cellen.
 df_extractie <- as.data.frame(id_raster_TV_masked, cells = TRUE)
-
-# Direct omzetten naar data.table en de kolommen juist benoemen
 vertaal_df <- as.data.table(df_extractie)
-
-# De kolommen heten nu standaard 'cell' en de naam van je raster (lyr.1 of gelijkaardig)
-# We hernoemen ze direct naar jouw vertrouwde structuur:
 setnames(vertaal_df, c(1, 2), c("lokale_id", "globale_id"))
 
-# Filter eventuele resterende NA's eruit
 vertaal_df <- vertaal_df[!is.na(globale_id)]
-
 studiegebied_globale_ids <- unique(vertaal_df$globale_id)
 
 values(id_raster_TV) <- NA
@@ -173,7 +160,7 @@ template_TV <- terra::rasterize(area_buffer_fix, id_raster_TV, field = 1, backgr
 
 grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
 
-rm(globale_id_raster, id_raster_TV_globale_values, id_raster_TV_masked)
+rm(globale_id_raster, id_raster_TV_globale_values, id_raster_TV_masked, df_extractie)
 gc()
 ```
 
@@ -257,141 +244,164 @@ gc()
 
 ```{r drainage filtering}
 # ==============================================================================
-# BEREIDING BRONBIOTOOP & TRAINAGE/ECOREGIO CORRECTIE
+# BEREIDING BRONBIOTOOP & DRAINAGE CORRECTIE (CATEGORIAAL FILTER)
 # ==============================================================================
-message("-> Bodemdrainage en ecoregiomaskers toepassen...")
+message("-> Bodemdrainage- en omgevingsmaskers toepassen op basis van drainageklasse...")
 
-# Laad de bodemdrainage- en ecoregiorasters in (zorg dat deze bestanden op je pad staan)
-# We corrigeren hier de fout 'Ge(..., 1)' uit het oude script. 
-# Voor veldkrekel willen we de *nattere* gronden uitsluiten (drainageklassen voor nat/zeer nat uitsluiten).
-r_drainage_raw <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_drainage_10m.tif")) %>% 
-  crop(area_buffer_fix, snap = "near")
+# 1. Drainage raster inlezen en afstemmen op het studiegebied
+r_drain_raw <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_drainage_10m.tif"))
+r_drain_local <- r_drain_raw %>% 
+  terra::crop(area_buffer_fix, snap = "near") %>% 
+  terra::resample(template_TV, method = "near")
 
-# 2. CRUCIALE FIX: Resample en crop de rasters zodat ze EXACT matchen met jouw id_raster_TV extent/grid
-r_drainage <- terra::resample(r_drainage_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
+# 2. Categorieën ophalen en gewenste drainageklassen selecteren
+#    (Aanpassen indien de Veldkrekel andere klassen vereist dan a, b, c, a-b)
+drain_cats <- terra::cats(r_drain_local)[[1]]
+geselecteerde_letters <- c("a", "b", "c", "a-b") 
 
-# Drainagecorrectie: Alleen droge, matig droge tot matig natte gronden behouden (bvb. klasse < 7, pas aan conform je legenda)
-veldkrekel_drainage_ok <- r_drainage > 0 
+veldkrekel_drain_ids <- drain_cats$value[drain_cats$Label %in% geselecteerde_letters]
 
-# Combineer de BWK-filtering met de gecorrigeerde omgevingsfactoren
-veldkrekel_basis_max <- (bwk_max == 1) & veldkrekel_drainage_ok 
-veldkrekel_basis_max <- terra::ifel(veldkrekel_basis_max == 1, 1, NA)
+# 3. Drainage masker opbouwen
+masker_drainage <- r_drain_local %in% veldkrekel_drain_ids
+
+# 4. Spoor A: MAX filtering
+veldkrekel_basis_max <- terra::ifel((bwk_max == 1) & (masker_drainage == 1), 1, NA)
+
+# 5. Spoor B: OPP filtering
 veldkrekel_basis_opp <- terra::mask(bwk_opp, veldkrekel_basis_max)
 
-rm(r_drainage, r_ecoregio, veldkrekel_drainage_ok, veldkrekel_ecoregio_ok)
+# Schoonmaken
+rm(r_drain_raw, r_drain_local, masker_drainage, drain_cats)
+gc()
 ```
 
 ```{r clustering}
 # ==============================================================================
-# CLUSTERING (50 METER FUZZY CLUSTER)
+# CLUSTERING (50 METER FUZZY CLUSTER - PARALLEL)
 # ==============================================================================
 message("-> Patches groeperen op basis van 50m onderlinge afstand...")
 
-# Indien geschikte cellen binnen 50m liggen, horen ze bij dezelfde patch
-veldkrekel_clusters <- cluster_filter_compleet(
-  masker       = veldkrekel_basis_max,
-  opp_laag     = veldkrekel_basis_opp,
-  drempel_m2   = 10000,   # We filteren eerst op de absolute minimumgrens van 1 ha (10.000 m²)
-  dist_m       = 50,       
-  werkelijk    = FALSE     
+# Spoor A: MAX
+veldkrekel_clusters_max <- cluster_filter_compleet(
+  masker     = veldkrekel_basis_max,
+  opp_laag   = veldkrekel_basis_opp,
+  drempel_m2 = 10000,   # 1 ha minimum
+  dist_m     = 50,       
+  werkelijk  = FALSE      
 )
+
+# Spoor B: OPP (Parallel & Autonoom)
+r_binair_basis_opp <- terra::ifel(!is.na(veldkrekel_basis_opp) & veldkrekel_basis_opp > 0, 1, NA)
+veldkrekel_clusters_opp <- cluster_filter_compleet(
+  masker     = r_binair_basis_opp,
+  opp_laag   = veldkrekel_basis_opp,
+  drempel_m2 = 10000,   # 1 ha minimum
+  dist_m     = 50,       
+  werkelijk  = TRUE      
+)
+
+rm(r_binair_basis_opp)
+gc()
 ```
 
 ```{r metapopulatie structuur analyse}
 # ==============================================================================
-# METAPOPULATIE FILTERING (1-5 HA CRITERIUM + COUNTER) & GROTE PATCHES TOEVOEGEN
+# METAPOPULATIE FILTERING & GROTE PATCHES (PARALLEL)
 # ==============================================================================
 message("-> Metapopulatiestructuur berekenen (minimaal 6 patches binnen 500m)...")
 
-# Haal het basis cluster-raster op
-r_patches <- veldkrekel_clusters$clusters
+# --- SPOOR A: MAX ---
+r_patches_max <- veldkrekel_clusters_max$clusters
+r_leefgebied_5ha_max   <- template_TV * NA
+r_leefgebied_metapop_max <- template_TV * NA
 
-# Failsafe initialisatie van de resultaatrasters
-r_leefgebied_5ha      <- template_TV * NA
-r_leefgebied_metapop  <- template_TV * NA
-
-if (!all(is.na(terra::values(r_patches, mat=FALSE)))) {
+if (!all(is.na(terra::values(r_patches_max, mat=FALSE)))) {
+  stats_ha_max <- terra::freq(r_patches_max)
+  stats_ha_max$Grootte_ha <- stats_ha_max$count * 0.01
   
-  # 1. Bereken de exacte oppervlakte per cluster-ID
-  area_raster <- r_patches * terra::cellSize(r_patches, unit = "ha")
-  stats_ha <- terra::zonal(area_raster, r_patches, fun = "sum", na.rm = TRUE)
-  colnames(stats_ha) <- c("ID", "Grootte_ha")
+  ids_groot_5ha_max    <- stats_ha_max$value[stats_ha_max$Grootte_ha >= 5]
+  ids_klein_1to5ha_max <- stats_ha_max$value[stats_ha_max$Grootte_ha >= 1 & stats_ha_max$Grootte_ha < 5]
   
-  # Splits de ID's op basis van de 5 hectare drempelwaarde
-  ids_groot_5ha    <- stats_ha$ID[stats_ha$Grootte_ha >= 5]
-  ids_klein_1to5ha <- stats_ha$ID[stats_ha$Grootte_ha >= 1 & stats_ha$Grootte_ha < 5]
-  
-  # SPOOR A: Grote patches (>= 5 ha) direct uitsnijden
-  if (length(ids_groot_5ha) > 0) {
-    message(paste("->", length(ids_groot_5ha), "grote patch(es) (>= 5 ha) gevonden. Deze tellen direct mee."))
-    r_leefgebied_5ha <- terra::ifel(r_patches %in% ids_groot_5ha, 1, NA)
+  if (length(ids_groot_5ha_max) > 0) {
+    r_leefgebied_5ha_max <- terra::ifel(r_patches_max %in% ids_groot_5ha_max, 1, NA)
   }
   
-  # SPOOR B: Kleine patches (1-5 ha) via de kogelvrije buren-matrix checken
-  if (length(ids_klein_1to5ha) > 0) {
-    message(paste("->", length(ids_klein_1to5ha), "kleine patch-ID's gevonden. Connectiviteit controleren..."))
+  if (length(ids_klein_1to5ha_max) > 0) {
+    r_klein_patches_max <- terra::ifel(r_patches_max %in% ids_klein_1to5ha_max, r_patches_max, NA)
+    p_klein_max <- terra::as.polygons(r_klein_patches_max, dissolve = FALSE)
     
-    # Filter het raster naar enkel de kleine patches
-    r_klein_patches <- terra::ifel(r_patches %in% ids_klein_1to5ha, r_patches, NA)
-    
-    # Omzetten naar polygonen (dissolve = FALSE behoudt de unieke losse elementen)
-    p_klein <- terra::as.polygons(r_klein_patches, dissolve = FALSE)
-    
-    if (!is.null(p_klein) && nrow(p_klein) > 0) {
-      # Trek een buffer van 500 meter rondom de kleine patches
-      poly_buffer <- terra::buffer(p_klein, width = 500)
+    if (!is.null(p_klein_max) && nrow(p_klein_max) > 0) {
+      poly_buffer_max <- terra::buffer(p_klein_max, width = 500)
+      intersect_matrix_max <- matrix(terra::is.related(poly_buffer_max, p_klein_max, "intersects"), 
+                                     nrow = nrow(poly_buffer_max), ncol = nrow(p_klein_max))
       
-      # Intersectiematrix bouwen via jouw robuuste amfibieën-methode
-      intersect_matrix <- terra::is.related(poly_buffer, p_klein, "intersects")
-      intersect_matrix <- matrix(intersect_matrix, nrow = nrow(poly_buffer), ncol = nrow(p_klein))
+      p_klein_max$unieke_buren_count <- rowSums(intersect_matrix_max)
+      goedgekeurde_metapop_max <- p_klein_max[p_klein_max$unieke_buren_count >= 6, ]
       
-      # Tel per rij hoeveel patches binnen het bereik liggen (inclusief zichzelf)
-      patches_in_range_count <- rowSums(intersect_matrix)
-      
-      # Voeg de burenkolom toe aan de polygoon dataset
-      p_klein$unieke_buren_count <- patches_in_range_count
-      
-      # Filter: Moet deel uitmaken van een metapopulatie (minimaal 6 patches in totaal)
-      goedgekeurde_metapop_poly <- p_klein[p_klein$unieke_buren_count >= 6, ]
-      
-      if (nrow(goedgekeurde_metapop_poly) > 0) {
-        message(paste("->", nrow(goedgekeurde_metapop_poly), "kleine patches goedgekeurd binnen de metapopulatiestructuur."))
-        r_leefgebied_metapop <- terra::rasterize(
-          goedgekeurde_metapop_poly, 
-          template_TV, 
-          field = 1, 
-          background = NA
-        )
-      } else {
-        message("⚠️ Waarschuwing: Geen van de kleine patches voldoet aan de metapopulatie-eis (min. 6 patches).")
+      if (nrow(goedgekeurde_metapop_max) > 0) {
+        r_leefgebied_metapop_max <- terra::rasterize(goedgekeurde_metapop_max, template_TV, field = 1, background = NA)
       }
+      suppressWarnings(rm(poly_buffer_max, intersect_matrix_max, goedgekeurde_metapop_max))
+    }
+  }
+  veldkrekel_leefgebied_max <- terra::ifel(!is.na(r_leefgebied_5ha_max) | !is.na(r_leefgebied_metapop_max), 1, NA) %>% terra::crop(template_TV)
+} else {
+  veldkrekel_leefgebied_max <- template_TV * NA
+}
+
+# --- SPOOR B: OPP (Parallel & Autonoom) ---
+r_patches_opp <- veldkrekel_clusters_opp$clusters
+r_leefgebied_5ha_opp   <- template_TV * NA
+r_leefgebied_metapop_opp <- template_TV * NA
+
+if (!all(is.na(terra::values(r_patches_opp, mat=FALSE)))) {
+  stats_ha_opp <- terra::zonal(veldkrekel_basis_opp, r_patches_opp, fun = "sum", na.rm = TRUE)
+  colnames(stats_ha_opp) <- c("ID", "Grootte_ha")
+  stats_ha_opp$Grootte_ha <- stats_ha_opp$Grootte_ha * 0.01
+  
+  ids_groot_5ha_opp    <- stats_ha_opp$ID[stats_ha_opp$Grootte_ha >= 5]
+  ids_klein_1to5ha_opp <- stats_ha_opp$ID[stats_ha_opp$Grootte_ha >= 1 & stats_ha_opp$Grootte_ha < 5]
+  
+  if (length(ids_groot_5ha_opp) > 0) {
+    r_leefgebied_5ha_opp <- terra::mask(veldkrekel_basis_opp, r_patches_opp %in% ids_groot_5ha_opp)
+  }
+  
+  if (length(ids_klein_1to5ha_opp) > 0) {
+    r_klein_patches_opp <- terra::ifel(r_patches_opp %in% ids_klein_1to5ha_opp, r_patches_opp, NA)
+    p_klein_opp <- terra::as.polygons(r_klein_patches_opp, dissolve = FALSE)
+    
+    if (!is.null(p_klein_opp) && nrow(p_klein_opp) > 0) {
+      poly_buffer_opp <- terra::buffer(p_klein_opp, width = 500)
+      intersect_matrix_opp <- matrix(terra::is.related(poly_buffer_opp, p_klein_opp, "intersects"), 
+                                     nrow = nrow(poly_buffer_opp), ncol = nrow(p_klein_opp))
       
-      # Opruimen van matrix-gerelateerde objecten
-      suppressWarnings(rm(poly_buffer, intersect_matrix, patches_in_range_count))
+      p_klein_opp$unieke_buren_count <- rowSums(intersect_matrix_opp)
+      goedgekeurde_metapop_opp <- p_klein_opp[p_klein_opp$unieke_buren_count >= 6, ]
+      
+      if (nrow(goedgekeurde_metapop_opp) > 0) {
+        r_meta_mask_opp <- terra::rasterize(goedgekeurde_metapop_opp, template_TV, field = 1, background = NA)
+        r_leefgebied_metapop_opp <- terra::mask(veldkrekel_basis_opp, r_meta_mask_opp)
+      }
+      suppressWarnings(rm(poly_buffer_opp, intersect_matrix_opp, goedgekeurde_metapop_opp))
     }
   }
   
-  # ==============================================================================
-  # FINALE SAMENVOEGING LEEFGEBIED VELDKREKEL (Groot + Metapopulatie)
-  # ==============================================================================
-  message("-> Grote patches en goedgekeurde metapopulaties combineren tot finaal leefgebied...")
+  w_clean <- terra::ifel(is.na(r_leefgebied_5ha_opp), 0, r_leefgebied_5ha_opp)
+  m_clean <- terra::ifel(is.na(r_leefgebied_metapop_opp), 0, r_leefgebied_metapop_opp)
+  som_raw <- w_clean + m_clean
+  som_cl  <- terra::clamp(som_raw, upper = 1.0)
   
-  # MAX-spoor (Binaire aanwezigheid): Logische OF-schakeling
-  veldkrekel_leefgebied_max <- terra::ifel(!is.na(r_leefgebied_5ha) | !is.na(r_leefgebied_metapop), 1, NA)
-  veldkrekel_leefgebied_max <- terra::crop(veldkrekel_leefgebied_max, template_TV)
-  
-  # OPP-spoor (Met behoud van de exacte deelfracties uit de tabel)
-  veldkrekel_leefgebied_opp <- terra::mask(veldkrekel_basis_opp, veldkrekel_leefgebied_max)
-  veldkrekel_leefgebied_opp <- terra::crop(veldkrekel_leefgebied_opp, template_TV)
-  
+  veldkrekel_leefgebied_opp <- terra::ifel(som_cl > 0, som_cl, NA) %>% terra::crop(template_TV)
+  rm(w_clean, m_clean, som_raw, som_cl)
 } else {
-  message("⚠️ Waarschuwing: Geen enkele initiële cluster/patch aanwezig.")
-  veldkrekel_leefgebied_max <- terra::rast(template_TV, vals = NA)
-  veldkrekel_leefgebied_opp <- terra::rast(template_TV, vals = NA)
+  veldkrekel_leefgebied_opp <- template_TV * NA
 }
 
-# Eindopruiming van deze stap
-rm(r_patches, r_leefgebied_5ha, r_leefgebied_metapop)
+cat("Finaal Leefgebied Veldkrekel MAX (ha):", round(calc_ha_exact(veldkrekel_leefgebied_max), 2), "\n")
+cat("Finaal Leefgebied Veldkrekel OPP (ha):", round(calc_ha_exact(veldkrekel_leefgebied_opp), 2), "\n")
+
+suppressWarnings(rm(r_patches_max, r_patches_opp, r_leefgebied_5ha_max, r_leefgebied_5ha_opp, 
+                    r_leefgebied_metapop_max, r_leefgebied_metapop_opp, veldkrekel_clusters_max, veldkrekel_clusters_opp))
 gc()
 ```
 
@@ -566,36 +576,31 @@ folders <- list(
 )
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-# 1. Spoor B: Werkelijke Oppervlakte formatteren naar 1/NA
 if(!all(is.na(terra::values(veldkrekel_leefgebied_opp, mat=FALSE)))) {
   werkelijk_export_rast <- terra::ifel(!is.na(veldkrekel_leefgebied_opp) & veldkrekel_leefgebied_opp > 0, 1, NA)
 } else {
   werkelijk_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# 2. ARPL formatteren naar 1/NA
 if(exists("veldkrekel_arpl_opp") && !all(is.na(terra::values(veldkrekel_arpl_opp, mat=FALSE)))) {
   arpl_export_rast <- terra::ifel(veldkrekel_arpl_opp > 0, 1, NA)
 } else {
   arpl_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# 3. Actuele Verspreiding formatteren naar 1/NA
 if(!all(is.na(terra::values(veldkrekel_verspreiding_bin, mat=FALSE)))) {
   verspreiding_export_rast <- terra::ifel(veldkrekel_verspreiding_bin > 0, 1, NA)
 } else {
   verspreiding_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# 4. De vernieuwde export_config bundel voor veldkrekel
 export_config <- list(
-  list(rast = veldkrekel_leefgebied_max,   naam = "Maximale_Potentie",       folder = folders$potentie,     type = "INT1U"),
+  list(rast = veldkrekel_leefgebied_max,   naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
   list(rast = werkelijk_export_rast,       naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,            naam = "ARPL",                    folder = folders$arpl,         type = "INT1U"),
+  list(rast = arpl_export_rast,            naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
   list(rast = verspreiding_export_rast,    naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 
-# De export-loop voegt netjes een nullen-omranding toe op de 50km buffer
 for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
@@ -614,14 +619,10 @@ for(item in export_config) {
               overwrite = TRUE, 
               gdal = c("COMPRESS=LZW"), 
               datatype = item$type)
-              
-  message(paste("   [OK] Geëxporteerd:", basename(file_path)))
 }
 
-# Finale grote schoonmaak van het RAM-geheugen om RStudio fris te houden
-rm(
-  werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast,
-  export_config, export_rast
+suppressWarnings(
+  rm(werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
 )
 gc()
 
@@ -690,14 +691,6 @@ if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE))
 # 3. Projecteer rasters en vectoren naar WGS84 voor Leaflet
 r_web_status <- terra::project(r_status, "EPSG:4326", method = "near")
 bbox         <- st_bbox(grens_web)
-
-# AANGEPAST VOOR veldkrekel: Projecteer het goedgekeurde voortplantingsbiotoop (indien aanwezig)
-if(exists("veldkrekel_waterbiotoop1_finaal_max") && 
-   !all(is.na(terra::values(veldkrekel_waterbiotoop1_finaal_max, mat=FALSE)))) {
-  r_web_vpt <- terra::project(veldkrekel_waterbiotoop1_finaal_max, "EPSG:4326", method = "near")
-} else {
-  r_web_vpt <- NULL
-}
 
 # Projectie van waarnemingen van de veldkrekel (indien aanwezig)
 if(has_observations && nrow(df_points_sf) > 0) {
