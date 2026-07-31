@@ -157,7 +157,7 @@ cat("Gecorrigeerd aantal pixels in template_TV: ", sum(terra::values(template_TV
 
 grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
 
-rm(globale_id_raster, id_raster_TV_globale_values, id_raster_TV_masked)
+rm(globale_id_raster, id_raster_TV_globale_values, id_raster_TV_masked, df_extractie)
 gc()
 ```
 
@@ -267,8 +267,9 @@ waterbiotoop1_max_list <- cluster_filter_compleet(
 waterbiotoop1_max <- waterbiotoop1_max_list$raster
 
 # --- SPOOR 2: WERKELIJKE OPPERVLAKTE (VOLLEDIG PARALLEL) ---
+r_binair_water_opp <- terra::ifel(!is.na(waterbiotoop_bwk_basis_opp) & waterbiotoop_bwk_basis_opp > 0, 1, NA)
 waterbiotoop1_opp_list <- cluster_filter_compleet(
-  masker     = waterbiotoop_bwk_basis_opp, 
+  masker     = r_binair_water_opp, 
   opp_laag   = waterbiotoop_bwk1_opp, 
   drempel_m2 = 200, 
   dist_m     = 10, 
@@ -278,6 +279,9 @@ waterbiotoop1_opp <- waterbiotoop1_opp_list$raster
 
 cl_id_max <- waterbiotoop1_max_list$clusters
 cl_id_opp <- waterbiotoop1_opp_list$clusters
+
+rm(r_binair_water_opp, waterbiotoop_bwk_basis_max, waterbiotoop_bwk_basis_opp)
+gc()
 ```
 
 ```{r landbiotoop nabije omgeving}
@@ -319,12 +323,13 @@ if(length(valide_land_ids_max) > 0) {
   landbiotoop_nabij_max <- template_TV * NA
 }
 
-
 # --- SPOOR 2: WERKELIJKE OPPERVLAKTE (AUTONOOM EN PARALLEL) ---
 landbiotoop_bwk_basis_opp <- terra::ifel(!is.na(landbiotoop_bwk1_opp) & landbiotoop_bwk1_opp > 0 & (is.na(landbiotoop_notbwk_opp) | landbiotoop_notbwk_opp == 0), 1, NA)
 
+r_binair_land_opp_init <- terra::ifel(!is.na(landbiotoop_bwk_basis_opp) & landbiotoop_bwk_basis_opp > 0, 1, NA)
+
 landbiotoop1_opp_list <- cluster_filter_compleet(
-  masker = landbiotoop_bwk_basis_opp, opp_laag = landbiotoop_bwk1_opp, 
+  masker = r_binair_land_opp_init, opp_laag = landbiotoop_bwk1_opp, 
   drempel_m2 = 50000, dist_m = 50, werkelijk = TRUE
 )
 
@@ -359,12 +364,11 @@ if(!all(is.na(terra::values(r_land_opp_bin, mat=FALSE)))) {
   landbiotoop_nabij_opp <- template_TV * NA
 }
 
-# Tussentijdse rapportage in de console
 message("   - Aantal geëvalueerde landbiotoop-clusters (MAX): ", nrow(df_samenstelling_max))
 message("   - Aantal clusters dat voldoet (>= 50% bos MAX): ", length(valide_land_ids_max))
 
 rm(landbiotoop_bwk_basis_max, landbiotoop_bwk_basis_opp, landbiotoop1_max_list, r_land_max_src, r_bos_max_src, cl_id_land_max,
-   stats_land_totaal_max, bos_in_land_max, stats_bos_in_land_max, df_samenstelling_max, landbiotoop1_opp_list,
+   stats_land_totaal_max, bos_in_land_max, stats_bos_in_land_max, df_samenstelling_max, landbiotoop1_opp_list, r_binair_land_opp_init,
    r_land_opp_src, r_land_opp_bin, cl_id_land_opp, stats_land_totaal_opp, bos_in_land_opp, stats_bos_in_land_opp, df_samenstelling_opp)
 gc()
 ```
@@ -387,6 +391,9 @@ landbiotoop_ruim_opp_list <- cluster_filter_compleet(
   drempel_m2 = 400000, dist_m = 50, werkelijk = TRUE
 )
 landbiotoop_ruim_opp <- landbiotoop_ruim_opp_list$raster
+
+rm(r_binair_ruim_opp, landbiotoop_ruim_max_list, landbiotoop_ruim_opp_list)
+gc()
 ```
 
 ```{r interactie water en land}
@@ -409,7 +416,6 @@ landbiotoop_finaal_max  <- terra::mask(landbiotoop2_max, ruim_buffer500_max)
 leefgebied_max <- terra::cover(waterbiotoop_finaal_max, landbiotoop_finaal_max)
 finaal_max_binair <- terra::ifel(!is.na(leefgebied_max), 1, NA)
 
-
 # ==============================================================================
 # VERWERKING SPOOR 2: WERKELIJKE OPPERVLAKTE (PARALLEL)
 # ==============================================================================
@@ -427,8 +433,6 @@ landbiotoop_finaal_opp  <- terra::mask(landbiotoop2_opp, ruim_buffer500_opp)
 leefgebied_opp <- terra::cover(waterbiotoop_finaal_opp, landbiotoop_finaal_opp)
 finaal_opp_binair <- terra::ifel(!is.na(leefgebied_opp) & leefgebied_opp > 0, 1, NA)
 
-
-# Voor Leaflet-kaart opslaan van vereiste buffers:
 land_buffer100_opp <- terra::buffer(!is.na(landbiotoop_nabij_opp) & landbiotoop_nabij_opp > 0, width = 100)
 
 rm(water_buffer20_max, land_buffer20_max, waterbiotoop2_max, landbiotoop2_max, 
@@ -801,10 +805,10 @@ if(exists("maanwaterjuffer_verspr_opp") && !all(is.na(terra::values(maanwaterjuf
 }
 
 export_config <- list(
-  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,         naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
-  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
+  list(rast = potentie_export_rast,      naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
+  list(rast = werkelijk_export_rast,     naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
+  list(rast = arpl_export_rast,          naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
+  list(rast = verspreiding_export_rast,  naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 
 for(item in export_config) {
@@ -825,7 +829,7 @@ for(item in export_config) {
                      overwrite = TRUE, 
                      gdal = c("COMPRESS=LZW"), 
                      datatype = item$type)
-              
+                     
   message(paste("   [OK] Geëxporteerd naar schijf:", basename(file_path)))
 }
 
