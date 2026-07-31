@@ -130,7 +130,6 @@ rm(df, resultaat)
 area_shape  <- vect(here("data/input/Turnhouts_Vennegebied.shp"))
 master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
 
-# Inlezen van de CSV-sleutel (gebruikt om tabel-indices te mappen naar codes)
 df_namen_sleutel <- read_csv(here("data/input/Excel_files/BWK_Laag_Namen_2025.csv"), show_col_types = FALSE)
 gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
 
@@ -143,42 +142,26 @@ id_raster_TV <- crop(master_grid, area_buffer_fix, snap = "near")
 globale_id_raster <- master_grid
 values(globale_id_raster) <- 1:ncell(globale_id_raster)
 
-# ==============================================================================
-# ULTRA-SNELLE METHODE: Direct naar data.frame met celnummers in C++
-# ==============================================================================
 id_raster_TV_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
 id_raster_TV_masked <- mask(id_raster_TV_globale_values, area_buffer_fix)
 
 message("-> Vertaaltabel bliksemsnel opbouwen via C++ dataframe extractie...")
 
-# 'cells = TRUE' zorgt ervoor dat terra direct een kolom 'cell' (lokale id) 
-# en een kolom met de waarde (globale id) genereert voor alle niet-NA cellen.
 df_extractie <- as.data.frame(id_raster_TV_masked, cells = TRUE)
-
-# Direct omzetten naar data.table en de kolommen juist benoemen
 vertaal_df <- as.data.table(df_extractie)
-
-# De kolommen heten nu standaard 'cell' en de naam van je raster (lyr.1 of gelijkaardig)
-# We hernoemen ze direct naar jouw vertrouwde structuur:
 setnames(vertaal_df, c(1, 2), c("lokale_id", "globale_id"))
 
-# Filter eventuele resterende NA's eruit
 vertaal_df <- vertaal_df[!is.na(globale_id)]
-
 studiegebied_globale_ids <- unique(vertaal_df$globale_id)
 
 values(id_raster_TV) <- NA
-# --- DE CRUCIALE TEMPLATE REPARATIE ---
-# In plaats van alles op NA te zetten, maken we een binaire 'mal' van het studiegebied.
-# We rasteriseren de shapefile van het Turnhouts Vennegebied (area_buffer_fix) op het uitgesneden raster.
 template_TV <- terra::rasterize(area_buffer_fix, id_raster_TV, field = 1, background = 0)
 
-# Controleer of het nu wél cellen bevat:
 cat("Gecorrigeerd aantal pixels in template_TV: ", sum(terra::values(template_TV) == 1, na.rm=TRUE), "\n")
 
 grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
 
-rm(globale_id_raster, id_raster_TV_globale_values, id_raster_TV_masked)
+rm(globale_id_raster, id_raster_TV_globale_values, id_raster_TV_masked, df_extractie)
 gc()
 ```
 
@@ -281,231 +264,273 @@ gc()
 ```{r waterbiotoop}
 waterbiotoop_max <- (water1_max == 1) & (not_water_max == 0 | is.na(not_water_max))
 waterbiotoop_max <- terra::ifel(waterbiotoop_max == 1, 1, NA)
-waterbiotoop_opp <- terra::mask(water1_opp, waterbiotoop_max)
+
+waterbiotoop_opp_raw <- terra::mask(water1_opp, waterbiotoop_max)
+waterbiotoop_opp     <- terra::ifel(!is.na(waterbiotoop_opp_raw) & waterbiotoop_opp_raw > 0, waterbiotoop_opp_raw, NA)
 
 # clusters (0.02 ha = 200 m²)
 waterbiotoop_clusters_max <- cluster_filter_compleet(
-  masker       = waterbiotoop_max,
-  opp_laag     = waterbiotoop_opp,
-  drempel_m2   = 200,   
-  dist_m       = 10,       
-  werkelijk    = FALSE      
+  masker     = waterbiotoop_max,
+  opp_laag   = waterbiotoop_opp,
+  drempel_m2 = 200,   
+  dist_m     = 10,       
+  werkelijk  = FALSE      
 )
 
+r_binair_water_opp <- terra::ifel(!is.na(waterbiotoop_opp) & waterbiotoop_opp > 0, 1, NA)
 waterbiotoop_clusters_opp <- cluster_filter_compleet(
-  masker       = waterbiotoop_max,
-  opp_laag     = waterbiotoop_opp,
-  drempel_m2   = 200,   
-  dist_m       = 10,       
-  werkelijk    = TRUE      
+  masker     = r_binair_water_opp,
+  opp_laag   = waterbiotoop_opp,
+  drempel_m2 = 200,   
+  dist_m     = 10,       
+  werkelijk  = TRUE      
 )
+
+rm(r_binair_water_opp, waterbiotoop_opp_raw)
+gc()
 ```
 
 ```{r landbiotoop}
 land_nabij_filter_max <- (land_nabij_max == 1) & (not_land_nabij_max == 0 | is.na(not_land_nabij_max))
 land_nabij_filter_max <- terra::ifel(land_nabij_filter_max == 1, 1, NA)
-land_nabij_filter_opp <- terra::mask(land_nabij_opp, land_nabij_filter_max)
+
+land_nabij_filter_opp_raw <- terra::mask(land_nabij_opp, land_nabij_filter_max)
+land_nabij_filter_opp     <- terra::ifel(!is.na(land_nabij_filter_opp_raw) & land_nabij_filter_opp_raw > 0, land_nabij_filter_opp_raw, NA)
 
 # clusters nabij landbiotoop (minimaal 50 ha = 50.000 m²)
 land_nabij_clusters_max <- cluster_filter_compleet(
-  masker       = land_nabij_filter_max,
-  opp_laag     = land_nabij_filter_opp,
-  drempel_m2   = 50000,   
-  dist_m       = 20,       
-  werkelijk    = FALSE      
+  masker     = land_nabij_filter_max,
+  opp_laag   = land_nabij_filter_opp,
+  drempel_m2 = 50000,   
+  dist_m     = 20,       
+  werkelijk  = FALSE      
 )
 
+r_binair_land_nabij_opp <- terra::ifel(!is.na(land_nabij_filter_opp) & land_nabij_filter_opp > 0, 1, NA)
 land_nabij_clusters_opp <- cluster_filter_compleet(
-  masker       = land_nabij_filter_max,
-  opp_laag     = land_nabij_filter_opp,
-  drempel_m2   = 50000,   
-  dist_m       = 20,       
-  werkelijk    = TRUE      
+  masker     = r_binair_land_nabij_opp,
+  opp_laag   = land_nabij_filter_opp,
+  drempel_m2 = 50000,   
+  dist_m     = 20,       
+  werkelijk  = TRUE      
 )
+
+rm(r_binair_land_nabij_opp, land_nabij_filter_opp_raw)
+gc()
 ```
 
 ```{r boscheck}
 # ==============================================================================
-# ECOLOGISCH GECORRIGEERD: STRIKTE 50% BOS-MOZAÏEK CHECK OP HET LANDBIOTOOP
+# ECOLOGISCH GECORRIGEERD: STRIKTE 50% BOS-MOZAÏEK CHECK OP HET LANDBIOTOOP (PARALLEL)
 # ==============================================================================
 message("-> Nabij landbiotoop filteren op basis van netto 50% bos-eis binnenshuis...")
 
-# We halen de scherpe clusters van het nabije landbiotoop (10 ha) op uit de vorige chunk
-cl_land_nabij_max <- land_nabij_clusters_max$raster
-
+# --- SPOOR A: MAX ---
+cl_land_nabij_max <- land_nabij_clusters_max$clusters
 land_nabij_finaal_max <- template_TV * NA
-land_nabij_finaal_opp <- template_TV * NA
 
 if (!all(is.na(terra::values(cl_land_nabij_max, mat=FALSE)))) {
+  l_stats_max <- terra::freq(cl_land_nabij_max)
+  df_l_stats_max <- data.frame(ID = l_stats_max$value, Land_ha = l_stats_max$count * 0.01)
   
-  # 1. Bereken de netto oppervlakte (ha) van elk nabij landbiotoopcluster zelf
-  l_stats <- terra::freq(cl_land_nabij_max)
-  df_l_stats <- data.frame(ID = l_stats$value, Land_ha = l_stats$count * 0.01)
-  
-  # 2. Creëer de 50m invloedszone rondom deze landbiotoopclusters (de 50m plooirand)
   w_50m <- terra::focalMat(cl_land_nabij_max, 50, type = 'circle')
   w_50m[w_50m > 0] <- 1
   cl_land_buf_max <- terra::focal(cl_land_nabij_max, w = w_50m, fun = "max", na.rm = TRUE)
   
-  # 3. Tel hoevel reëel bos er binnen deze 50m zone van elk landcluster ligt
-  # CRUCIALE FIX: Exacte naam 'land_nabij_bos_opp' gekoppeld uit je database-extractie!
-  r_bos_clean <- land_nabij_bos_opp
-  r_bos_clean[is.na(r_bos_clean)] <- 0
+  r_bos_clean_max <- land_nabij_bos_max
+  r_bos_clean_max[is.na(r_bos_clean_max)] <- 0
   
-  bos_in_zone <- terra::mask(r_bos_clean, cl_land_buf_max)
-  zonal_bos   <- terra::zonal(bos_in_zone, cl_land_buf_max, fun = "sum", na.rm = TRUE)
-  colnames(zonal_bos) <- c("ID", "Bos_Fractie_Sum")
-  zonal_bos$Bos_ha    <- zonal_bos$Bos_Fractie_Sum * 0.01
+  bos_in_zone_max <- terra::mask(r_bos_clean_max, cl_land_buf_max)
+  zonal_bos_max   <- terra::zonal(bos_in_zone_max * 0.01, cl_land_buf_max, fun = "sum", na.rm = TRUE)
+  colnames(zonal_bos_max) <- c("ID", "Bos_ha")
   
-  # 4. Koppel de statistieken en bereken het percentage bos binnenshuis
-  df_criteria <- merge(df_l_stats, zonal_bos, by = "ID", all.x = TRUE)
-  df_criteria[is.na(df_criteria)] <- 0
-  df_criteria$Percentage_Bos <- (df_criteria$Bos_ha / df_criteria$Land_ha) * 100
+  df_criteria_max <- merge(df_l_stats_max, zonal_bos_max, by = "ID", all.x = TRUE)
+  df_criteria_max[is.na(df_criteria_max)] <- 0
+  df_criteria_max$Percentage_Bos <- (df_criteria_max$Bos_ha / df_criteria_max$Land_ha) * 100
   
-  # 5. EVALUATIE: Cluster moet >= 10 ha zijn EN het aandeel bos binnen 50m moet >= 50% zijn!
-  goedgekeurde_land_ids <- df_criteria$ID[df_criteria$Land_ha >= 10 & 
-                                          df_criteria$Percentage_Bos >= 50]
+  goedgekeurde_land_ids_max <- df_criteria_max$ID[df_criteria_max$Land_ha >= 10 & df_criteria_max$Percentage_Bos >= 50]
   
-  if (length(goedgekeurde_land_ids) > 0) {
-    message("   [OK] Aantal landbiotoopcomplexen dat voldoet aan de 50% bos-eis: ", length(goedgekeurde_land_ids))
-    masker_land_bin <- cl_land_nabij_max %in% goedgekeurde_land_ids
-    
-    # We behouden het schone landbiotoop binnen de goedgekeurde zones (bos en buffers vallen direct af)
-    land_nabij_finaal_max <- terra::mask(land_nabij_clusters_max$raster, terra::ifel(masker_land_bin == 1, 1, NA))
-    land_nabij_finaal_opp <- terra::mask(land_nabij_clusters_opp$raster, land_nabij_finaal_max)
-  } else {
-    message("⚠️ Waarschuwing: Geen enkel landbiotoopcomplex voldoet aan de 50% bos-eis.")
+  if (length(goedgekeurde_land_ids_max) > 0) {
+    masker_land_bin_max <- cl_land_nabij_max %in% goedgekeurde_land_ids_max
+    land_nabij_finaal_max <- terra::mask(land_nabij_clusters_max$raster, terra::ifel(masker_land_bin_max == 1, 1, NA))
   }
-  
-  rm(l_stats, df_l_stats, w_50m, cl_land_buf_max, bos_in_zone, zonal_bos, df_criteria, goedgekeurde_land_ids, r_bos_clean)
+  rm(l_stats_max, df_l_stats_max, cl_land_buf_max, bos_in_zone_max, zonal_bos_max, df_criteria_max, goedgekeurde_land_ids_max, r_bos_clean_max)
 }
 
-# Grote schoonmaak van de ruwe boselementen van het nabije landbiotoop
+# --- SPOOR B: OPP (Parallel & Autonoom) ---
+cl_land_nabij_opp <- land_nabij_clusters_opp$clusters
+land_nabij_finaal_opp <- template_TV * NA
+
+if (!all(is.na(terra::values(cl_land_nabij_opp, mat=FALSE)))) {
+  r_binair_land_cl_opp <- terra::ifel(!is.na(cl_land_nabij_opp) & cl_land_nabij_opp > 0, 1, NA)
+  
+  l_stats_opp <- terra::zonal(land_nabij_filter_opp, cl_land_nabij_opp, fun = "sum", na.rm = TRUE)
+  colnames(l_stats_opp) <- c("ID", "Land_ha")
+  l_stats_opp$Land_ha <- l_stats_opp$Land_ha * 0.01
+  
+  if (!exists("w_50m")) {
+    w_50m <- terra::focalMat(cl_land_nabij_opp, 50, type = 'circle')
+    w_50m[w_50m > 0] <- 1
+  }
+  cl_land_buf_opp <- terra::focal(cl_land_nabij_opp, w = w_50m, fun = "max", na.rm = TRUE)
+  
+  r_bos_clean_opp <- land_nabij_bos_opp
+  r_bos_clean_opp[is.na(r_bos_clean_opp)] <- 0
+  
+  bos_in_zone_opp <- terra::mask(r_bos_clean_opp, cl_land_buf_opp)
+  zonal_bos_opp   <- terra::zonal(bos_in_zone_opp, cl_land_buf_opp, fun = "sum", na.rm = TRUE)
+  colnames(zonal_bos_opp) <- c("ID", "Bos_Fractie_Sum")
+  zonal_bos_opp$Bos_ha    <- zonal_bos_opp$Bos_Fractie_Sum * 0.01
+  
+  df_criteria_opp <- merge(l_stats_opp, zonal_bos_opp, by = "ID", all.x = TRUE)
+  df_criteria_opp[is.na(df_criteria_opp)] <- 0
+  df_criteria_opp$Percentage_Bos <- (df_criteria_opp$Bos_ha / df_criteria_opp$Land_ha) * 100
+  
+  goedgekeurde_land_ids_opp <- df_criteria_opp$ID[df_criteria_opp$Land_ha >= 10 & df_criteria_opp$Percentage_Bos >= 50]
+  
+  if (length(goedgekeurde_land_ids_opp) > 0) {
+    masker_land_bin_opp <- cl_land_nabij_opp %in% goedgekeurde_land_ids_opp
+    land_nabij_finaal_opp <- terra::mask(land_nabij_clusters_opp$raster, terra::ifel(masker_land_bin_opp == 1, 1, NA))
+  }
+  rm(l_stats_opp, cl_land_buf_opp, bos_in_zone_opp, zonal_bos_opp, df_criteria_opp, goedgekeurde_land_ids_opp, r_bos_clean_opp, r_binair_land_cl_opp)
+}
+
+if (exists("w_50m")) rm(w_50m)
 rm(land_nabij_bos_max, land_nabij_bos_opp)
 gc()
 ```
 
 ```{r ruim land}
-message("-> Ruim landbiotoop filteren op basis van de 70% bos-samenstellingscheck...")
+message("-> Ruim landbiotoop filteren op basis van de 70% bos-samenstellingscheck (PARALLEL)...")
 
-# 1. Kogelvrije NA-zuivering op de ruime biotoopkaarten
-# FIX: Exacte namen 'land_ruim_max' en 'land_ruim_bos_max' gekoppeld uit je database-extractie!
-r_ruim_land_src <- land_ruim_max
-r_ruim_land_src[is.na(r_ruim_land_src) | r_ruim_land_src == 0] <- NA
+# --- SPOOR A: MAX ---
+r_ruim_land_src_max <- land_ruim_max
+r_ruim_land_src_max[is.na(r_ruim_land_src_max) | r_ruim_land_src_max == 0] <- NA
 
-r_ruim_bos_src <- land_ruim_bos_max
-r_ruim_bos_src[is.na(r_ruim_bos_src) | r_ruim_bos_src == 0] <- NA
+r_ruim_bos_src_max <- land_ruim_bos_max
+r_ruim_bos_src_max[is.na(r_ruim_bos_src_max) | r_ruim_bos_src_max == 0] <- NA
 
-# Ruime landbiotoop-clusters identificeren (Drempel: 40 ha = 400.000 m²)
-land_ruim_clusters_list <- cluster_filter_compleet(
-  masker = r_ruim_land_src, opp_laag = land_ruim_max, 
-  drempel_m2 = 400000, dist_m = 50, werkelijk = FALSE
+land_ruim_clusters_list_max <- cluster_filter_compleet(
+  masker     = r_ruim_land_src_max, 
+  opp_laag   = land_ruim_max, 
+  drempel_m2 = 400000, 
+  dist_m     = 50, 
+  werkelijk  = FALSE
 )
-cl_id_ruim_max <- land_ruim_clusters_list$clusters
+cl_id_ruim_max <- land_ruim_clusters_list_max$clusters
 
-# Initialiseer de finale objecten als leeg
 speerwaterjuffer_land_ruim_max <- template_TV * NA
-speerwaterjuffer_land_ruim_opp <- template_TV * NA
 
 if (!all(is.na(terra::values(cl_id_ruim_max, mat=FALSE)))) {
+  stats_ruim_totaal_max <- terra::zonal(r_ruim_land_src_max * 0.01, cl_id_ruim_max, fun = "sum", na.rm = TRUE)
+  colnames(stats_ruim_totaal_max) <- c("Cluster_ID", "Totaal_Ruim_ha")
   
-  # 2. BEREKEN DE OPPERVLAKTES (in ha) BINNEN ELK RUIM CLUSTER
-  # A) De totale oppervlakte van het ruime landbiotoop per cluster
-  stats_ruim_totaal <- terra::zonal(r_ruim_land_src * 0.01, cl_id_ruim_max, fun = "sum", na.rm = TRUE)
-  colnames(stats_ruim_totaal) <- c("Cluster_ID", "Totaal_Ruim_ha")
+  bos_in_ruim_max <- terra::mask(r_ruim_bos_src_max, cl_id_ruim_max)
+  stats_bos_in_ruim_max <- terra::zonal(bos_in_ruim_max * 0.01, cl_id_ruim_max, fun = "sum", na.rm = TRUE)
+  colnames(stats_bos_in_ruim_max) <- c("Cluster_ID", "Bos_ha")
   
-  # B) De oppervlakte bos dat fysiek BINNEN de grenzen van dat ruime cluster valt
-  bos_in_ruim <- terra::mask(r_ruim_bos_src, cl_id_ruim_max)
-  stats_bos_in_ruim <- terra::zonal(bos_in_ruim * 0.01, cl_id_ruim_max, fun = "sum", na.rm = TRUE)
-  colnames(stats_bos_in_ruim) <- c("Cluster_ID", "Bos_ha")
+  df_samenstelling_ruim_max <- merge(stats_ruim_totaal_max, stats_bos_in_ruim_max, by = "Cluster_ID", all.x = TRUE)
+  df_samenstelling_ruim_max$Bos_ha[is.na(df_samenstelling_ruim_max$Bos_ha)] <- 0
+  df_samenstelling_ruim_max$Percentage_Bos <- (df_samenstelling_ruim_max$Bos_ha / df_samenstelling_ruim_max$Totaal_Ruim_ha) * 100
   
-  # 3. BEREKEN H HET PERCENTAGE BOS PER RUIM CLUSTER
-  df_samenstelling_ruim <- merge(stats_ruim_totaal, stats_bos_in_ruim, by = "Cluster_ID", all.x = TRUE)
-  df_samenstelling_ruim$Bos_ha[is.na(df_samenstelling_ruim$Bos_ha)] <- 0
-  df_samenstelling_ruim$Percentage_Bos <- (df_samenstelling_ruim$Bos_ha / df_samenstelling_ruim$Totaal_Ruim_ha) * 100
+  valide_ruim_ids_max <- df_samenstelling_ruim_max$Cluster_ID[df_samenstelling_ruim_max$Percentage_Bos >= 70]
   
-  # Welke Ruime Cluster-IDs voldoen aan de zware 70% bos-eis?
-  valide_ruim_ids <- df_samenstelling_ruim$Cluster_ID[df_samenstelling_ruim$Percentage_Bos >= 70]
-  
-  # 4. PAS DE FILTERS ECOLOOGSCH TOE (Het bos zelf wordt direct daarna weggemaskeerd)
-  if(length(valide_ruim_ids) > 0) {
-    masker_ruim_bin <- cl_id_ruim_max %in% valide_ruim_ids
-    speerwaterjuffer_land_ruim_max <- terra::mask(r_ruim_land_src, terra::ifel(masker_ruim_bin == 1, 1, NA))
-    speerwaterjuffer_land_ruim_opp <- terra::mask(land_ruim_opp, speerwaterjuffer_land_ruim_max)
-  } else {
-    message("⚠️ Waarschuwing: Geen enkel ruim landbiotoopcomplex voldoet aan de 70% bos-eis.")
+  if(length(valide_ruim_ids_max) > 0) {
+    masker_ruim_bin_max <- cl_id_ruim_max %in% valide_ruim_ids_max
+    speerwaterjuffer_land_ruim_max <- terra::mask(r_ruim_land_src_max, terra::ifel(masker_ruim_bin_max == 1, 1, NA))
   }
-  
-  # Tussentijdse rapportage in de console
-  message("   - Aantal geëvalueerde ruime landclusters: ", nrow(df_samenstelling_ruim))
-  message("   - Aantal clusters dat voldoet (>= 70% bos): ", length(valide_ruim_ids))
-  
-  rm(stats_ruim_totaal, bos_in_ruim, stats_bos_in_ruim, df_samenstelling_ruim, valide_ruim_ids)
+  rm(stats_ruim_totaal_max, bos_in_ruim_max, stats_bos_in_ruim_max, df_samenstelling_ruim_max, valide_ruim_ids_max)
 }
 
-# Geheugen rigoureus opschonen van alle zware ruime tussenlagen
-rm(r_ruim_land_src, r_ruim_bos_src, land_ruim_clusters_list, cl_id_ruim_max, land_ruim_max, land_ruim_opp, land_ruim_bos_max, land_ruim_bos_opp)
+# --- SPOOR B: OPP (Parallel & Autonoom) ---
+r_binair_ruim_opp_init <- terra::ifel(!is.na(land_ruim_opp) & land_ruim_opp > 0, 1, NA)
+
+land_ruim_clusters_list_opp <- cluster_filter_compleet(
+  masker     = r_binair_ruim_opp_init, 
+  opp_laag   = land_ruim_opp, 
+  drempel_m2 = 400000, 
+  dist_m     = 50, 
+  werkelijk  = TRUE
+)
+cl_id_ruim_opp <- land_ruim_clusters_list_opp$clusters
+
+speerwaterjuffer_land_ruim_opp <- template_TV * NA
+
+if (!all(is.na(terra::values(cl_id_ruim_opp, mat=FALSE)))) {
+  stats_ruim_totaal_opp <- terra::zonal(land_ruim_opp, cl_id_ruim_opp, fun = "sum", na.rm = TRUE)
+  colnames(stats_ruim_totaal_opp) <- c("Cluster_ID", "Totaal_Ruim_ha")
+  stats_ruim_totaal_opp$Totaal_Ruim_ha <- stats_ruim_totaal_opp$Totaal_Ruim_ha * 0.01
+  
+  bos_in_ruim_opp <- terra::mask(land_ruim_bos_opp, cl_id_ruim_opp)
+  stats_bos_in_ruim_opp <- terra::zonal(bos_in_ruim_opp, cl_id_ruim_opp, fun = "sum", na.rm = TRUE)
+  colnames(stats_bos_in_ruim_opp) <- c("Cluster_ID", "Bos_ha")
+  stats_bos_in_ruim_opp$Bos_ha <- stats_bos_in_ruim_opp$Bos_ha * 0.01
+  
+  df_samenstelling_ruim_opp <- merge(stats_ruim_totaal_opp, stats_bos_in_ruim_opp, by = "Cluster_ID", all.x = TRUE)
+  df_samenstelling_ruim_opp$Bos_ha[is.na(df_samenstelling_ruim_opp$Bos_ha)] <- 0
+  df_samenstelling_ruim_opp$Percentage_Bos <- (df_samenstelling_ruim_opp$Bos_ha / df_samenstelling_ruim_opp$Totaal_Ruim_ha) * 100
+  
+  valide_ruim_ids_opp <- df_samenstelling_ruim_opp$Cluster_ID[df_samenstelling_ruim_opp$Percentage_Bos >= 70]
+  
+  if(length(valide_ruim_ids_opp) > 0) {
+    masker_ruim_bin_opp <- cl_id_ruim_opp %in% valide_ruim_ids_opp
+    speerwaterjuffer_land_ruim_opp <- terra::mask(land_ruim_opp, terra::ifel(masker_ruim_bin_opp == 1, 1, NA))
+  }
+  rm(stats_ruim_totaal_opp, bos_in_ruim_opp, stats_bos_in_ruim_opp, df_samenstelling_ruim_opp, valide_ruim_ids_opp)
+}
+
+rm(r_ruim_land_src_max, r_ruim_bos_src_max, land_ruim_clusters_list_max, cl_id_ruim_max, 
+   r_binair_ruim_opp_init, land_ruim_clusters_list_opp, cl_id_ruim_opp,
+   land_ruim_max, land_ruim_opp, land_ruim_bos_max, land_ruim_bos_opp)
 gc()
 ```
 
 ```{r interactie water en land}
 message("-> Ruimtelijke interacties en eindsynthese per spoor uitvoeren...")
 
-# FIX: We isoleren de correcte, gefilterde invoerrasters uit de list-elementen van de drempelfuncties
 r_water1_max_clean <- waterbiotoop_clusters_max$raster
 r_water1_opp_clean <- waterbiotoop_clusters_opp$raster
 
 # ==============================================================================
 # VERWERKING SPOOR 1: MAXIMALE POTENTIE
 # ==============================================================================
-# Interactie 1: Water en Nabij Land (10 ha) binnen 10 meter
 water_buffer10_max <- terra::buffer(r_water1_max_clean, width = 10)
 land_buffer10_max  <- terra::buffer(land_nabij_finaal_max, width = 10)
 
 waterbiotoop2_max <- terra::mask(r_water1_max_clean, land_buffer10_max)
 landbiotoop2_max  <- terra::mask(land_nabij_finaal_max, water_buffer10_max)
 
-# Interactie 2: Omgevingsvoorwaarde (40 ha ruim land + 70% bos binnen 500m)
 ruim_buffer500_max <- terra::buffer(speerwaterjuffer_land_ruim_max, width = 500)
 
-# Finaal waterbiotoop en landbiotoop (max)
 waterbiotoop_finaal_max <- terra::mask(waterbiotoop2_max, ruim_buffer500_max)
 landbiotoop_finaal_max  <- terra::mask(landbiotoop2_max, ruim_buffer500_max)
 
-# Voeg water en nabij land samen tot finaal leefgebied (ruim complex valt correct af!)
 speerwaterjuffer_leefgebied_max <- terra::cover(waterbiotoop_finaal_max, landbiotoop_finaal_max)
 finaal_max_binair <- terra::ifel(!is.na(speerwaterjuffer_leefgebied_max), 1, NA)
 
 
 # ==============================================================================
-# VERWERKING SPOOR 2: WERKELIJKE OPPERVLAKTE (FRACTIES)
+# VERWERKING SPOOR 2: WERKELIJKE OPPERVLAKTE (PARALLEL)
 # ==============================================================================
-# Interactie 1: Water en Nabij Land binnen 10 meter
-water_buffer10_opp <- terra::buffer(r_water1_opp_clean, width = 10)
-land_buffer10_opp  <- terra::buffer(land_nabij_finaal_opp, width = 10)
+water_buffer10_opp <- terra::buffer(!is.na(r_water1_opp_clean) & r_water1_opp_clean > 0, width = 10)
+land_buffer10_opp  <- terra::buffer(!is.na(land_nabij_finaal_opp) & land_nabij_finaal_opp > 0, width = 10)
 
 waterbiotoop2_opp <- terra::mask(r_water1_opp_clean, land_buffer10_opp)
 landbiotoop2_opp  <- terra::mask(land_nabij_finaal_opp, water_buffer10_opp)
 
-# Interactie 2: Omgevingsvoorwaarde
-ruim_buffer500_opp <- terra::buffer(speerwaterjuffer_land_ruim_opp, width = 500)
+ruim_buffer500_opp <- terra::buffer(!is.na(speerwaterjuffer_land_ruim_opp) & speerwaterjuffer_land_ruim_opp > 0, width = 500)
 
-# Finaal waterbiotoop en landbiotoop (opp)
 waterbiotoop_finaal_opp <- terra::mask(waterbiotoop2_opp, ruim_buffer500_opp)
 landbiotoop_finaal_opp  <- terra::mask(landbiotoop2_opp, ruim_buffer500_opp)
 
-# Voeg water en nabij land samen tot finaal leefgebied (opp)
 speerwaterjuffer_leefgebied_opp <- terra::cover(waterbiotoop_finaal_opp, landbiotoop_finaal_opp)
-finaal_opp_binair <- terra::ifel(!is.na(speerwaterjuffer_leefgebied_opp), 1, NA)
+finaal_opp_binair <- terra::ifel(!is.na(speerwaterjuffer_leefgebied_opp) & speerwaterjuffer_leefgebied_opp > 0, 1, NA)
 
-
-# ==============================================================================
-# CLEAN FIX: Enkel niet-relevante objecten uitsluiten uit RAM
-# ==============================================================================
 rm(water_buffer10_max, land_buffer10_max, waterbiotoop2_max, landbiotoop2_max, 
-   waterbiotoop_finaal_max, landbiotoop_finaal_max, leefgebied_max,
-   water_buffer10_opp, waterbiotoop2_opp, landbiotoop2_opp,
-   waterbiotoop_finaal_opp, landbiotoop_finaal_opp, r_water1_max_clean, r_water1_opp_clean)
+   waterbiotoop_finaal_max, landbiotoop_finaal_max,
+   water_buffer10_opp, land_buffer10_opp, waterbiotoop2_opp, landbiotoop2_opp,
+   waterbiotoop_finaal_opp, landbiotoop_finaal_opp, r_water1_max_clean, r_water1_opp_clean,
+   land_nabij_finaal_max, land_nabij_finaal_opp, speerwaterjuffer_land_ruim_max, speerwaterjuffer_land_ruim_opp, ruim_buffer500_max)
 gc()
 
 message("-> Parallelle modellering succesvol voltooid! Lagen opgeslagen in RAM.")
@@ -813,7 +838,6 @@ map %>%
   )
 ```
 
-
 ```{r export}
 # ==============================================================================
 # EXPORT MET KOGELVRIJE NUL-OPVULLING & CONTRACT FIX (speerwaterjuffer)
@@ -829,43 +853,37 @@ folders <- list(
 )
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-# 1. Spoor A: Maximale Potentie formatteren naar 1/NA
 if(!all(is.na(terra::values(speerwaterjuffer_leefgebied_max, mat=FALSE)))) {
   potentie_export_rast <- terra::ifel(!is.na(speerwaterjuffer_leefgebied_max) & speerwaterjuffer_leefgebied_max > 0, 1, NA)
 } else {
   potentie_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# 2. Spoor B: Werkelijke Oppervlakte formatteren naar 1/NA
 if(!all(is.na(terra::values(speerwaterjuffer_leefgebied_opp, mat=FALSE)))) {
   werkelijk_export_rast <- terra::ifel(!is.na(speerwaterjuffer_leefgebied_opp) & speerwaterjuffer_leefgebied_opp > 0, 1, NA)
 } else {
   werkelijk_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# 3. ARPL formatteren naar 1/NA
 if(exists("speerwaterjuffer_arpl_opp") && !all(is.na(terra::values(speerwaterjuffer_arpl_opp, mat=FALSE)))) {
   arpl_export_rast <- terra::ifel(speerwaterjuffer_arpl_opp > 0, 1, NA)
 } else {
   arpl_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# 4. Actuele Verspreiding formatteren naar 1/NA
-if(!all(is.na(terra::values(speerwaterjuffer_verspr_opp, mat=FALSE)))) {
+if(exists("speerwaterjuffer_verspr_opp") && !all(is.na(terra::values(speerwaterjuffer_verspr_opp, mat=FALSE)))) {
   verspreiding_export_rast <- terra::ifel(speerwaterjuffer_verspr_opp > 0, 1, NA)
 } else {
   verspreiding_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-# Bundeling in de export_config structuur
 export_config <- list(
-  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",       folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,         naam = "ARPL",                    folder = folders$arpl,         type = "INT1U"),
-  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
+  list(rast = potentie_export_rast,      naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
+  list(rast = werkelijk_export_rast,     naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
+  list(rast = arpl_export_rast,          naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
+  list(rast = verspreiding_export_rast,  naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 
-# De export-loop brengt de nul-omranding aan binnen area_buffer_fix en schrijft de .tif-bestanden weg
 for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
@@ -888,10 +906,9 @@ for(item in export_config) {
   message(paste("   [OK] Geëxporteerd:", basename(file_path)))
 }
 
-# --- FINALE SCHOONMAAK: Verwijder de layers pas op de allerlaatste regel van het script ---
 suppressWarnings(
   rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast,
-     waterbiotoop1_opp, land_buffer10_opp, ruim_buffer500_opp)
+     waterbiotoop1_opp, ruim_buffer500_opp)
 )
 gc()
 
