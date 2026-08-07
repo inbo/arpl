@@ -45,66 +45,63 @@ calc_ha_exact <- function(r) {
   return(as.numeric(val))
 }
 
-verwerk_leefgebied_scen_stream <- function(r_input, max_afstand_m, min_opp_ha) {
-  if (is.null(r_input)) return(NULL)
-  if (all(is.na(terra::values(r_input, mat = FALSE)))) return(NULL)
+cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
+  # 1. Controleer of het raster leeg is
+  if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
+    return(list(raster = masker * NA, clusters = masker * NA))
+  }
   
-  # 1. Binariseren naar aanwezigheid
-  r_binair <- terra::ifel(r_input > 0, 1, NA)
+  # ----------------------------------------------------------------------------
+  # STAP 1: VEILIGE & SNELLER NETWERKVORMING ZONDER RAM-CRASH
+  # ----------------------------------------------------------------------------
+  if (dist_m > 0) {
+    # Maak binaire kaart (1 = biotoop, NA = rest)
+    r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
+    
+    # Buffer de BINAIR kaart (dit kost vrijwel geen geheugen!)
+    # Volle afstand dist_m zorgt dat plukjes binnen dist_m gegarandeerd samensmelten
+    r_buffered <- terra::buffer(r_binair, width = dist_m)
+    
+    # Maak unieke Netwerk-ID's op de gebufferde zones
+    cl_network <- terra::patches(r_buffered, directions = 8, zeroAsNA = TRUE)
+    
+    # Snijd de Netwerk-ID's direct terug naar waar de originele biotooppixels liggen
+    cl_biotoop_only <- terra::mask(cl_network, masker)
+  } else {
+    cl_network <- terra::patches(masker, directions = 8, zeroAsNA = TRUE)
+    cl_biotoop_only <- cl_network
+  }
   
-  # 2. Maak de cirkelvormige focal matrix
-  w <- terra::focalMat(r_input, max_afstand_m, type = 'circle')
-  w[w > 0] <- 1 
+  # ----------------------------------------------------------------------------
+  # STAP 2: OPPERVLAKTE-OPTELSOM PER GEKOPPELD NETWERK
+  # ----------------------------------------------------------------------------
+  if(werkelijk) {
+    stats_df <- terra::zonal(opp_laag, cl_biotoop_only, fun = "sum", na.rm = TRUE)
+    colnames(stats_df) <- c("ID", "Waarde")
+    stats_df$Area_m2 <- stats_df$Waarde * 100 
+  } else {
+    f <- terra::freq(cl_biotoop_only)
+    stats_df <- data.frame(ID = f$value, Waarde = f$count)
+    stats_df$Area_m2 <- stats_df$Waarde * 100 
+  }
   
-  # 3. DILATE STAP
-  tmp_focal_file <- tempfile(fileext = ".tif")
-  r_dilated <- terra::focal(
-    r_binair, 
-    w = w, 
-    fun = "max", 
-    na.rm = TRUE,
-    filename = tmp_focal_file,
-    overwrite = TRUE,
-    datatype = "INT1U" # Dwing naar Integer voor stabiliteit
-  )
+  stats_df <- stats_df[!is.na(stats_df$ID), ]
+  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
-  # 4. PATCHES STAP
-  # CRUCIALE FIX: patches is stabieler op gehele getallen zonder compressie-overhead
-  tmp_patch_file <- tempfile(fileext = ".tif")
-  clusters_dilated <- terra::patches(
-    r_dilated, 
-    directions = 8, 
-    zeroAsNA = TRUE,
-    filename = tmp_patch_file,
-    overwrite = TRUE,
-    datatype = "INT4U" # Gebruik 32-bit integer voor genoeg ID-ruimte
-  )
+  # ----------------------------------------------------------------------------
+  # STAP 3: FILTEREN OP TOTALE NETWERK-OPPERVLAKTE >= DREMPEL
+  # ----------------------------------------------------------------------------
+  voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
+  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
-  rm(r_dilated)
-  gc()
+  # Behaal alleen de winnende netwerk-ID's
+  masker_binair <- cl_biotoop_only %in% voldoet_ids
+  final_network_mask <- terra::ifel(masker_binair == 1, 1, NA)
   
-  # 5. Maskeren naar de scherpe vorm
-  r_clusters <- terra::mask(clusters_dilated, r_binair)
-  rm(clusters_dilated)
+  r_finaal  <- terra::mask(masker, final_network_mask)
+  cl_finaal <- terra::mask(cl_biotoop_only, r_finaal) 
   
-  # 6. Oppervlakte berekenen
-  area_raster <- terra::cellSize(r_clusters, unit = "ha")
-  werkelijk_opp_raster <- r_input * area_raster
-  
-  cluster_opp <- terra::zonal(werkelijk_opp_raster, r_clusters, fun = "sum", na.rm = TRUE)
-  
-  naam_opp_kolom <- names(werkelijk_opp_raster)
-  geldige_ids <- cluster_opp$patches[cluster_opp[[naam_opp_kolom]] >= min_opp_ha]
-  
-  unlink(c(tmp_focal_file, tmp_patch_file))
-  
-  if (length(geldige_ids) == 0) return(r_input * NA)
-  
-  # 7. Filter de geldige clusters
-  r_leefgebied_scherp <- terra::ifel(r_clusters %in% geldige_ids, r_clusters, NA)
-  r_leefgebied_scherp <- terra::mask(r_leefgebied_scherp, r_binair)
-  
-  return(r_leefgebied_scherp)
+  return(list(raster = r_finaal, clusters = cl_finaal))
 }
 ```
 
@@ -348,52 +345,29 @@ gc()
 # ==============================================================================
 message("-> Voortplantingsgebieden clusteren (100m fuzzy) en filteren op min. 10 ha...")
 
-# --- SPOOR A: MAX ---
-if (!all(is.na(terra::values(bruinekiekendief_vp_zonderbos_max, mat = FALSE)))) {
-  vp_buffered_max <- terra::buffer(bruinekiekendief_vp_zonderbos_max, width = 50)
-  cl_vp_max       <- terra::patches(vp_buffered_max, directions = 8, zeroAsNA = TRUE)
-  cl_vp_scherp_max <- terra::mask(cl_vp_max, bruinekiekendief_vp_zonderbos_max)
-  
-  stats_vp_max <- terra::freq(cl_vp_scherp_max)
-  colnames(stats_vp_max) <- c("layer", "ID", "count")
-  stats_vp_max$ha <- stats_vp_max$count * 0.01
-  voldoet_vp_ids_max <- stats_vp_max$ID[stats_vp_max$ha >= 10]
-  
-  if (length(voldoet_vp_ids_max) > 0) {
-    mask_vp_valid_max <- cl_vp_scherp_max %in% voldoet_vp_ids_max
-    bruinekiekendief_voortplanting_final_max <- terra::ifel(mask_vp_valid_max == 1, 1, NA)
-  } else {
-    bruinekiekendief_voortplanting_final_max <- template_TV * NA
-  }
-  rm(vp_buffered_max, cl_vp_max, cl_vp_scherp_max, stats_vp_max)
-} else {
-  bruinekiekendief_voortplanting_final_max <- template_TV * NA
-}
+# Vervanging van chunk 'Clustering'
+drempel_vp_m2 <- 10 * 10000 # 10 ha
 
-# --- SPOOR B: OPP (Parallel & Autonoom) ---
+# Spoor A (Max)
+res_vp_max <- cluster_filter_compleet(
+  masker     = bruinekiekendief_vp_zonderbos_max,
+  opp_laag   = bruinekiekendief_vp_zonderbos_max,
+  drempel_m2 = drempel_vp_m2,
+  dist_m     = 100, # 100m fuzzy overbrugging
+  werkelijk  = FALSE
+)
+bruinekiekendief_voortplanting_final_max <- res_vp_max$raster
+
+# Spoor B (Opp)
 r_binair_vp_opp <- terra::ifel(!is.na(bruinekiekendief_vp_zonderbos_opp) & bruinekiekendief_vp_zonderbos_opp > 0, 1, NA)
-
-if (!all(is.na(terra::values(r_binair_vp_opp, mat = FALSE)))) {
-  vp_buffered_opp <- terra::buffer(r_binair_vp_opp, width = 50)
-  cl_vp_opp       <- terra::patches(vp_buffered_opp, directions = 8, zeroAsNA = TRUE)
-  cl_vp_scherp_opp <- terra::mask(cl_vp_opp, r_binair_vp_opp)
-  
-  stats_vp_opp <- terra::zonal(bruinekiekendief_vp_zonderbos_opp, cl_vp_scherp_opp, fun = "sum", na.rm = TRUE)
-  colnames(stats_vp_opp) <- c("ID", "ha_sum")
-  stats_vp_opp$ha <- stats_vp_opp$ha_sum * 0.01
-  voldoet_vp_ids_opp <- stats_vp_opp$ID[stats_vp_opp$ha >= 10]
-  
-  if (length(voldoet_vp_ids_opp) > 0) {
-    mask_vp_valid_opp <- cl_vp_scherp_opp %in% voldoet_vp_ids_opp
-    bruinekiekendief_voortplanting_final_opp <- terra::mask(bruinekiekendief_vp_zonderbos_opp, terra::ifel(mask_vp_valid_opp, 1, NA))
-  } else {
-    bruinekiekendief_voortplanting_final_opp <- template_TV * NA
-  }
-  rm(vp_buffered_opp, cl_vp_opp, cl_vp_scherp_opp, stats_vp_opp)
-} else {
-  bruinekiekendief_voortplanting_final_opp <- template_TV * NA
-}
-
+res_vp_opp <- cluster_filter_compleet(
+  masker     = r_binair_vp_opp,
+  opp_laag   = bruinekiekendief_vp_zonderbos_opp,
+  drempel_m2 = drempel_vp_m2,
+  dist_m     = 100,
+  werkelijk  = TRUE
+)
+bruinekiekendief_voortplanting_final_opp <- res_vp_opp$raster
 rm(bruinekiekendief_vp_zonderbos_max, bruinekiekendief_vp_zonderbos_opp, r_binair_vp_opp)
 gc()
 ```
@@ -404,51 +378,29 @@ gc()
 # ==============================================================================
 message("-> Foerageergebieden clusteren (100m fuzzy) en filteren op min. 100 ha...")
 
-# --- SPOOR A: MAX ---
-if (!all(is.na(terra::values(foerageer_max, mat = FALSE)))) {
-  foer_buffered_max <- terra::buffer(foerageer_max, width = 50)
-  cl_foer_max       <- terra::patches(foer_buffered_max, directions = 8, zeroAsNA = TRUE)
-  cl_foer_scherp_max <- terra::mask(cl_foer_max, foerageer_max)
-  
-  stats_foer_max <- terra::freq(cl_foer_scherp_max)
-  colnames(stats_foer_max) <- c("layer", "ID", "count")
-  stats_foer_max$ha <- stats_foer_max$count * 0.01
-  voldoet_foer_max_ids <- stats_foer_max$ID[stats_foer_max$ha >= 100]
-  
-  if (length(voldoet_foer_max_ids) > 0) {
-    m_foer_max <- cl_foer_scherp_max %in% voldoet_foer_max_ids
-    bruinekiekendief_foerageer_final_max <- terra::ifel(m_foer_max == 1, 1, NA)
-  } else {
-    bruinekiekendief_foerageer_final_max <- template_TV * NA
-  }
-  rm(foer_buffered_max, cl_foer_max, cl_foer_scherp_max, stats_foer_max)
-} else {
-  bruinekiekendief_foerageer_final_max <- template_TV * NA
-}
+# Vervanging van chunk 'Foerageergebied'
+drempel_foer_m2 <- 100 * 10000 # 100 ha
 
-# --- SPOOR B: OPP (Parallel & Autonoom) ---
+# Spoor A (Max)
+res_foer_max <- cluster_filter_compleet(
+  masker     = foerageer_max,
+  opp_laag   = foerageer_max,
+  drempel_m2 = drempel_foer_m2,
+  dist_m     = 100,
+  werkelijk  = FALSE
+)
+bruinekiekendief_foerageer_final_max <- res_foer_max$raster
+
+# Spoor B (Opp)
 r_binair_foer_opp <- terra::ifel(!is.na(foerageer_opp) & foerageer_opp > 0, 1, NA)
-
-if (!all(is.na(terra::values(r_binair_foer_opp, mat = FALSE)))) {
-  foer_buffered_opp <- terra::buffer(r_binair_foer_opp, width = 50)
-  cl_foer_opp       <- terra::patches(foer_buffered_opp, directions = 8, zeroAsNA = TRUE)
-  cl_foer_scherp_opp <- terra::mask(cl_foer_opp, r_binair_foer_opp)
-  
-  stats_foer_opp <- terra::zonal(foerageer_opp, cl_foer_scherp_opp, fun = "sum", na.rm = TRUE)
-  colnames(stats_foer_opp) <- c("ID", "ha_sum")
-  stats_foer_opp$ha <- stats_foer_opp$ha_sum * 0.01
-  voldoet_foer_opp_ids <- stats_foer_opp$ID[stats_foer_opp$ha >= 100]
-  
-  if (length(voldoet_foer_opp_ids) > 0) {
-    m_foer_opp <- cl_foer_scherp_opp %in% voldoet_foer_opp_ids
-    bruinekiekendief_foerageer_final_opp <- terra::mask(foerageer_opp, terra::ifel(m_foer_opp == 1, 1, NA))
-  } else {
-    bruinekiekendief_foerageer_final_opp <- template_TV * NA
-  }
-  rm(foer_buffered_opp, cl_foer_opp, cl_foer_scherp_opp, stats_foer_opp)
-} else {
-  bruinekiekendief_foerageer_final_opp <- template_TV * NA
-}
+res_foer_opp <- cluster_filter_compleet(
+  masker     = r_binair_foer_opp,
+  opp_laag   = foerageer_opp,
+  drempel_m2 = drempel_foer_m2,
+  dist_m     = 100,
+  werkelijk  = TRUE
+)
+bruinekiekendief_foerageer_final_opp <- res_foer_opp$raster
 
 rm(foerageer_max, foerageer_opp, r_binair_foer_opp)
 gc()

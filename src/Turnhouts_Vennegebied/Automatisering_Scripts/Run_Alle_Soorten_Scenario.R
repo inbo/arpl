@@ -20,8 +20,11 @@ SCENARIO_RDS_PAD <- here("data/input/Scenario_rds/TV_Scenario_bosbehoudss_ss31fi
 HUIDIG_SCENARIO  <- gsub("^TV_Scenario_|.rds$", "", basename(SCENARIO_RDS_PAD))
 
 MAP_SCRIPTS      <- here("src/Turnhouts_Vennegebied/Scripts_Scenario") # Map met de 60 scenario Rmd's
-OUTPUT_DIR       <- here("data/output/Turnhouts_Vennegebied/HTML_Rapporten_Scenario")
 
+# AANGEPAST: Maak het pad dynamisch door HUIDIG_SCENARIO als submap toe te voegen
+OUTPUT_DIR       <- here("data/output/Turnhouts_Vennegebied/HTML_Rapporten_Scenario", HUIDIG_SCENARIO)
+
+# Maak de scenariomap aan indien deze nog niet bestaat
 if(!dir.exists(OUTPUT_DIR)) dir.create(OUTPUT_DIR, recursive = TRUE)
 
 # Initialiseer een globale loglijst voor de unieke scripts
@@ -29,6 +32,7 @@ algemeen_logboek <- list()
 
 message("==================================================")
 message(" START MASTER RUN VOOR SCENARIO: ", toupper(HUIDIG_SCENARIO))
+message(" Output map: ", OUTPUT_DIR)
 message("==================================================")
 
 
@@ -59,7 +63,7 @@ for(script in unieke_scripts) {
     rmarkdown::render(
       input = script,
       output_file = output_html,
-      output_dir = OUTPUT_DIR,
+      output_dir = OUTPUT_DIR, # HTML komt in de scenariomap terecht
       # GEFIXTE PARAMETER: Matcht met wat de 60 gegeneerde scripts verwachten!
       params = list(scenario_rds_path = SCENARIO_RDS_PAD), 
       # GEFIXTE SCHONE OMGEVING: Voorkomt vervuiling tussen zware GIS-scripts
@@ -88,11 +92,11 @@ if (file.exists(soorten_script_pad)) {
   excel_data <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
   
   soorten_lijst <- excel_data %>% 
-    filter(Script == "Simpel") %>%                
+    filter(Script == "Simpel") %>%                 
     filter(Turnhouts_Vennegebied == 1) %>%        
-    pull(Soort) %>%                               
-    unique() %>%                                  
-    na.omit()                                     
+    pull(Soort) %>%                                
+    unique() %>%                                   
+    na.omit()                                      
   
   message("\n=> Aantal geselecteerde simpele soorten voor ", HUIDIG_SCENARIO, ": ", length(soorten_lijst))
   
@@ -113,7 +117,7 @@ if (file.exists(soorten_script_pad)) {
       rmarkdown::render(
         input = soorten_script_pad, 
         output_file = output_file_name,
-        output_dir = OUTPUT_DIR,
+        output_dir = OUTPUT_DIR, # HTML komt in de scenariomap terecht
         params = list(
           soort_invoer = huidige_soort, 
           scenario_rds_path = SCENARIO_RDS_PAD 
@@ -145,6 +149,7 @@ if (file.exists(soorten_script_pad)) {
 # ------------------------------------------------------------------------------
 # 3. LOGBESTAND WEGSCHRIJVEN & SAMENVATTING
 # ------------------------------------------------------------------------------
+# Logbestand wordt nu ook automatisch in de specifieke scenariomap opgeslagen
 log_file_path <- file.path(OUTPUT_DIR, paste0("Logboek_ScenarioRun_", HUIDIG_SCENARIO, "_", format(Sys.time(), "%Y%m%d_%H%M"), ".csv"))
 readr::write_excel_csv(eind_logboek, log_file_path)
 
@@ -152,7 +157,7 @@ aantal_crashes <- sum(eind_logboek$Status == "CRASH")
 message("\n==================================================")
 message(" MASTER RUN COMPLEET VOOR ", toupper(HUIDIG_SCENARIO))
 message(" Totaal onderdelen gedraaid: ", nrow(eind_logboek))
-message(" Succesvol:                  ", nrow(eind_logboek) - aantal_crashes)
-message(" Gecrasht:                   ", aantal_crashes)
+message(" Succesvol:                   ", nrow(eind_logboek) - aantal_crashes)
+message(" Gecrasht:                    ", aantal_crashes)
 message(" Logboek opgeslagen als:     ", log_file_path)
 message("==================================================")

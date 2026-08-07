@@ -72,6 +72,71 @@ maak_kaart_laag <- function(res_list) {
   }
   return(finaal)
 }
+
+cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
+  # 1. Controleer of het raster leeg is
+  if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
+    return(list(raster = masker * NA, clusters = masker * NA))
+  }
+  
+  # ----------------------------------------------------------------------------
+  # STAP 1: VEILIGE & SNELLER NETWERKVORMING ZONDER RAM-CRASH
+  # ----------------------------------------------------------------------------
+  if (dist_m > 0) {
+    # Maak binaire kaart (1 = biotoop, NA = rest)
+    r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
+    
+    # Buffer de BINAIR kaart (dit kost vrijwel geen geheugen!)
+    # Volle afstand dist_m zorgt dat plukjes binnen dist_m gegarandeerd samensmelten
+    r_buffered <- terra::buffer(r_binair, width = dist_m)
+    
+    # Maak unieke Netwerk-ID's op de gebufferde zones
+    cl_network <- terra::patches(r_buffered, directions = 8, zeroAsNA = TRUE)
+    
+    # Snijd de Netwerk-ID's direct terug naar waar de originele biotooppixels liggen
+    cl_biotoop_only <- terra::mask(cl_network, masker)
+  } else {
+    cl_network <- terra::patches(masker, directions = 8, zeroAsNA = TRUE)
+    cl_biotoop_only <- cl_network
+  }
+  
+  # ----------------------------------------------------------------------------
+  # STAP 2: OPPERVLAKTE-OPTELSOM PER GEKOPPELD NETWERK
+  # ----------------------------------------------------------------------------
+  if(werkelijk) {
+    stats_df <- terra::zonal(opp_laag, cl_biotoop_only, fun = "sum", na.rm = TRUE)
+    colnames(stats_df) <- c("ID", "Waarde")
+    stats_df$Area_m2 <- stats_df$Waarde * 100 
+  } else {
+    f <- terra::freq(cl_biotoop_only)
+    stats_df <- data.frame(ID = f$value, Waarde = f$count)
+    stats_df$Area_m2 <- stats_df$Waarde * 100 
+  }
+  
+  stats_df <- stats_df[!is.na(stats_df$ID), ]
+  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  
+  # ----------------------------------------------------------------------------
+  # STAP 3: FILTEREN OP TOTALE NETWERK-OPPERVLAKTE >= DREMPEL
+  # ----------------------------------------------------------------------------
+  voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
+  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  
+  # Behaal alleen de winnende netwerk-ID's
+  masker_binair <- cl_biotoop_only %in% voldoet_ids
+  final_network_mask <- terra::ifel(masker_binair == 1, 1, NA)
+  
+  r_finaal  <- terra::mask(masker, final_network_mask)
+  cl_finaal <- terra::mask(cl_biotoop_only, r_finaal) 
+  
+  return(list(raster = r_finaal, clusters = cl_finaal))
+}
+
+# 1. Beperk terra tot max 60% van je RAM (voorkomt harde OS-crashes)
+terraOptions(memfrac = 0.6, progress = 1)
+
+# 2. Verhoog de C-stack limiet (voorkomt crashes bij diepe GIS-recursies)
+options(expressions = 50000)
 ```
 
 # Soort informatie ophalen
@@ -103,27 +168,35 @@ gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
 area_shape_proj <- project(area_shape, crs(master_grid))
 area_buffer_fix <- buffer(area_shape_proj, width = buffer_m)
 
-message("-> Vertaalraster voor globale/lokale cellen opbouwen...")
+message("-> Vertaalraster voor globale/lokale cellen bliksemsnel opbouwen...")
+
+# 1. Maak de lokale uitsnede van het raster
 id_raster_TV <- crop(master_grid, area_buffer_fix, snap = "near")
 
-globale_id_raster <- master_grid
-values(globale_id_raster) <- 1:ncell(globale_id_raster)
-id_raster_TV_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
+# 2. Rasterize de buffer-vector naar de uitsnede (vele malen sneller dan terra::extract!)
+template_TV_mask <- terra::rasterize(area_buffer_fix, id_raster_TV, field = 1)
 
-extractie_ids <- terra::extract(id_raster_TV_globale_values, area_buffer_fix, cells = TRUE)
+# 3. Wiskundige index-conversie (lokale cel-index -> coordinaten -> globale cel-index)
+lokale_ids  <- terra::cells(template_TV_mask)
+coords      <- terra::xyFromCell(template_TV_mask, lokale_ids)
+globale_ids <- terra::cellFromXY(master_grid, coords)
 
-vertaal_df <- as.data.table(extractie_ids)
-setnames(vertaal_df, c("cell", names(id_raster_TV_globale_values)), c("lokale_id", "globale_id"))
-vertaal_df <- vertaal_df[!is.na(globale_id)]
+# 4. Bouw de vertaaltabel (data.table) op
+vertaal_df <- data.table(
+  lokale_id  = lokale_ids,
+  globale_id = globale_ids
+)[!is.na(globale_id)]
 
-studiegebied_globale_ids <- unique(vertaal_df$globale_id)
+studiegebied_globale_ids <- vertaal_df$globale_id
 
+# 5. Templates & grenzen instellen voor vervolgstappen
+template_TV <- terra::classify(template_TV_mask, cbind(NA, 0))
 values(id_raster_TV) <- NA
-template_TV <- terra::rasterize(area_buffer_fix, id_raster_TV, field = 1, background = 0)
 
 grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
 
-rm(globale_id_raster, id_raster_TV_globale_values, extractie_ids)
+# Schoonmaken van tijdelijke variabelen
+rm(template_TV_mask, lokale_ids, coords, globale_ids)
 gc()
 ```
 
@@ -240,43 +313,59 @@ names(grutto_hooiland_opp) <- "hooiland_opp"
 
 
 ```{r Water}
-# --- WATER  (GRB + BWK HYBRID MET CRS FIX) ---
-r_grb_raw  <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_grb_water_10m.tif"))
+# --- WATER (GRB + BWK HYBRID MET RAM-STROOMBEVEILIGING) ---
+r_grb_raw <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_grb_water_10m.tif"))
 
-# Zorg dat de projectie direct strak op het master_grid/template_TV CRS wordt gezet
-r_grb_sync <- r_grb_raw %>% 
-  terra::crop(area_buffer_fix) %>% 
-  terra::resample(raster_simpel_final, method = "near")
+# 1. SNEL UITSNIJDEN: Eerst crop/projectie uitvoeren op het bronraster
+r_grb_crop <- terra::crop(r_grb_raw, area_buffer_fix)
+r_grb_sync <- terra::resample(r_grb_crop, raster_simpel_final, method = "near")
+rm(r_grb_raw, r_grb_crop)
+gc()
 
 grb_water_bin <- terra::ifel(r_grb_sync > 0, 1, NA)
-water_patches <- terra::patches(grb_water_bin, directions = 8, zeroAsNA = TRUE)
-water_freq    <- terra::freq(water_patches)
+rm(r_grb_sync)
+gc()
 
-klein_water_ids      <- water_freq$value[water_freq$count <= 50]
+# 2. RAM-VEILIGE PATCHES: Gebruik een tijdelijk bestand op de schijf om std::bad_alloc te voorkomen
+temp_patchfile <- tempfile(fileext = ".tif")
+
+water_patches <- terra::patches(
+  grb_water_bin, 
+  directions = 8, 
+  zeroAsNA = TRUE, 
+  filename = temp_patchfile, # Dwingt terra om op de schijf te verwerken i.p.v. in het RAM
+  overwrite = TRUE
+)
+
+# 3. Bereken de frequenties
+water_freq <- terra::freq(water_patches)
+
+# Klein water is <= 50 pixels (<= 0.5 ha)
+klein_water_ids <- water_freq$value[water_freq$count <= 50]
+
 grutto_water_grb_max <- terra::ifel(water_patches %in% klein_water_ids, 1, NA)
 
-# CRUCIALE CRS FIX: We dwingen alle water-tussenschakels naar exact hetzelfde CRS 
-# als ons centrale template_TV raster. Dit wist de onzichtbare waarschuwings-ruis.
+# CRS Gelijktrekken
 terra::crs(grutto_water_grb_max) <- terra::crs(raster_simpel_final)
 terra::crs(water_bwk_match)      <- terra::crs(raster_simpel_final)
 terra::crs(water_bwk_opp)        <- terra::crs(raster_simpel_final)
 
-# Nu zijn alle geografieën mathematisch identiek en loopt de stroom vloeiend door
+# Combineren met BWK water
 grutto_water_max <- terra::cover(grutto_water_grb_max, water_bwk_match)
-
-# Bereken de werkelijke oppervlakte (0.01 ha voor GRB-pixels, anders de BWK-fractie)
 grutto_water_opp <- terra::ifel(!is.na(grutto_water_grb_max), 0.01, water_bwk_opp)
 grutto_water_opp <- terra::mask(grutto_water_opp, grutto_water_max)
 
 names(grutto_water_max) <- "water_max"
 names(grutto_water_opp) <- "water_opp"
 
-rm(r_grb_raw, r_grb_sync, water_patches, grutto_water_grb_max, grb_water_bin, water_freq)
+# Schoonmaken
+rm(water_patches, grutto_water_grb_max, grb_water_bin, water_freq)
+if(file.exists(temp_patchfile)) unlink(temp_patchfile)
+gc()
 ```
 
 ```{r Tabel Bouwstenen bijkomend Habitat}
 # --- AUDIT: BASIS BOUWSTENEN ---
-
 bouwstenen_tabel <- data.frame(
   Bouwsteen = c("Cultuurgrasland", "Hooiland", "Klein Water", "TOTAAL"),
   Potentie_ha = c(
@@ -323,13 +412,12 @@ gc()
 grutto_basis_kern_max <- max(kern1_match, kern2_match, na.rm = TRUE)
 grutto_basis_kern_opp <- max(kern1_opp, kern2_opp, na.rm = TRUE)
 
-# Drainage laden en filteren
 r_drain_raw   <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_drainage_10m.tif"))
 r_drain_local <- r_drain_raw %>% terra::crop(area_buffer_fix) %>% terra::resample(raster_simpel_final, method = "near")
 
-drain_cats           <- terra::cats(r_drain_local)[[1]]
+drain_cats            <- terra::cats(r_drain_local)[[1]]
 geselecteerde_letters <- c("d", "e", "f", "h", "i", "g", "e-f", "h-i", "e-i")
-grutto_drain_ids     <- drain_cats$value[drain_cats$Label %in% geselecteerde_letters]
+grutto_drain_ids      <- drain_cats$value[drain_cats$Label %in% geselecteerde_letters]
 
 masker_drainage  <- r_drain_local %in% grutto_drain_ids
 grutto_kern3_max <- terra::ifel(masker_drainage == 1, grutto_basis_kern_max, NA)
@@ -339,15 +427,14 @@ rm(r_drain_raw, r_drain_local, masker_drainage)
 ```
 
 ```{r Bebouwingsfilter}
-# --- STAP 4: DYNAMISCHE BEBOUWINGSFILTER VIA CROSSWALK ---
+# --- STAP 4: HERSTELDE BEBOUWINGSFILTER (SCHOON & BINAIR) ---
 
-# 2. Zoek hierin naar alle codes die met 'u' beginnen (bebouwing), maar sluit 'ulm' uit
+# 1. Bepaal alle relevante bebouwingslagen uit de BWK-crosswalk (codes gestart met 'u', zonder 'ulm')
 bebouwings_lagen <- gouden_namenlijst[grepl("^u[a-z0-9]", gouden_namenlijst) | gouden_namenlijst == "u"]
 bebouwings_lagen <- bebouwings_lagen[bebouwings_lagen != "ulm"]
 
-# 3. FILTER DE REGIONALE DATABASE EN MAP ZE LOKAAL
+# 2. Filter de regionale database op bebouwing binnen het studiegebied
 tabel_vlaanderen_bebouw <- tabel_vlaanderen
-
 tabel_bebouw_TV <- tabel_vlaanderen_bebouw[CODE %in% bebouwings_lagen & cel_id %in% studiegebied_globale_ids]
 tabel_bebouw_som <- tabel_bebouw_TV[, .(Present = ifelse(sum(BWK_FRAC, na.rm = TRUE) > 0, 1, 0)), by = .(cel_id)]
 
@@ -363,126 +450,106 @@ if(nrow(tabel_bebouw_som) > 0) {
   }
 }
 
-# 4. FUZZY CLUSTERING EN ANALYSE
-r_bebouw_dik <- terra::buffer(r_bebouwing_raw, width = 100)
-r_patches    <- terra::patches(r_bebouw_dik, directions = 8, zeroAsNA = TRUE)
+# 3. HARDE BINAIR-SCHOONMAAK (Voorkomt dat NA's of achtergrondwaarden meegebuffered worden)
+r_bebouwing_schoon <- terra::ifel(!is.na(r_bebouwing_raw) & r_bebouwing_raw == 1, 1, NA)
 
-# HIER ZAT HET GAT: Bereken de frequenties en isoleer grote clusters (>= 10 ha = 1000 pixels)
-patch_freq         <- terra::freq(r_patches)
-grote_clusters_ids <- patch_freq$value[patch_freq$count >= 1000]
+# 4. CLUSTEREN EN FILTEREN OP GROTE DORPSKERNEN (>= 10 ha na 100m netwerkvorming)
+res_bebouw_groot <- cluster_filter_compleet(
+  masker     = r_bebouwing_schoon,
+  opp_laag   = r_bebouwing_schoon,
+  drempel_m2 = 100000, # 10 ha
+  dist_m     = 100,    # 100m koppelafstand
+  werkelijk  = FALSE
+)
 
-r_masker_clusters           <- r_patches %in% grote_clusters_ids
-r_bebouw_finaal_voor_buffer <- terra::mask(r_bebouwing_raw, r_masker_clusters)
+r_bebouw_groot <- res_bebouw_groot$raster
 
-# 5. AFSTANDSBEREKENING EN MASKER
-dist_bebouw_groot        <- terra::distance(r_bebouw_finaal_voor_buffer)
-masker_bebouw_100m_groot <- dist_bebouw_groot <= 100
+# 5. UITSENIJDEN VAN DE 100M VERSTORINGSZONE RONDOM ENKEL DE GROTE CLUSTERS
+if (!is.null(r_bebouw_groot) && !terra::global(is.na(r_bebouw_groot), "sum")[[1]] == terra::ncell(r_bebouw_groot)) {
+  
+  # Buffer alleen de goedgekeurde dorpskernen met 100m
+  buf_bebouw <- terra::buffer(r_bebouw_groot, width = 100)
+  
+  # Binariseer de verstoringszone (1 = uitsluiten, NA = geschikt leefgebied)
+  masker_bebouw_100m_groot <- terra::ifel(!is.na(buf_bebouw) & buf_bebouw > 0, 1, NA)
+  
+  # Snijd de 100m verstoringszone uit het kernbiotoop (inverse = TRUE verwijdert de 1-zones)
+  grutto_kern_bebouw_max <- terra::mask(grutto_kern3_max, masker_bebouw_100m_groot, inverse = TRUE)
+  grutto_kern_bebouw_opp <- terra::mask(grutto_kern3_opp, masker_bebouw_100m_groot, inverse = TRUE)
+  
+} else {
+  # Indien er geen clusters >= 10 ha zijn, treedt er geen verlies op
+  grutto_kern_bebouw_max <- grutto_kern3_max
+  grutto_kern_bebouw_opp <- grutto_kern3_opp
+  masker_bebouw_100m_groot <- id_raster_TV * NA
+}
 
-# 6. TOEPASSEN OP DE KERNBIOTOOP
-grutto_kern_bebouw_max <- terra::ifel(masker_bebouw_100m_groot == 1, NA, grutto_kern3_max)
-grutto_kern_bebouw_opp <- terra::mask(grutto_kern3_opp, grutto_kern_bebouw_max)
-
-# 7. GRONDIGE SCHOONMAAK VAN HET RAM
+# 6. SCHOONMAAK VAN HET GEHEUGEN (gouden_namenlijst blijft behouden!)
 rm(tabel_vlaanderen_bebouw, tabel_bebouw_TV, tabel_bebouw_som, tabel_bebouw_mapping, 
-   df_alle_laagnamen, gouden_namenlijst, r_bebouwing_raw, r_bebouw_dik, r_patches, 
-   patch_freq, grote_clusters_ids, r_masker_clusters, r_bebouw_finaal_voor_buffer, 
-   dist_bebouw_groot, tabel_vlaanderen)
+   r_bebouwing_raw, r_bebouwing_schoon, res_bebouw_groot, r_bebouw_groot, tabel_vlaanderen)
 gc()
 ```
 
 ```{r Hooggroen filter}
-# --- STAP 5: GEOPTIMALISEERD HOOGGROEN FILTER (Eerst zeven, dan patches) ---
+# --- STAP 5: HERSTELDE EN SCHONE HOOGGROEN FILTER ---
+# 1. Binaire basiskaart van hooggroen (1 = groen, NA = rest)
+r_groen_bin <- terra::ifel(!is.na(hooggroen_sync) & hooggroen_sync > 0, 1, NA)
 
-# 1. Maak het raster binair (1 = groen, NA = de rest)
-r_groen_bin <- terra::ifel(hooggroen_sync > 0, 1, NA)
+# 2. MORFOLOGISCHE DENSITY CHECK (5x5 venster = 25 cellen = ~25 are)
+w_matrix <- matrix(1, nrow = 5, ncol = 5)
+temp_groen_file <- tempfile(fileext = ".tif")
 
-# 2. DE SNELHEIDSTRICK: Focal count om kleine plukjes direct te elimineren
-# We kijken in een 3x3 venster om ons heen. Als een pixel minder dan 2 groene buren
-# heeft, is het een losse boom of een dunne struik. Die halen we direct weg.
-w_matrix <- matrix(1, nrow = 3, ncol = 3)
-groen_buren <- terra::focal(r_groen_bin, w = w_matrix, fun = "sum", na.rm = TRUE)
+groen_som <- terra::focal(
+  r_groen_bin, 
+  w = w_matrix, 
+  fun = "sum", 
+  na.rm = TRUE,
+  filename = temp_groen_file,
+  overwrite = TRUE
+)
 
-# Behoud alleen pixels die in een actieve 'groene buurt' liggen
-r_groen_clean <- terra::ifel(groen_buren >= 3 & r_groen_bin == 1, 1, NA)
+# 3. Behoud boskernen (minstens 12 buren in 5x5 venster = >= ~20 are)
+r_groen_20are <- terra::ifel(groen_som >= 12 & r_groen_bin == 1, 1, NA)
 
-# 3. CLUSTER-ANALYSE (Nu sneller omdat de miljoenen losse pixels weg zijn!)
-groen_patches <- terra::patches(r_groen_clean, directions = 8, zeroAsNA = TRUE)
-groen_freq    <- terra::freq(groen_patches)
+# 4. MAAK DE 50M ULEITSLUITINGSZONE RONDOM BOSKERNEN
+buf_groen <- terra::buffer(r_groen_20are, width = 50)
 
-# 4. Selecteer clusters >= 20 pixels (20 pixels * 100m2 = 2000m2 = 20 are)
-clusters_20are_ids <- groen_freq$value[groen_freq$count >= 20]
-r_groen_20are      <- groen_patches %in% clusters_20are_ids
-r_groen_20are      <- terra::ifel(r_groen_20are == 1, 1, NA)
+# Binariseer het bosmasker strak: 1 = verstoringszone, NA = geschikt leefgebied
+masker_groen_50m_cluster <- terra::ifel(!is.na(buf_groen) & buf_groen > 0, 1, NA)
 
-# 5. Bereken afstand tot deze 20-are clusters
-dist_groen_clusters <- terra::distance(r_groen_20are)
-
-# 6. Maak het masker: 50m uitsluitingszone rond de clusters
-masker_groen_50m_cluster <- dist_groen_clusters <= 50
-masker_groen_50m_cluster <- terra::ifel(masker_groen_50m_cluster == 1, 1, NA)
-
-# 7. Toepassen op de kernbiotoop
+# 5. SNIJD DE 50M BOSZONE UIT HET KERNBIOTOOP (inverse = TRUE verwijdert de 1-zones)
 grutto_kern_finaal_max <- terra::mask(grutto_kern_bebouw_max, masker_groen_50m_cluster, inverse = TRUE)
 grutto_kern_finaal_opp <- terra::mask(grutto_kern_bebouw_opp, masker_groen_50m_cluster, inverse = TRUE)
 
-# Garbage collection en opruimen
-rm(r_groen_bin, w_matrix, groen_buren, r_groen_clean, groen_patches, groen_freq, clusters_20are_ids, r_groen_20are, dist_groen_clusters)
+# Opruimen van tijdelijke bestanden en geheugen
+rm(r_groen_bin, groen_som, r_groen_20are, hooggroen_sync, buf_groen)
 gc()
 ```
 
 ```{r Cluster Tabel Potentie}
 # --- STAP 6.1 (GEFIKST): CLUSTER-TABEL MET MAXIMALE POTENTIE ---
 
-# 1. Clusteren op basis van binaire match
-r_bridge_max <- terra::focal(grutto_kern_finaal_max, w = 5, fun = "max", na.rm = TRUE)
-cl_id_max <- terra::patches(r_bridge_max, directions = 8, zeroAsNA = TRUE)
+drempel_kern_m2 <- 10 * 10000 # 10 ha
 
-# 2. Tabel maken voor Potentie
-# We tellen de werkelijke habitat-pixels (0.01 ha) binnen de brug-clusters
-habitat_pixels_max <- grutto_kern_finaal_max * 0.01
-stats_max <- terra::zonal(habitat_pixels_max, cl_id_max, fun = "sum", na.rm = TRUE)
-colnames(stats_max) <- c("Cluster_ID", "Potentie_ha")
+res_kern_max <- cluster_filter_compleet(
+  masker     = grutto_kern_finaal_max,
+  opp_laag   = grutto_kern_finaal_max,
+  drempel_m2 = drempel_kern_m2,
+  dist_m     = 50,
+  werkelijk  = FALSE
+)
+grutto_kern_10ha_max <- res_kern_max$raster
 
-tabel_clusters_max <- as.data.frame(stats_max) %>%
-  arrange(desc(Potentie_ha))
-
-print("--- TOP 10 CLUSTERS: MAXIMALE POTENTIE (ha) ---")
-print(head(tabel_clusters_max, 10))
-
-# 3. Filteren: Behoud alleen clusters met >= 10 ha aan habitat-pixels
-ids_winnaars_max <- tabel_clusters_max$Cluster_ID[tabel_clusters_max$Potentie_ha >= 10]
-masker_max <- terra::match(cl_id_max, ids_winnaars_max)
-grutto_kern_10ha_max <- terra::mask(grutto_kern_finaal_max, masker_max)
-```
-
-```{r Cluster Tabel Werkelijkheid}
-# 1. Clusteren op basis van de fracties/percentages (Spoor B)
 r_binair_finaal_opp <- terra::ifel(!is.na(grutto_kern_finaal_opp) & grutto_kern_finaal_opp > 0, 1, NA)
-r_bridge_opp <- terra::focal(r_binair_finaal_opp, w = 5, fun = "max", na.rm = TRUE)
-cl_id_opp <- terra::patches(r_bridge_opp, directions = 8, zeroAsNA = TRUE)
+res_kern_opp <- cluster_filter_compleet(
+  masker     = r_binair_finaal_opp,
+  opp_laag   = grutto_kern_finaal_opp,
+  drempel_m2 = drempel_kern_m2,
+  dist_m     = 50,
+  werkelijk  = TRUE
+)
+grutto_kern_10ha_opp <- res_kern_opp$raster
 
-# 2. Tabel maken voor Werkelijke Oppervlakte
-habitat_pixels_opp <- grutto_kern_finaal_opp * 0.01
-stats_opp <- terra::zonal(habitat_pixels_opp, cl_id_opp, fun = "sum", na.rm = TRUE)
-colnames(stats_opp) <- c("Cluster_ID", "Werkelijke_ha")
-
-tabel_clusters_opp <- as.data.frame(stats_opp) %>%
-  arrange(desc(Werkelijke_ha))
-
-print("--- TOP 10 CLUSTERS: WERKELIJKE OPPERVLAKTE (ha) ---")
-print(head(tabel_clusters_opp, 10))
-
-# 3. Filteren: Behoud alleen clusters waar de som van fracties >= 10 ha is
-ids_winnaars_opp <- tabel_clusters_opp$Cluster_ID[tabel_clusters_opp$Werkelijke_ha >= 10]
-
-if(length(ids_winnaars_opp) > 0) {
-  masker_opp <- terra::match(cl_id_opp, ids_winnaars_opp)
-  grutto_kern_10ha_opp <- terra::mask(grutto_kern_finaal_opp, masker_opp)
-} else {
-  grutto_kern_10ha_opp <- terra::rast(template_TV, vals = NA)
-}
-
-rm(r_binair_finaal_opp, r_bridge_opp, habitat_pixels_opp)
 gc()
 ```
 
@@ -497,26 +564,21 @@ cat("Totaal ha in werkelijke oppervlakte kaart:  ", round(opp_wer_finaal, 2), "h
 ```
 
 ```{r Audit Habitatverlies per stap}
-# --- STAP 6.4: FINALE AUDIT HABITATVERLIES PER STAP (ZONDER OVERSTROMING) ---
-
 p_final <- numeric(5)
 h_final <- numeric(5)
 
-# Potentie-spoor (Binaire kaarten)
 p_final[1] <- calc_ha_exact(grutto_basis_kern_max)
 p_final[2] <- calc_ha_exact(grutto_kern3_max)
 p_final[3] <- calc_ha_exact(grutto_kern_bebouw_max)
 p_final[4] <- calc_ha_exact(grutto_kern_finaal_max)
 p_final[5] <- calc_ha_exact(grutto_kern_10ha_max)
 
-# Werkelijk-spoor (Fractie/Oppervlakte kaarten)
 h_final[1] <- calc_ha_exact(grutto_basis_kern_opp)
 h_final[2] <- calc_ha_exact(grutto_kern3_opp)
 h_final[3] <- calc_ha_exact(grutto_kern_bebouw_opp)
 h_final[4] <- calc_ha_exact(grutto_kern_finaal_opp)
 h_final[5] <- calc_ha_exact(grutto_kern_10ha_opp)
 
-# Bouw de dataframe (Nu met 5 stappen)
 audit_stappen_kernen <- data.frame(
     Stap = c(
         "1. Basis Kern (BWK)",
@@ -530,10 +592,8 @@ audit_stappen_kernen <- data.frame(
     stringsAsFactors = FALSE
 )
 
-# Bereken verlies t.o.v. de vorige stap
 audit_stappen_kernen$Verlies_ha <- c(0, round(diff(audit_stappen_kernen$Werkelijk_ha) * -1, 2))
 
-# Tabel mooi weergeven
 audit_stappen_kernen %>%
   knitr::kable(caption = "Tabel: Cumulatief habitatverlies voor de Grutto-kernbiotoop") %>%
   kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
@@ -639,8 +699,9 @@ print(paste("Startoppervlakte gecombineerde bouwstenen:", round(ha_bouw_start, 2
 ```
 
 ```{r Cultuurhooi1b}
-# --- STAP 8: CULTUURHOOI1B OPHALEN & SAMENVOEGEN ---
+# --- STAP 8, 9 & 10: SAMENVOEGEN BIJKOMEND HABITAT EN HIERSTELDE FILTERS ---
 
+# 1. Cultuurhooi1b synchroniseren
 grutto_1b_match_sync <- c1b_match
 grutto_1b_opp_sync   <- c1b_opp
 
@@ -651,35 +712,52 @@ grutto_1b_opp <- terra::mask(grutto_1b_opp_sync, grutto_1b_max)
 names(grutto_1b_max) <- "1b_max"
 names(grutto_1b_opp) <- "1b_opp"
 
-# --- STAP 9 & 10: SAMENVOEGEN BIJKOMEND HABITAT EN FILTERS ---
+# 2. Samenvoegen van alle bijkomende bouwstenen
 grutto_basis_bouw_1b_max <- terra::cover(grutto_bouwsteen_totaal_max, grutto_1b_max)
+grutto_cultuurhooi1_opp  <- terra::cover(grutto_bouwsteen_totaal_opp, grutto_1b_opp)
 
-filter_akker  <- terra::ifel(akker_match == 1, 1, NA)
-filter_bebouw <- terra::ifel(masker_bebouw_100m_groot == 1, 1, NA)
-filter_groen  <- terra::ifel(masker_groen_50m_cluster == 1, 1, NA)
+# 3. HARDE BINAIR-SCHOONMAAK VAN DE 3 UITSLUITINGSMASKERS (1 = uitsluiten, NA = geschikt)
+# A. Akkerfilter
+filter_akker <- terra::ifel(!is.na(akker_match) & akker_match == 1, 1, NA)
 
-# Spoor A: Maximaal Potentieel
+# B. Bebouwingsfilter (hergebruik het masker uit Stap 4 of maak het strak aan)
+if(exists("masker_bebouw_100m_groot") && !all(is.na(terra::values(masker_bebouw_100m_groot, mat=FALSE)))) {
+  filter_bebouw <- terra::ifel(!is.na(masker_bebouw_100m_groot) & masker_bebouw_100m_groot > 0, 1, NA)
+} else {
+  filter_bebouw <- id_raster_TV * NA
+}
+
+# C. Hooggroenfilter (hergebruik het masker uit Stap 5 of maak het strak aan)
+if(exists("masker_groen_50m_cluster") && !all(is.na(terra::values(masker_groen_50m_cluster, mat=FALSE)))) {
+  filter_groen <- terra::ifel(!is.na(masker_groen_50m_cluster) & masker_groen_50m_cluster > 0, 1, NA)
+} else {
+  filter_groen <- id_raster_TV * NA
+}
+
+# 4. STAPSGEWIJS UITSENIJDEN MET INVERSE = TRUE
+# Maximaal Potentieel (Spoor A)
 grutto_c1_m1_max     <- terra::mask(grutto_basis_bouw_1b_max, filter_akker, inverse = TRUE)
 grutto_c1_m2_max     <- terra::mask(grutto_c1_m1_max, filter_bebouw, inverse = TRUE)
 grutto_c1_finaal_max <- terra::mask(grutto_c1_m2_max, filter_groen, inverse = TRUE)
 
-# Spoor B: Werkelijke Oppervlakte (Parallel & Autonoom)
-grutto_cultuurhooi1_opp <- terra::cover(grutto_bouwsteen_totaal_opp, grutto_1b_opp)
-grutto_c1_m1_opp        <- terra::mask(grutto_cultuurhooi1_opp, filter_akker, inverse = TRUE)
-grutto_c1_m2_opp        <- terra::mask(grutto_c1_m1_opp, filter_bebouw, inverse = TRUE)
-grutto_c1_finaal_opp    <- terra::mask(grutto_c1_m2_opp, filter_groen, inverse = TRUE)
+# Werkelijke Oppervlakte (Spoor B)
+grutto_c1_m1_opp     <- terra::mask(grutto_cultuurhooi1_opp, filter_akker, inverse = TRUE)
+grutto_c1_m2_opp     <- terra::mask(grutto_c1_m1_opp, filter_bebouw, inverse = TRUE)
+grutto_c1_finaal_opp <- terra::mask(grutto_c1_m2_opp, filter_groen, inverse = TRUE)
 
 grutto_scenA_finaal_max <- grutto_c1_finaal_max
 grutto_scenB_finaal_opp <- grutto_c1_finaal_opp
 
+# 5. RESULTATEN BEREKENEN EN CONTROLEREN
 ha_finaal_clean_maxpot <- calc_ha_exact(grutto_c1_finaal_max)
 ha_finaal_clean_opp    <- calc_ha_exact(grutto_c1_finaal_opp)
 
 print(paste("Oppervlakte grutto_cultuurhooi1 max potentie (Zonder akker/bebouw/hooggroen):", round(ha_finaal_clean_maxpot, 2), "ha"))
 print(paste("Oppervlakte grutto_cultuurhooi1 werkelijke oppervlaktes (Zonder akker/bebouw/hooggroen):", round(ha_finaal_clean_opp, 2), "ha"))
 
-rm(grutto_basis_bouw_1b_max, grutto_c1_m1_max, grutto_c1_m2_max, grutto_c1_m1_opp, grutto_c1_m2_opp, filter_akker, filter_bebouw, filter_groen,
-   grutto_cultuurhooi1_opp, grutto_bouwsteen_totaal_max, grutto_bouwsteen_totaal_opp)
+# Opruimen
+rm(grutto_basis_bouw_1b_max, grutto_c1_m1_max, grutto_c1_m2_max, grutto_c1_m1_opp, grutto_c1_m2_opp, 
+   filter_akker, filter_bebouw, filter_groen, grutto_cultuurhooi1_opp, grutto_bouwsteen_totaal_max, grutto_bouwsteen_totaal_opp)
 gc()
 ```
 
@@ -714,94 +792,46 @@ if (!all(is.na(terra::values(grutto_kern_10ha_max, mat=FALSE)))) {
 # --- STAP 11: WEDERZIJDSE KOPPELING MET INTEGRALE FRACTIE-DREMPELS (STRIKT PER RASTER) ---
 
 voer_koppeling_en_drempel_uit_strikt <- function(kern_rast, bouw_rast, afstand = 200, min_kern_ha = 10, min_totaal_ha = 25) {
+  if (is.null(kern_rast) || terra::global(is.na(kern_rast), "sum")[[1]] == terra::ncell(kern_rast)) return(NULL)
   
-  # 1. Omzetten naar polygonen voor de ruimtelijke netwerkvorming
-  # We gebruiken een binaire kopie om de ruimtelijke vlekken (grenzen) correct te bepalen
-  kern_bin <- terra::ifel(!is.na(kern_rast) & kern_rast > 0, 1, NA)
-  bouw_bin <- terra::ifel(!is.na(bouw_rast) & bouw_rast > 0, 1, NA)
+  # 1. Maak binaire kaarten
+  r_totaal_bin <- terra::cover(
+    terra::ifel(!is.na(kern_rast) & kern_rast > 0, 1, NA),
+    terra::ifel(!is.na(bouw_rast) & bouw_rast > 0, 1, NA)
+  )
   
-  p_kern <- terra::as.polygons(kern_bin, aggregate = TRUE) %>% terra::disagg()
-  p_bouw <- terra::as.polygons(bouw_bin, aggregate = TRUE) %>% terra::disagg()
+  if (terra::global(is.na(r_totaal_bin), "sum")[[1]] == terra::ncell(r_totaal_bin)) return(NULL)
   
-  if (nrow(p_kern) == 0 || nrow(p_bouw) == 0) return(NULL)
+  # 2. Netwerkvorming via 100m buffer (200m totale overbrugging tussen 2 ruimtelijke elementen)
+  r_buf <- terra::buffer(r_totaal_bin, width = afstand / 2)
+  cl_netwerk <- terra::patches(r_buf, directions = 8, zeroAsNA = TRUE)
+  cl_netwerk_biotoop <- terra::mask(cl_netwerk, r_totaal_bin)
   
-  # Geef elke ruwe kern-polygon een uniek ID voor de ankerkern-check
-  p_kern$kern_id <- 1:nrow(p_kern)
-  
-  # 2. Identificeer welke elementen binnen 200m van elkaar liggen
-  p_kern_buf <- terra::buffer(p_kern, width = afstand)
-  p_bouw_buf <- terra::buffer(p_bouw, width = afstand)
-  
-  rel_bouw <- terra::relate(p_bouw, p_kern_buf, "intersects")
-  winnaars_bouw_idx <- which(apply(rel_bouw, 1, any))
-  
-  rel_kern <- terra::relate(p_kern, p_bouw_buf, "intersects")
-  winnaars_kern_idx <- which(apply(rel_kern, 1, any))
-  
-  if (length(winnaars_bouw_idx) == 0 || length(winnaars_kern_idx) == 0) return(NULL)
-  
-  p_bouw_gekoppeld <- p_bouw[winnaars_bouw_idx, ]
-  p_kern_gekoppeld <- p_kern[winnaars_kern_idx, ]
-  
-  # 3. CLUSTEREN OP AFSTAND (Smelten tot netwerkwolken via 100m buffer)
-  p_combinatie <- terra::vect(c(p_kern_gekoppeld, p_bouw_gekoppeld))
-  p_combinatie_buf <- terra::buffer(p_combinatie, width = afstand / 2)
-  p_netwerken <- terra::aggregate(p_combinatie_buf) %>% terra::disagg()
-  p_netwerken$netwerk_id <- 1:nrow(p_netwerken)
-  
-  # 4. Koppel de Netwerk-IDs terug aan de basissnippers (zowel kernen als bouwstenen)
-  p_combinatie$netwerk_id <- terra::relate(p_combinatie, p_netwerken, "within") %>% 
-    apply(1, function(x) which(x)[1])
-  
-  # Sorteer de combinatie vector zodat we de kernen apart kunnen identificeren
-  p_kern_gekoppeld$netwerk_id <- terra::relate(p_kern_gekoppeld, p_netwerken, "within") %>% 
-    apply(1, function(x) which(x)[1])
-  
-  # 5. BEREKEN DE NETTO HABITAT-OPPERVLAKTE PER NETWERK (ZONAL SUM VAN FRACTIES)
-  r_netwerk_ids <- terra::rasterize(p_combinatie, kern_rast, field = "netwerk_id")
-  
-  # Het totale actieve habitatraster (voor Spoor A zijn dit enen, voor Spoor B zijn dit de pure fracties!)
-  r_combinatie_habitat <- max(c(kern_rast, bouw_rast), na.rm = TRUE)
-  
-  # Zonal sum over de pixelwaarden (* 0.01 voor ha)
-  stats_netwerk <- terra::zonal(r_combinatie_habitat * 0.01, r_netwerk_ids, fun = "sum", na.rm = TRUE)
+  # 3. Bereken het TOTALE netto-oppervlak per netwerk (Spoor A = cellen, Spoor B = fracties)
+  r_comb_val <- terra::cover(kern_rast, bouw_rast)
+  stats_netwerk <- terra::zonal(r_comb_val * 0.01, cl_netwerk_biotoop, fun = "sum", na.rm = TRUE)
   colnames(stats_netwerk) <- c("netwerk_id", "totaal_ha")
   
-  # 6. STRIKTE ANKERKERN-CHECK OP BASIS VAN PURE PIXEL-WAARDEN
-  # We rasteriseren de individuele kern_ids om de netto oppervlakte PER KERN te meten
-  r_kern_ids <- terra::rasterize(p_kern_gekoppeld, kern_rast, field = "kern_id")
-  stats_kernen_netto <- terra::zonal(kern_rast * 0.01, r_kern_ids, fun = "sum", na.rm = TRUE)
-  colnames(stats_kernen_netto) <- c("kern_id", "netto_kern_ha")
+  # 4. Filter op netto ankerkern (Check of netwerk een kern bevat die >= min_kern_ha is)
+  cl_kernen_only <- terra::mask(cl_netwerk_biotoop, kern_rast)
+  stats_kernen <- terra::zonal(kern_rast * 0.01, cl_kernen_only, fun = "sum", na.rm = TRUE)
+  colnames(stats_kernen) <- c("netwerk_id", "kern_ha")
   
-  # Koppel de netto hectares terug aan de data van p_kern_gekoppeld
-  df_kern_meta <- data.frame(kern_id = p_kern_gekoppeld$kern_id, netwerk_id = p_kern_gekoppeld$netwerk_id) %>% 
-    left_join(stats_kernen_netto, by = "kern_id")
-  
-  # Bepaal welke netwerk_ids een ankerkern bevatten die netto/pure fractie-gewijs >= 10 ha is
-  netwerken_met_ankerkern <- df_kern_meta %>% 
-    group_by(netwerk_id) %>% 
-    summarise(grootste_netto_kern = max(netto_kern_ha, na.rm = TRUE)) %>% 
-    filter(grootste_netto_kern >= min_kern_ha) %>% 
+  valide_netwerken <- stats_netwerk %>%
+    inner_join(stats_kernen, by = "netwerk_id") %>%
+    filter(totaal_ha >= min_totaal_ha & kern_ha >= min_kern_ha) %>%
     pull(netwerk_id)
   
-  # 7. COMBINEER DE TWEE DREMPELS (Netto Netwerkgrootte >= 25 ha EN Netto Ankerkern >= 10 ha)
-  valide_netwerk_ids <- stats_netwerk$netwerk_id[
-    stats_netwerk$totaal_ha >= min_totaal_ha & 
-    stats_netwerk$netwerk_id %in% netwerken_met_ankerkern
-  ]
+  if (length(valide_netwerken) == 0) return(NULL)
   
-  # 8. FILTER EN RETURNEER DE FINALE RASTERS
-  if(length(valide_netwerk_ids) > 0) {
-    masker_netwerk <- r_netwerk_ids %in% valide_netwerk_ids
-    masker_netwerk <- terra::ifel(masker_netwerk == 1, 1, NA)
-    
-    res_kern <- terra::mask(kern_rast, masker_netwerk)
-    res_bouw <- terra::mask(bouw_rast, masker_netwerk)
-    
-    return(list(kern = res_kern, bouw = res_bouw))
-  }
+  # 5. Maskeer en retourneer
+  m_valide <- cl_netwerk_biotoop %in% valide_netwerken
+  m_valide <- terra::ifel(m_valide == 1, 1, NA)
   
-  return(NULL)
+  return(list(
+    kern = terra::mask(kern_rast, m_valide),
+    bouw = terra::mask(bouw_rast, m_valide)
+  ))
 }
 
 # --- UITVOERING: ELK RASTER VOLLEDIG AUTONOOM GEFILTERD ---
@@ -816,75 +846,66 @@ grutto_kaart_A <- maak_kaart_laag(resA_strikt)
 ```
 
 ```{r waarnemingen inladen en ARPL kernen identificeren}
-# --- STAP 11.5 & 11.6: ARPL & ACTUELE VERSPREIDING (ECHTE BINAIRE OUTPUT) ---
+# --- STAP 11.5 & 11.6: ARPL & ACTUELE VERSPREIDING (TOTAAL LEEFGEBIED: KERN + BOUWSTEEN) ---
 
 # 1. Waarnemingen inladen
 waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Grutto.csv")
 
 if (file.exists(waarnemingen_path)) {
-  waarnemingen_raw    <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)
-  df_points_sf        <- st_as_sf(waarnemingen_raw, coords = c("x", "y"), crs = 31370)
-  waarneming_smear_sf <- st_buffer(df_points_sf, dist = buffer_m) %>% st_union() %>% st_sf()
-  waarneming_blobs_vect <- vect(waarneming_smear_sf)
+  waarnemingen_raw     <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)
+  df_points_sf         <- st_as_sf(waarnemingen_raw, coords = c("x", "y"), crs = 31370)
+  waarneming_smear_sf  <- st_buffer(df_points_sf, dist = buffer_m) %>% st_union() %>% st_sf()
+  waarneming_blobs_vect  <- vect(waarneming_smear_sf)
   waarneming_punten_vect <- vect(df_points_sf) 
-  has_observations    <- TRUE
+  has_observations     <- TRUE
 } else {
-  df_points_sf        <- st_sf(st_sfc(crs = 31370)) 
-  waarneming_smear_sf <- st_sf(st_sfc(crs = 31370))
-  waarneming_blobs_vect <- vect(st_sf(st_sfc(crs = 31370)))
+  df_points_sf         <- st_sf(st_sfc(crs = 31370)) 
+  waarneming_smear_sf  <- st_sf(st_sfc(crs = 31370))
+  waarneming_blobs_vect  <- vect(st_sf(st_sfc(crs = 31370)))
   waarneming_punten_vect <- vect(st_sf(st_sfc(crs = 31370)))
-  has_observations    <- FALSE
+  has_observations     <- FALSE
 }
 
-# Initialiseer de rasters en de teller-hectares (GEFIXT: ha_verspreiding_bin hier gedefinieerd als 0)
+# Initialiseer de rasters en tellers
 grutto_arpl_opp         <- terra::rast(template_TV, vals = NA)
 grutto_verspreiding_bin <- terra::rast(template_TV, vals = NA) 
-arpl_netwerk_count    <- 0
+arpl_netwerk_count         <- 0
 verspreiding_netwerk_count <- 0
-ha_verspreiding_bin   <- 0
+ha_arpl_kernen             <- 0
+ha_verspreiding_bin        <- 0
 
-if (has_observations && !is.null(resB_strikt) && !all(is.na(terra::values(resB_strikt$kern, mat=FALSE)))) {
+if (has_observations && !is.null(resB_strikt) && (!all(is.na(terra::values(resB_strikt$kern, mat=FALSE))) || !all(is.na(terra::values(resB_strikt$bouw, mat=FALSE))))) {
   
-  # Maak het totale habitatraster van het reële resultaat
-  r_net_totaal_opp <- max(c(resB_strikt$kern, resB_strikt$bouw), na.rm = TRUE)
-  p_ruw_opp        <- terra::as.polygons(r_net_totaal_opp, aggregate = TRUE) %>% terra::disagg()
+  # Het TOTALE LEEFGEBIED (Kern + Bijkomend Habitat/Bouwsteen gecombineerd)
+  r_net_totaal_opp <- terra::cover(resB_strikt$kern, resB_strikt$bouw)
   
-  p_buf_opp        <- terra::buffer(p_ruw_opp, width = 100)
-  p_net_opp_wolken <- terra::aggregate(p_buf_opp) %>% terra::disagg()
-  p_net_opp_wolken$Netwerk_ID <- 1:nrow(p_net_opp_wolken)
+  # Netwerken bepalen op basis van de 100m bufferkoppeling
+  r_buf_opp <- terra::buffer(r_net_totaal_opp, width = 100)
+  r_opp_net_ids <- terra::patches(r_buf_opp, directions = 8, zeroAsNA = TRUE)
+  r_opp_net_ids <- terra::mask(r_opp_net_ids, r_net_totaal_opp)
   
-  p_ruw_opp$Netwerk_ID <- terra::relate(p_ruw_opp, p_net_opp_wolken, "within") %>% 
-    apply(1, function(x) which(x)[1])
-  
-  r_opp_net_ids <- terra::rasterize(p_ruw_opp, resB_strikt$kern, field = "Netwerk_ID")
-  
-  # --- EXTRACTION A: ARPL ---
+  # --- EXTRACTION A: ARPL (Smear zone x Totaal Leefgebied) ---
   extract_ids_arpl <- terra::extract(r_opp_net_ids, waarneming_blobs_vect, ID = FALSE)
   ids_netwerken_raken_arpl <- unique(na.omit(extract_ids_arpl[[1]]))
   
   if(length(ids_netwerken_raken_arpl) > 0) {
     m_arpl <- r_opp_net_ids %in% ids_netwerken_raken_arpl
-    m_arpl <- terra::ifel(m_arpl == 1, 1, NA)
-    grutto_arpl_opp <- terra::mask(resB_strikt$kern, m_arpl)
+    # Maskeer het VOLLEDIGE leefgebied (Kernen + Bouwstenen) voor ARPL
+    grutto_arpl_opp <- terra::mask(r_net_totaal_opp, m_arpl)
     arpl_netwerk_count <- length(ids_netwerken_raken_arpl)
+    ha_arpl_kernen <- calc_ha_exact(grutto_arpl_opp)
   }
   
-  # --- EXTRACTION B: ACTUELE VERSPREIDING ---
+  # --- EXTRACTION B: ACTUELE VERSPREIDING (Punten x Totaal Leefgebied) ---
   extract_ids_verspr <- terra::extract(r_opp_net_ids, waarneming_punten_vect, ID = FALSE)
   ids_netwerken_raken_punten <- unique(na.omit(extract_ids_verspr[[1]]))
   
   if(length(ids_netwerken_raken_punten) > 0) {
     m_verspr <- r_opp_net_ids %in% ids_netwerken_raken_punten
-    
-    # We maskeren de gecombineerde kaart (kernen + bouwstenen) met de winnende netwerk-IDs
     clusters_actueel <- terra::mask(r_net_totaal_opp, m_verspr)
     
-    # ECHT BINAIR: Alles wat habitat was in deze clusters krijgt nu hard de waarde 1, de rest blijft NA
     grutto_verspreiding_bin <- terra::ifel(!is.na(clusters_actueel) & clusters_actueel > 0, 1, NA)
     verspreiding_netwerk_count <- length(ids_netwerken_raken_punten)
-    
-    # GEFIXT: We berekenen de echte ha op basis van de pure fracties (clusters_actueel) 
-    # en NIET op de binaire enen-kaart, zodat we de exacte BWK-fracties behouden!
     ha_verspreiding_bin <- calc_ha_exact(clusters_actueel)
   }
 }
@@ -892,53 +913,62 @@ if (has_observations && !is.null(resB_strikt) && !all(is.na(terra::values(resB_s
 
 # --- FINALE AUDIT TABEL ---
 ```{r Finale Audit Tabel}
-# --- FINALE AUDIT TABEL (CUMULATIEF EN CLAN) ---
+# --- FINALE AUDIT TABEL (100% ROBUUST OP PIXELNIVEAU) ---
 
-# [De helperfunctie 'get_classified_netwerk_stats' blijft 100% ongewijzigd, die werkt perfect!]
-get_classified_netwerk_stats <- function(res_strikt, brongrid_habitat) {
-  if (is.null(res_strikt) || all(is.na(terra::values(res_strikt$kern, mat=FALSE)))) {
+get_classified_netwerk_stats <- function(res_strikt) {
+  if (is.null(res_strikt) || (all(is.na(terra::values(res_strikt$kern, mat=FALSE))) && all(is.na(terra::values(res_strikt$bouw, mat=FALSE))))) {
     return(list(n_binnen = 0, n_buiten = 0, ha_binnen = 0, ha_buiten = 0))
   }
-  r_netwerk_totaal <- max(c(res_strikt$kern, res_strikt$bouw), na.rm = TRUE)
-  p_ruw <- terra::as.polygons(r_netwerk_totaal, aggregate = TRUE) %>% terra::disagg()
-  if(nrow(p_ruw) == 0) return(list(n_binnen = 0, n_buiten = 0, ha_binnen = 0, ha_buiten = 0))
   
-  p_buf <- terra::buffer(p_ruw, width = 100)
-  p_netwerken <- terra::aggregate(p_buf) %>% terra::disagg()
-  p_netwerken$Netwerk_ID <- 1:nrow(p_netwerken)
+  # 1. Totaal Leefgebied (Kern + Bijkomend biotoop)
+  r_netwerk_totaal <- terra::cover(res_strikt$kern, res_strikt$bouw)
   
-  p_ruw$Netwerk_ID <- terra::relate(p_ruw, p_netwerken, "within") %>% apply(1, function(x) which(x)[1])
+  # 2. Bepaal unieke netwerken via 100m bufferkoppeling
+  r_buf <- terra::buffer(r_netwerk_totaal, width = 100)
+  cl_wolken <- terra::patches(r_buf, directions = 8, zeroAsNA = TRUE)
+  r_net_ids <- terra::mask(cl_wolken, r_netwerk_totaal)
   
-  relatie_matrix <- terra::relate(p_netwerken, area_shape_proj, "intersects")
-  index_binnen <- which(apply(relatie_matrix, 1, any))
+  # 3. Maak een binaire raster-masker van de Turnhouts Vennegebied grens (1 = Binnen TV, NA = Buiten TV)
+  p_grens_sync <- terra::project(area_shape, terra::crs(r_netwerk_totaal))
+  r_grens_tv   <- terra::rasterize(p_grens_sync, r_netwerk_totaal, field = 1, background = NA)
   
-  if(length(index_binnen) > 0) {
-    netwerk_ids_binnen <- p_netwerken$Netwerk_ID[index_binnen]
-    netwerk_ids_buiten <- p_netwerken$Netwerk_ID[-index_binnen]
-  } else {
-    netwerk_ids_binnen <- c()
-    netwerk_ids_buiten <- p_netwerken$Netwerk_ID
+  # 4. Bepaal welke unieke Netwerk-IDs minstens 1 pixel BINNEN het TV-gebied hebben liggen
+  r_net_binnen_tv <- terra::mask(r_net_ids, r_grens_tv)
+  ids_binnen <- unique(na.omit(terra::values(r_net_binnen_tv, mat = FALSE)))
+  
+  # Alle unieke netwerk IDs in het studiegebied
+  ids_alle <- unique(na.omit(terra::values(r_net_ids, mat = FALSE)))
+  ids_buiten <- setdiff(ids_alle, ids_binnen)
+  
+  # 5. HECTARES EN AANTALLEN BEREKENEN
+  ha_binnen <- 0
+  ha_buiten <- 0
+  
+  # Binnen TV: Al het habitat van netwerken die (deels) binnen TV liggen
+  if (length(ids_binnen) > 0) {
+    m_binnen <- r_net_ids %in% ids_binnen
+    r_hab_binnen <- terra::mask(r_netwerk_totaal, terra::ifel(m_binnen == 1, 1, NA))
+    ha_binnen <- calc_ha_exact(r_hab_binnen)
   }
   
-  r_net_ids <- terra::rasterize(p_ruw, brongrid_habitat, field = "Netwerk_ID")
-  ha_binnen <- ha_buiten <- 0
+  # Buiten TV: Al het habitat van netwerken die volledig buiten TV liggen
+  if (length(ids_buiten) > 0) {
+    m_buiten <- r_net_ids %in% ids_buiten
+    r_hab_buiten <- terra::mask(r_netwerk_totaal, terra::ifel(m_buiten == 1, 1, NA))
+    ha_buiten <- calc_ha_exact(r_hab_buiten)
+  }
   
-  if(length(netwerk_ids_binnen) > 0) {
-    m_bin <- terra::match(r_net_ids, netwerk_ids_binnen)
-    ha_binnen <- calc_ha_exact(terra::mask(brongrid_habitat, m_bin))
-  }
-  if(length(netwerk_ids_buiten) > 0) {
-    m_buit <- terra::match(r_net_ids, netwerk_ids_buiten)
-    ha_buiten <- calc_ha_exact(terra::mask(brongrid_habitat, m_buit))
-  }
-  return(list(n_binnen = length(netwerk_ids_binnen), n_buiten = length(netwerk_ids_buiten), ha_binnen = ha_binnen, ha_buiten = ha_buiten))
+  return(list(
+    n_binnen  = length(ids_binnen), 
+    n_buiten  = length(ids_buiten), 
+    ha_binnen = ha_binnen, 
+    ha_buiten = ha_buiten
+  ))
 }
 
 # Statistieken berekenen
-stats_max <- get_classified_netwerk_stats(resA_strikt, resA_strikt$kern)
-stats_opp <- get_classified_netwerk_stats(resB_strikt, resB_strikt$kern)
-
-ha_arpl_kernen <- calc_ha_exact(grutto_arpl_opp)
+stats_max <- get_classified_netwerk_stats(resA_strikt)
+stats_opp <- get_classified_netwerk_stats(resB_strikt)
 
 # Tabel genereren
 grutto_audit_tabel <- data.frame(
@@ -946,7 +976,7 @@ grutto_audit_tabel <- data.frame(
            "Maximaal Potentieel (Volledig Buiten TV Gebied)", 
            "Werkelijk Habitat ((Deels) Binnen TV Gebied)", 
            "Werkelijk Habitat (Volledig Buiten TV Gebied)",
-           "Actueel Relevant (ARPL - Totale ha van Finale Gekoppelde Kernen)",
+           "Actueel Relevant (ARPL - Totale ha van Finale Gekoppelde Netwerken)",
            "Actuele Verspreiding (Gekoppelde netwerken in ha)"),
   Netwerken = c(
     stats_max$n_binnen, 
@@ -967,7 +997,7 @@ grutto_audit_tabel <- data.frame(
 )
 
 grutto_audit_tabel %>% 
-  knitr::kable(caption = "Gevalideerde verdeling van Grutto-netwerken op basis van integrale netwerkgrootte (Zonder grensamputatie)") %>% 
+  knitr::kable(caption = "Gevalideerde verdeling van Grutto-netwerken (Berekend op pixel-overlap met TV-grens)") %>% 
   kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
@@ -1030,7 +1060,7 @@ if(!is.null(resB_strikt) && !all(is.na(terra::values(resB_strikt$kern, mat=FALSE
 
 ```{r Export}
 # ==============================================================================
-# GECORRIGEERD: EXPORT SECTIE (UNIFORME INT1U LOGICA MET JUISTE VARIABELEN)
+# EXPORT SECTIE (GEËXPORTEERD OP BASIS VAN TOTAAL LEEFGEBIED: INT1U LOGICA)
 # ==============================================================================
 base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
 folders <- list(
@@ -1042,26 +1072,30 @@ folders <- list(
 
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-if(exists("grutto_kaart_A") && !all(is.na(terra::values(grutto_kaart_A, mat=FALSE)))) {
+# 1. Maximale Potentie (Totaal Leefgebied Spoor A)
+if(exists("grutto_kaart_A") && !is.null(grutto_kaart_A) && !all(is.na(terra::values(grutto_kaart_A, mat=FALSE)))) {
   potentie_export_rast <- terra::ifel(grutto_kaart_A > 0, 1, NA)
 } else {
   potentie_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-if(!is.null(resB_strikt) && (!all(is.na(terra::values(resB_strikt$kern, mat=FALSE))) \vert{}\vert{} !all(is.na(terra::values(resB_strikt$bouw, mat=FALSE))))) {
+# 2. Werkelijke Oppervlakte (Totaal Leefgebied Spoor B: Kern + Bouwsteen)
+if(!is.null(resB_strikt) && (!all(is.na(terra::values(resB_strikt$kern, mat=FALSE))) || !all(is.na(terra::values(resB_strikt$bouw, mat=FALSE))))) {
   r_net_totaal_opp <- terra::cover(resB_strikt$kern, resB_strikt$bouw)
   werkelijk_export_rast_clean <- terra::ifel(!is.na(r_net_totaal_opp) & r_net_totaal_opp > 0, 1, NA)
 } else {
   werkelijk_export_rast_clean <- terra::rast(template_TV, vals = NA)
 }
 
-if(exists("grutto_arpl_opp") && !all(is.na(terra::values(grutto_arpl_opp, mat=FALSE)))) {
+# 3. ARPL (Totaal Leefgebied gekoppeld aan waarnemingszone)
+if(exists("grutto_arpl_opp") && !is.null(grutto_arpl_opp) && !all(is.na(terra::values(grutto_arpl_opp, mat=FALSE)))) {
   arpl_export_rast <- terra::ifel(grutto_arpl_opp > 0, 1, NA)
 } else {
   arpl_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-if(exists("grutto_verspreiding_bin") && !all(is.na(terra::values(grutto_verspreiding_bin, mat=FALSE)))) {
+# 4. Actuele Verspreiding (Totaal Leefgebied gekoppeld aan waarnemingspunten)
+if(exists("grutto_verspreiding_bin") && !is.null(grutto_verspreiding_bin) && !all(is.na(terra::values(grutto_verspreiding_bin, mat=FALSE)))) {
   verspreiding_export_rast <- terra::ifel(grutto_verspreiding_bin > 0, 1, NA)
 } else {
   verspreiding_export_rast <- terra::rast(template_TV, vals = NA)
@@ -1070,7 +1104,7 @@ if(exists("grutto_verspreiding_bin") && !all(is.na(terra::values(grutto_versprei
 export_config <- list(
   list(rast = potentie_export_rast,        naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
   list(rast = werkelijk_export_rast_clean, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,            naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
+  list(rast = arpl_export_rast,            naam = "ARPL",                     folder = folders$arpl,          type = "INT1U"),
   list(rast = verspreiding_export_rast,    naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 
@@ -1100,7 +1134,7 @@ rm(potentie_export_rast, werkelijk_export_rast_clean, arpl_export_rast, versprei
 if(exists("r_net_totaal_opp")) rm(r_net_totaal_opp)
 gc()
 
-message("✓ Grutto-kaarten succesvol geëxporteerd!")
+message("✓ Grutto-kaarten (Totaal Leefgebied) succesvol geëxporteerd!")
 ```
 
 ```{r Stap 13 Interactieve kaart}

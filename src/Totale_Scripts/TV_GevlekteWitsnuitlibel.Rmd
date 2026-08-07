@@ -72,6 +72,65 @@ maak_kaart_laag <- function(res_list) {
   }
   return(finaal)
 }
+
+cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
+  # 1. Controleer of het raster leeg is
+  if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
+    return(list(raster = masker * NA, clusters = masker * NA))
+  }
+  
+  # ----------------------------------------------------------------------------
+  # STAP 1: VEILIGE & SNELLER NETWERKVORMING ZONDER RAM-CRASH
+  # ----------------------------------------------------------------------------
+  if (dist_m > 0) {
+    # Maak binaire kaart (1 = biotoop, NA = rest)
+    r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
+    
+    # Buffer de BINAIR kaart (dit kost vrijwel geen geheugen!)
+    # Volle afstand dist_m zorgt dat plukjes binnen dist_m gegarandeerd samensmelten
+    r_buffered <- terra::buffer(r_binair, width = dist_m)
+    
+    # Maak unieke Netwerk-ID's op de gebufferde zones
+    cl_network <- terra::patches(r_buffered, directions = 8, zeroAsNA = TRUE)
+    
+    # Snijd de Netwerk-ID's direct terug naar waar de originele biotooppixels liggen
+    cl_biotoop_only <- terra::mask(cl_network, masker)
+  } else {
+    cl_network <- terra::patches(masker, directions = 8, zeroAsNA = TRUE)
+    cl_biotoop_only <- cl_network
+  }
+  
+  # ----------------------------------------------------------------------------
+  # STAP 2: OPPERVLAKTE-OPTELSOM PER GEKOPPELD NETWERK
+  # ----------------------------------------------------------------------------
+  if(werkelijk) {
+    stats_df <- terra::zonal(opp_laag, cl_biotoop_only, fun = "sum", na.rm = TRUE)
+    colnames(stats_df) <- c("ID", "Waarde")
+    stats_df$Area_m2 <- stats_df$Waarde * 100 
+  } else {
+    f <- terra::freq(cl_biotoop_only)
+    stats_df <- data.frame(ID = f$value, Waarde = f$count)
+    stats_df$Area_m2 <- stats_df$Waarde * 100 
+  }
+  
+  stats_df <- stats_df[!is.na(stats_df$ID), ]
+  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  
+  # ----------------------------------------------------------------------------
+  # STAP 3: FILTEREN OP TOTALE NETWERK-OPPERVLAKTE >= DREMPEL
+  # ----------------------------------------------------------------------------
+  voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
+  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  
+  # Behaal alleen de winnende netwerk-ID's
+  masker_binair <- cl_biotoop_only %in% voldoet_ids
+  final_network_mask <- terra::ifel(masker_binair == 1, 1, NA)
+  
+  r_finaal  <- terra::mask(masker, final_network_mask)
+  cl_finaal <- terra::mask(cl_biotoop_only, r_finaal) 
+  
+  return(list(raster = r_finaal, clusters = cl_finaal))
+}
 ```
 
 # Soort informatie ophalen
@@ -383,71 +442,29 @@ if (!all(is.na(terra::values(r_binair_land_nabij_opp, mat = FALSE)))) {
   land_nabij_gefilterd_opp <- template_TV * NA
 }
 
-# ==============================================================================
-# STAP 2: LAND_RUIM COMPLEXEN OPBOUWEN (MIN 30 HA - PARALLEL)
-# ==============================================================================
-message("-> 2. Land_ruim complexen opbouwen (min. 30 ha, 50m overbrugging)...")
+# Schoner en korter alternatief voor de 30 ha ruim-landbiotoop filter in Stap 2:
+drempel_30ha_m2 <- 30 * 10000 # 30 ha
 
-# --- SPOOR A: MAX ---
-if (!all(is.na(terra::values(land_ruim_max, mat = FALSE)))) {
-  dist_ruim_max <- terra::distance(land_ruim_max, target = 1, maxdist = 60)
-  r_grow_ruim_max <- terra::ifel(dist_ruim_max <= 50, 1, NA)
-  rm(dist_ruim_max)
-  
-  cl_id_ruim_max <- terra::patches(r_grow_ruim_max, directions = 8, zeroAsNA = TRUE)
-  cl_id_ruim_max <- terra::mask(cl_id_ruim_max, land_ruim_max)
-  
-  area_raster <- terra::cellSize(cl_id_ruim_max, unit = "ha")
-  werkelijk_ruim_max <- land_ruim_max * area_raster
-  stats_ruim_max <- terra::zonal(werkelijk_ruim_max, cl_id_ruim_max, fun = "sum", na.rm = TRUE)
-  colnames(stats_ruim_max) <- c("Cluster_ID", "Potentie_ha")
-  
-  ids_ruim_30ha_max <- stats_ruim_max$Cluster_ID[stats_ruim_max$Potentie_ha >= 30]
-  
-  if (length(ids_ruim_30ha_max) > 0) {
-    land_ruim_30ha_max <- terra::mask(land_ruim_max, terra::ifel(cl_id_ruim_max %in% ids_ruim_30ha_max, 1, NA))
-    dist_ruim_zone_max <- terra::distance(land_ruim_30ha_max, target = 1, maxdist = 60)
-    ruim_complex_zone_max <- terra::ifel(dist_ruim_zone_max <= 50, 1, NA)
-    
-    land_nabij_in_ruim_max <- terra::mask(land_nabij_gefilterd_max, ruim_complex_zone_max)
-  } else {
-    land_nabij_in_ruim_max <- template_TV * NA
-  }
-} else {
-  land_nabij_in_ruim_max <- template_TV * NA
-}
+# Spoor A (Max)
+res_ruim_max <- cluster_filter_compleet(
+  masker     = land_ruim_max,
+  opp_laag   = land_ruim_max,
+  drempel_m2 = drempel_30ha_m2,
+  dist_m     = 50, # 50m overbrugging
+  werkelijk  = FALSE
+)
+land_ruim_30ha_max <- res_ruim_max$raster
 
-# --- SPOOR B: OPP ---
+# Spoor B (Opp)
 r_binair_land_ruim_opp <- terra::ifel(!is.na(land_ruim_opp) & land_ruim_opp > 0, 1, NA)
-
-if (!all(is.na(terra::values(r_binair_land_ruim_opp, mat = FALSE)))) {
-  dist_ruim_opp <- terra::distance(r_binair_land_ruim_opp, target = 1, maxdist = 60)
-  r_grow_ruim_opp <- terra::ifel(dist_ruim_opp <= 50, 1, NA)
-  rm(dist_ruim_opp)
-  
-  cl_id_ruim_opp <- terra::patches(r_grow_ruim_opp, directions = 8, zeroAsNA = TRUE)
-  cl_id_ruim_opp <- terra::mask(cl_id_ruim_opp, r_binair_land_ruim_opp)
-  
-  stats_ruim_opp <- terra::zonal(land_ruim_opp, cl_id_ruim_opp, fun = "sum", na.rm = TRUE)
-  colnames(stats_ruim_opp) <- c("Cluster_ID", "ha_sum")
-  stats_ruim_opp$Potentie_ha <- stats_ruim_opp$ha_sum * 0.01
-  
-  ids_ruim_30ha_opp <- stats_ruim_opp$Cluster_ID[stats_ruim_opp$Potentie_ha >= 30]
-  
-  if (length(ids_ruim_30ha_opp) > 0) {
-    land_ruim_30ha_opp <- terra::mask(land_ruim_opp, terra::ifel(cl_id_ruim_opp %in% ids_ruim_30ha_opp, 1, NA))
-    r_binair_ruim_30ha_opp <- terra::ifel(!is.na(land_ruim_30ha_opp) & land_ruim_30ha_opp > 0, 1, NA)
-    
-    dist_ruim_zone_opp <- terra::distance(r_binair_ruim_30ha_opp, target = 1, maxdist = 60)
-    ruim_complex_zone_opp <- terra::ifel(dist_ruim_zone_opp <= 50, 1, NA)
-    
-    land_nabij_in_ruim_opp <- terra::mask(land_nabij_gefilterd_opp, ruim_complex_zone_opp)
-  } else {
-    land_nabij_in_ruim_opp <- template_TV * NA
-  }
-} else {
-  land_nabij_in_ruim_opp <- template_TV * NA
-}
+res_ruim_opp <- cluster_filter_compleet(
+  masker     = r_binair_land_ruim_opp,
+  opp_laag   = land_ruim_opp,
+  drempel_m2 = drempel_30ha_m2,
+  dist_m     = 50,
+  werkelijk  = TRUE
+)
+land_ruim_30ha_opp <- res_ruim_opp$raster
 
 # ==============================================================================
 # STAP 3: FINALE KOPPELING WATER EN LAND_NABIJ (PARALLEL)

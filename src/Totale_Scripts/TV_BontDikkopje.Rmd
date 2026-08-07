@@ -78,17 +78,23 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
     return(list(raster = masker * NA, clusters = masker * NA))
   }
   
-  temp_mask <- masker
-  if(dist_m > 0) temp_mask <- terra::buffer(masker, width = dist_m / 2)
+  # 1. Binaire netwerkvorming via volle buffer (snel & RAM-veilig)
+  if (dist_m > 0) {
+    r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
+    r_buffered <- terra::buffer(r_binair, width = dist_m)
+    cl_network <- terra::patches(r_buffered, directions = 8, zeroAsNA = TRUE)
+    cl_biotoop_only <- terra::mask(cl_network, masker)
+  } else {
+    cl_network <- terra::patches(masker, directions = 8, zeroAsNA = TRUE)
+    cl_biotoop_only <- cl_network
+  }
   
-  cl_network <- terra::patches(temp_mask, directions = 8, zeroAsNA = TRUE)
-  
+  # 2. Oppervlakte-optelsom per netwerk
   if(werkelijk) {
-    stats_df <- terra::zonal(opp_laag, cl_network, fun = "sum", na.rm = TRUE)
+    stats_df <- terra::zonal(opp_laag, cl_biotoop_only, fun = "sum", na.rm = TRUE)
     colnames(stats_df) <- c("ID", "Waarde")
     stats_df$Area_m2 <- stats_df$Waarde * 100 
   } else {
-    cl_biotoop_only <- terra::mask(cl_network, masker)
     f <- terra::freq(cl_biotoop_only)
     stats_df <- data.frame(ID = f$value, Waarde = f$count)
     stats_df$Area_m2 <- stats_df$Waarde * 100 
@@ -97,14 +103,15 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
   stats_df <- stats_df[!is.na(stats_df$ID), ]
   if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
+  # 3. Filteren op minimale oppervlaktedrempel
   voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
   if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
-  masker_binair <- cl_network %in% voldoet_ids
+  masker_binair <- cl_biotoop_only %in% voldoet_ids
   final_network_mask <- terra::ifel(masker_binair == 1, 1, NA)
   
   r_finaal  <- terra::mask(masker, final_network_mask)
-  cl_finaal <- terra::mask(cl_network, r_finaal) 
+  cl_finaal <- terra::mask(cl_biotoop_only, r_finaal) 
   
   return(list(raster = r_finaal, clusters = cl_finaal))
 }
@@ -323,7 +330,8 @@ verwerk_habitat_met_bosrand <- function(r_habitat_max, r_habitat_opp, r_bos_max,
       if (terra::hasValues(bos_contact_pixels_max) && terra::global(bos_contact_pixels_max, "notNA")$notNA > 0) {
         cl_contact_lijnen_max <- terra::patches(bos_contact_pixels_max, directions = 8, zeroAsNA = TRUE)
         f_contact_max         <- terra::freq(cl_contact_lijnen_max)
-        stats_contact_max     <- data.frame(ID = f_contact_max$value, Lengte_m = f_contact_max$count * 10)                  raaklijn_50m_ids_max  <- stats_contact_max$ID[!is.na(stats_contact_max$ID) & stats_contact_max$Lengte_m >= 50]
+        stats_contact_max     <- data.frame(ID = f_contact_max$value, Lengte_m = f_contact_max$count * 10)
+        raaklijn_50m_ids_max  <- stats_contact_max$ID[!is.na(stats_contact_max$ID) & stats_contact_max$Lengte_m >= 50]
         
         if (length(raaklijn_50m_ids_max) > 0) {
           r_raaklijn_50m_max     <- cl_contact_lijnen_max %in% raaklijn_50m_ids_max
@@ -385,7 +393,8 @@ verwerk_habitat_met_bosrand <- function(r_habitat_max, r_habitat_opp, r_bos_max,
         if (terra::hasValues(bos_contact_pixels_opp) && terra::global(bos_contact_pixels_opp, "notNA")$notNA > 0) {
           cl_contact_lijnen_opp <- terra::patches(bos_contact_pixels_opp, directions = 8, zeroAsNA = TRUE)
           f_contact_opp         <- terra::freq(cl_contact_lijnen_opp)
-          stats_contact_opp     <- data.frame(ID = f_contact_opp$value, Lengte_m = f_contact_opp$count * 10)                      raaklijn_50m_ids_opp  <- stats_contact_opp$ID[!is.na(stats_contact_opp$ID) & stats_contact_opp$Lengte_m >= 50]
+          stats_contact_opp     <- data.frame(ID = f_contact_opp$value, Lengte_m = f_contact_opp$count * 10)   
+          raaklijn_50m_ids_opp  <- stats_contact_opp$ID[!is.na(stats_contact_opp$ID) & stats_contact_opp$Lengte_m >= 50]
           
           if (length(raaklijn_50m_ids_opp) > 0) {
             r_raaklijn_50m_opp     <- cl_contact_lijnen_opp %in% raaklijn_50m_ids_opp

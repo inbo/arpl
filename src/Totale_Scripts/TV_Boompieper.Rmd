@@ -72,6 +72,65 @@ maak_kaart_laag <- function(res_list) {
   }
   return(finaal)
 }
+
+cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
+  # 1. Controleer of het raster leeg is
+  if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
+    return(list(raster = masker * NA, clusters = masker * NA))
+  }
+  
+  # ----------------------------------------------------------------------------
+  # STAP 1: VEILIGE & SNELLER NETWERKVORMING ZONDER RAM-CRASH
+  # ----------------------------------------------------------------------------
+  if (dist_m > 0) {
+    # Maak binaire kaart (1 = biotoop, NA = rest)
+    r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
+    
+    # Buffer de BINAIR kaart (dit kost vrijwel geen geheugen!)
+    # Volle afstand dist_m zorgt dat plukjes binnen dist_m gegarandeerd samensmelten
+    r_buffered <- terra::buffer(r_binair, width = dist_m)
+    
+    # Maak unieke Netwerk-ID's op de gebufferde zones
+    cl_network <- terra::patches(r_buffered, directions = 8, zeroAsNA = TRUE)
+    
+    # Snijd de Netwerk-ID's direct terug naar waar de originele biotooppixels liggen
+    cl_biotoop_only <- terra::mask(cl_network, masker)
+  } else {
+    cl_network <- terra::patches(masker, directions = 8, zeroAsNA = TRUE)
+    cl_biotoop_only <- cl_network
+  }
+  
+  # ----------------------------------------------------------------------------
+  # STAP 2: OPPERVLAKTE-OPTELSOM PER GEKOPPELD NETWERK
+  # ----------------------------------------------------------------------------
+  if(werkelijk) {
+    stats_df <- terra::zonal(opp_laag, cl_biotoop_only, fun = "sum", na.rm = TRUE)
+    colnames(stats_df) <- c("ID", "Waarde")
+    stats_df$Area_m2 <- stats_df$Waarde * 100 
+  } else {
+    f <- terra::freq(cl_biotoop_only)
+    stats_df <- data.frame(ID = f$value, Waarde = f$count)
+    stats_df$Area_m2 <- stats_df$Waarde * 100 
+  }
+  
+  stats_df <- stats_df[!is.na(stats_df$ID), ]
+  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  
+  # ----------------------------------------------------------------------------
+  # STAP 3: FILTEREN OP TOTALE NETWERK-OPPERVLAKTE >= DREMPEL
+  # ----------------------------------------------------------------------------
+  voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
+  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  
+  # Behaal alleen de winnende netwerk-ID's
+  masker_binair <- cl_biotoop_only %in% voldoet_ids
+  final_network_mask <- terra::ifel(masker_binair == 1, 1, NA)
+  
+  r_finaal  <- terra::mask(masker, final_network_mask)
+  cl_finaal <- terra::mask(cl_biotoop_only, r_finaal) 
+  
+  return(list(raster = r_finaal, clusters = cl_finaal))
+}
 ```
 
 # Soort informatie ophalen
@@ -94,7 +153,6 @@ rm(df, resultaat)
 
 # Gebied voorbereiden (Turnhouts Vennegebied)
 ```{r Gebied Voorbereiden}
-```{r Gebied Voorbereiden}
 area_shape  <- vect(here("data/input/Turnhouts_Vennegebied.shp"))
 master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
 
@@ -104,27 +162,35 @@ gouden_namenlijst <- tolower(trimws(df_namen_sleutel$Laagnaam))
 area_shape_proj <- project(area_shape, crs(master_grid))
 area_buffer_fix <- buffer(area_shape_proj, width = buffer_m)
 
-message("-> Vertaalraster voor globale/lokale cellen opbouwen...")
+message("-> Vertaalraster voor globale/lokale cellen bliksemsnel opbouwen...")
+
+# 1. Maak de lokale uitsnede van het raster
 id_raster_TV <- crop(master_grid, area_buffer_fix, snap = "near")
 
-globale_id_raster <- master_grid
-values(globale_id_raster) <- 1:ncell(globale_id_raster)
-id_raster_TV_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
+# 2. Rasterize de buffer-vector naar de uitsnede (vele malen sneller dan terra::extract!)
+template_TV_mask <- terra::rasterize(area_buffer_fix, id_raster_TV, field = 1)
 
-extractie_ids <- terra::extract(id_raster_TV_globale_values, area_buffer_fix, cells = TRUE)
+# 3. Wiskundige index-conversie (lokale cel-index -> coordinaten -> globale cel-index)
+lokale_ids  <- terra::cells(template_TV_mask)
+coords      <- terra::xyFromCell(template_TV_mask, lokale_ids)
+globale_ids <- terra::cellFromXY(master_grid, coords)
 
-vertaal_df <- as.data.table(extractie_ids)
-setnames(vertaal_df, c("cell", names(id_raster_TV_globale_values)), c("lokale_id", "globale_id"))
-vertaal_df <- vertaal_df[!is.na(globale_id)]
+# 4. Bouw de vertaaltabel (data.table) op
+vertaal_df <- data.table(
+  lokale_id  = lokale_ids,
+  globale_id = globale_ids
+)[!is.na(globale_id)]
 
-studiegebied_globale_ids <- unique(vertaal_df$globale_id)
+studiegebied_globale_ids <- vertaal_df$globale_id
 
+# 5. Templates & grenzen instellen voor vervolgstappen
+template_TV <- terra::classify(template_TV_mask, cbind(NA, 0))
 values(id_raster_TV) <- NA
-template_TV <- terra::rasterize(area_buffer_fix, id_raster_TV, field = 1, background = 0)
 
 grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
 
-rm(globale_id_raster, id_raster_TV_globale_values)
+# Schoonmaken van tijdelijke variabelen
+rm(template_TV_mask, lokale_ids, coords, globale_ids)
 gc()
 ```
 
@@ -213,61 +279,16 @@ gc()
 
 ```{r clustering}
 # ==============================================================================
-# FUNCTIE: Clusteren (max 50m) en Filteren (min X ha) - BRUGGEN-FILTER FIX
-# ==============================================================================
-verwerk_leefgebied <- function(r_input, max_afstand_m = 50, min_opp_ha = 5) {
-  if (is.null(r_input)) return(NULL)
-  if (all(is.na(terra::values(r_input, mat = FALSE)))) return(NULL)
-  
-  # Stap 1: Maak het raster binair (alles > 0 wordt 1, rest NA)
-  r_binair <- terra::ifel(r_input > 0, 1, NA)
-  
-  # Stap 2: Overbrug de afstand van 50 meter (Focal Matrix)
-  w <- terra::focalMat(r_input, max_afstand_m, type = 'circle')
-  w[w > 0] <- 1 
-  
-  # Gaten van 50m tijdelijk dichtmaken (tijdelijke dilatatie / bruggen bouwen)
-  r_dilated <- terra::focal(r_binair, w = w, fun = "max", na.rm = TRUE)
-  
-  # Stap 3: Cluster ID's toekennen op de opgevulde kaart
-  clusters_dilated <- terra::patches(r_dilated, directions = 8, zeroAsNA = TRUE)
-  
-  # Breng de clusters terug naar de oorspronkelijke cel-voetafdruk voor oppervlakte-evaluatie
-  # (Zodat we de oppervlakte van de bruggen zelf NIET meetellen om te bepalen of het complex > 5ha is!)
-  r_clusters <- terra::mask(clusters_dilated, r_binair)
-  
-  # Stap 4: Oppervlakte per cluster berekenen
-  area_raster <- terra::cellSize(r_clusters, unit = "ha")
-  cluster_opp <- terra::zonal(area_raster, r_clusters, fun = "sum", na.rm = TRUE)
-  
-  naam_opp_kolom <- names(area_raster)
-  geldige_ids <- cluster_opp$patches[cluster_opp[[naam_opp_kolom]] >= min_opp_ha]
-  
-  if (length(geldige_ids) == 0) {
-    message("-> Geen leefgebieden gevonden die voldoen aan de minimale oppervlakte.")
-    return(r_input * NA)
-  }
-  
-  # Stap 5: EXCLUSIE VAN BRUGGEN
-  # We behouden de cluster-IDs, maar maskeren ze STRIKT met r_binair.
-  # Hierdoor worden alle opgevulde 'bruggen' tussen de percelen definitief gewist!
-  r_leefgebied_scherp <- terra::ifel(r_clusters %in% geldige_ids, r_clusters, NA)
-  r_leefgebied_scherp <- terra::mask(r_leefgebied_scherp, r_binair)
-  
-  return(r_leefgebied_scherp)
-}
-
-# ==============================================================================
-# PARALLELLE UITVOERING (Voorbeeld op BWK: opp en max)
+# PARALLELLE UITVOERING
 # ==============================================================================
 
 message("-> Clusteren en filteren van BWK-lagen...")
 
 # Uitvoeren op de MAX-laag (binaire match)
-bwk_cluster_max <- verwerk_leefgebied(bwk_max, max_afstand_m = 50, min_opp_ha = 5)
+bwk_cluster_max <- cluster_filter_compleet(bwk_max, max_afstand_m = 50, min_opp_ha = 5)
 
 # Uitvoeren op de OPP-laag (oppervlaktefracties)
-bwk_cluster_opp <- verwerk_leefgebied(bwk_opp, max_afstand_m = 50, min_opp_ha = 5)
+bwk_cluster_opp <- cluster_filter_compleet(bwk_opp, max_afstand_m = 50, min_opp_ha = 5)
 ```
 
 ```{r randzones}
@@ -280,12 +301,9 @@ message("-> Randzones (edges) bepalen tussen heide en naaldbos...")
 w_edge <- matrix(1, nrow = 3, ncol = 3)
 
 # --- Bewerking voor de MAX (binaire) rasters ---
-if(!is.null(naaldbos_max) && !is.null(heide_max)) {
-  # Waar is naaldbos aanwezig? (1 of NA)
+if(!is.null(naaldbos_max) && !is.null(heide_max) && !all(is.na(terra::minmax(naaldbos_max)))) {
   naaldbos_bin <- terra::ifel(naaldbos_max > 0, 1, NA)
-  # Breid het naaldbos uit met 1 cel om de rand te pakken
   naaldbos_edge <- terra::focal(naaldbos_bin, w = w_edge, fun = "max", na.rm = TRUE)
-  # Masker de heide: behoud alleen heide die binnen deze rand valt
   heide_naaldbos_max <- terra::mask(heide_max, naaldbos_edge)
 } else {
   heide_naaldbos_max <- id_raster_TV * NA
@@ -302,25 +320,22 @@ if(!is.null(naaldbos_opp) && !is.null(heide_opp)) {
 }
 ```
 
-
 ```{r clustering klein leefgebied}
 # ==============================================================================
 # STAP 2: Clusteren en Filteren op 2 Hectare (Klein leefgebied)
 # ==============================================================================
 message("-> Clusteren en filteren op minimale oppervlakte van 2 ha...")
 
-# We hergebruiken de eerder gemaakte 'verwerk_leefgebied' functie
+# We hergebruiken de eerder gemaakte 'cluster_filter_compleet' functie
 # Maar nu met een harde grens van 2 hectare in plaats van de eerdere 5 ha (of 'oppervlakte_ha')
-bwk_cluster_klein_max <- verwerk_leefgebied(heide_naaldbos_max, max_afstand_m = 50, min_opp_ha = 2)
-bwk_cluster_klein_opp <- verwerk_leefgebied(heide_naaldbos_opp, max_afstand_m = 50, min_opp_ha = 2)
+bwk_cluster_klein_max <- cluster_filter_compleet(heide_naaldbos_max, max_afstand_m = 50, min_opp_ha = 2)
+bwk_cluster_klein_opp <- cluster_filter_compleet(heide_naaldbos_opp, max_afstand_m = 50, min_opp_ha = 2)
 
 # Schoonmaken
 rm(heide_naaldbos_max, heide_naaldbos_opp)
 gc()
 ```
 
-
-```{r combinatie}
 ```{r combinatie}
 # ==============================================================================
 # STAP 3: Combineren (Groot OR Klein) - MET TYPE-ID'S VOOR KAART
@@ -493,7 +508,6 @@ tabel_totaal %>%
   kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
-```{r, export}
 ```{r, export}
 # ==============================================================================
 # EXPORT MET KOGELVRIJE NUL-OPVULLING & CONTRACT FIX (BOOMPIEPER)

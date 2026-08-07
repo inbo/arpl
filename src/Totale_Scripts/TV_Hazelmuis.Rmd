@@ -59,37 +59,62 @@ maak_kaart_laag <- function(res_list) {
 }
 
 cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
+  # 1. Controleer of het raster leeg is
   if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
     return(list(raster = masker * NA, clusters = masker * NA))
   }
   
-  temp_mask <- masker
-  if(dist_m > 0) temp_mask <- terra::buffer(masker, width = dist_m / 2)
+  # ----------------------------------------------------------------------------
+  # STAP 1: VEILIGE & SNELLER NETWERKVORMING ZONDER RAM-CRASH
+  # ----------------------------------------------------------------------------
+  if (dist_m > 0) {
+    # Maak binaire kaart (1 = biotoop, NA = rest)
+    r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
+    
+    # Buffer de BINAIR kaart (dit kost vrijwel geen geheugen!)
+    # Volle afstand dist_m zorgt dat plukjes binnen dist_m gegarandeerd samensmelten
+    r_buffered <- terra::buffer(r_binair, width = dist_m)
+    
+    # Maak unieke Netwerk-ID's op de gebufferde zones
+    cl_network <- terra::patches(r_buffered, directions = 8, zeroAsNA = TRUE)
+    
+    # Snijd de Netwerk-ID's direct terug naar waar de originele biotooppixels liggen
+    cl_biotoop_only <- terra::mask(cl_network, masker)
+  } else {
+    cl_network <- terra::patches(masker, directions = 8, zeroAsNA = TRUE)
+    cl_biotoop_only <- cl_network
+  }
   
-  cl <- terra::patches(temp_mask, directions = 8, zeroAsNA = TRUE) %>% terra::mask(masker)
-  
+  # ----------------------------------------------------------------------------
+  # STAP 2: OPPERVLAKTE-OPTELSOM PER GEKOPPELD NETWERK
+  # ----------------------------------------------------------------------------
   if(werkelijk) {
-    stats_df <- terra::zonal(opp_laag, cl, fun = "sum", na.rm = TRUE)
+    stats_df <- terra::zonal(opp_laag, cl_biotoop_only, fun = "sum", na.rm = TRUE)
     colnames(stats_df) <- c("ID", "Waarde")
-    # CORRECTIE: Waarde is de som van fracties (1 pixel = 1.0). 
-    # Vermenigvuldigen met 100 geeft de juiste Area in m2!
     stats_df$Area_m2 <- stats_df$Waarde * 100 
   } else {
-    f <- terra::freq(cl)
+    f <- terra::freq(cl_biotoop_only)
     stats_df <- data.frame(ID = f$value, Waarde = f$count)
-    stats_df$Area_m2 <- stats_df$Waarde * 100 # 1 binaire pixel = 100m2
+    stats_df$Area_m2 <- stats_df$Waarde * 100 
   }
   
   stats_df <- stats_df[!is.na(stats_df$ID), ]
-  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = cl * NA))
+  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
+  # ----------------------------------------------------------------------------
+  # STAP 3: FILTEREN OP TOTALE NETWERK-OPPERVLAKTE >= DREMPEL
+  # ----------------------------------------------------------------------------
   voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
-  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = cl * NA))
+  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
-  masker_binair <- cl %in% voldoet_ids
-  final_mask <- terra::ifel(masker_binair == 1, 1, NA)
+  # Behaal alleen de winnende netwerk-ID's
+  masker_binair <- cl_biotoop_only %in% voldoet_ids
+  final_network_mask <- terra::ifel(masker_binair == 1, 1, NA)
   
-  return(list(raster = terra::mask(masker, final_mask), clusters = cl))
+  r_finaal  <- terra::mask(masker, final_network_mask)
+  cl_finaal <- terra::mask(cl_biotoop_only, r_finaal) 
+  
+  return(list(raster = r_finaal, clusters = cl_finaal))
 }
 ```
 
@@ -99,11 +124,13 @@ df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
 soort <- "hazelmuis"
 
 resultaat <- df %>%
-filter(Soort == soort) %>%
-select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
+  filter(Soort == soort) %>%
+  select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
 
 # Variabelen definiëren
-buffer_m <- resultaat$Dispersiecap_m
+buffer_m          <- resultaat$Dispersiecap_m[1]
+afstand_biotoop_m <- resultaat$AfstandBiotopen_m[1]
+min_opp_m2        <- resultaat$MinOpp_ha[1] * 10000
 
 print(resultaat)
 rm(df, resultaat)
@@ -156,7 +183,7 @@ df_nieuw <- read_csv(here("data/input/Excel_files/Resultaten_Totaal_Samengevoegd
 
 resultaten_gegroepeerd <- df_nieuw %>%
   mutate(Soort_clean = tolower(trimws(Soort))) %>%
-  filter(Soort_clean == soort) %>%
+  filter(Soort_clean == soort, Type == "voortplanting") %>%
   group_by(Type) %>%
   nest(Data = c(Code, Match))
 
@@ -165,28 +192,22 @@ tabel_vlaanderen <- readRDS(here("data/input/Raster_Vlaanderen/BWK_Tabel_Turnhou
 setDT(tabel_vlaanderen)
 tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
 
-# Initialiseer de lijsten voor de verschillende habitat-bouwstenen
-lijst_matches      <- list()
-lijst_oppervlaktes <- list()
+# Initialiseer rasters
+voortplanting_max <- id_raster_TV * NA
+voortplanting_opp <- id_raster_TV * NA
 
-# 3. VERWERK ELK HABITAT-TYPE DYNAMISCH VIA DATA.TABLE
-for(i in 1:nrow(resultaten_gegroepeerd)) {
-  h_type <- resultaten_gegroepeerd$Type[i]
-  h_data <- resultaten_gegroepeerd$Data[[i]]
+# 3. VERWERK VOORTPLANTINGSHABITAT
+if(nrow(resultaten_gegroepeerd) > 0) {
+  h_data <- resultaten_gegroepeerd$Data[[1]]
   
   exact_codes <- tolower(trimws(h_data$Code[h_data$Match == "exact"]))
   bevat_codes <- tolower(trimws(h_data$Code[h_data$Match == "bevat"]))
   
   if(length(bevat_codes) > 0) {
-    # 1. Ontsnap speciale regex-tekens (zoals haakjes) om syntaxfouten te voorkomen
     bevat_codes_escaped <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
-    
-    # 2. CRUCIALE FIX: Plak een '^' voor elke individuele code. 
-    # Dit dwingt grepl() om alleen te matchen als de BWK-code BEGINT met deze letters.
     bevat_codes_anchored <- paste0("^", bevat_codes_escaped)
     regex_term <- paste0(bevat_codes_anchored, collapse = "|")
     
-    # Filteren: EXACT-matches (geen letters voor/na) OF codes die BEGINNEN met de bevat-termen
     tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes | grepl(regex_term, CODE)]
   } else {
     tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes]
@@ -196,9 +217,6 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   tabel_TV <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
   tabel_TV_unique <- unique(tabel_TV, by = c("cel_id", "CODE"))
   tabel_cel_som <- tabel_TV_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)), by = .(cel_id)]
-  
-  r_match_type <- id_raster_TV * NA
-  r_opp_type   <- id_raster_TV * NA
   
   if(nrow(tabel_cel_som) > 0) {
     tabel_cel_som[, Oppervlakte := pmin(Oppervlakte, 1)]
@@ -211,221 +229,41 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
     if(nrow(tabel_finaal_mapping) > 0) {
       tabel_matches_clean <- tabel_finaal_mapping[Match == 1]
       if(nrow(tabel_matches_clean) > 0) {
-        r_match_type[tabel_matches_clean$lokale_id] <- tabel_matches_clean$Match
+        voortplanting_max[tabel_matches_clean$lokale_id] <- tabel_matches_clean$Match
       }
-      r_opp_type[tabel_finaal_mapping$lokale_id] <- tabel_finaal_mapping$Oppervlakte
-      
-      # Sla de gegenereerde rasters op
-      lijst_matches[[h_type]]      <- r_match_type
-      lijst_oppervlaktes[[h_type]] <- r_opp_type
+      voortplanting_opp[tabel_finaal_mapping$lokale_id] <- tabel_finaal_mapping$Oppervlakte
     }
   }
 }
 
-# Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
-voortplanting_max <- lijst_matches[["voortplanting"]]
-voortplanting_opp <- lijst_oppervlaktes[["voortplanting"]]
-open_max <- lijst_matches[["open"]]
-open_opp <- lijst_oppervlaktes[["open"]]
-voortplanting_lineair_max <- lijst_matches[["voortplanting_lineair"]]
-voortplanting_lineair_opp <- lijst_oppervlaktes[["voortplanting_lineair"]]
-
-# Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
-rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
+# Grote eindschoonmaak
+rm(resultaten_gegroepeerd, df_nieuw, tabel_vlaanderen, vertaal_df)
 gc()
 ```
 
 ```{r Voortplantingsbiotoop}
 # ------------------------------------------------------------------------------
-# STAP 1: Voortplantingsbiotoop filteren en clusteren (Parallel)
+# DIRECTE CLUSTERING VAN VOORTPLANTINGSHABITAT (ZONDER RANDEN/OPEN GEBIEDEN)
 # ------------------------------------------------------------------------------
-message("-> Berekenen voortplantingsclusters (Drempel: 50 ha)...")
+message("-> Berekenen leefgebied hazelmuis rechtstreeks uit voortplantingshabitat...")
 
 # Spoor A: MAX
-vp_geclusterd_max <- cluster_filter_compleet(
+leefgebied_finaal_geclusterd_max <- cluster_filter_compleet(
   masker = voortplanting_max, 
   opp_laag = voortplanting_opp, 
-  drempel_m2 = 50 * 10000, 
-  dist_m = 20, 
-  werkelijk = FALSE
-)
-hazelmuis_voortplanting1_max <- vp_geclusterd_max$raster
-
-# Spoor B: OPP
-r_binair_vp_opp <- terra::ifel(!is.na(voortplanting_opp) & voortplanting_opp > 0, 1, NA)
-vp_geclusterd_opp <- cluster_filter_compleet(
-  masker = r_binair_vp_opp, 
-  opp_laag = voortplanting_opp, 
-  drempel_m2 = 50 * 10000, 
-  dist_m = 20, 
-  werkelijk = TRUE
-)
-hazelmuis_voortplanting1_opp <- vp_geclusterd_opp$raster
-
-rm(vp_geclusterd_max, vp_geclusterd_opp, r_binair_vp_opp)
-gc()
-```
-
-
-```{r Open gebieden clusteren}
-# ------------------------------------------------------------------------------
-# STAP 2: Open gebieden clusteren (Parallel)
-# ------------------------------------------------------------------------------
-message("-> Berekenen open gebieden nabij bos (Drempel: 5 ha)...")
-
-# Spoor A: MAX
-open_geclusterd_max <- cluster_filter_compleet(
-  masker = open_max, 
-  opp_laag = open_opp, 
-  drempel_m2 = 5 * 10000, 
-  dist_m = 100, 
-  werkelijk = FALSE
-)
-hazelmuis_open1_max <- open_geclusterd_max$raster
-
-# Spoor B: OPP
-r_binair_open_opp <- terra::ifel(!is.na(open_opp) & open_opp > 0, 1, NA)
-open_geclusterd_opp <- cluster_filter_compleet(
-  masker = r_binair_open_opp, 
-  opp_laag = open_opp, 
-  drempel_m2 = 5 * 10000, 
-  dist_m = 100, 
-  werkelijk = TRUE
-)
-hazelmuis_open1_opp <- open_geclusterd_opp$raster
-
-rm(open_geclusterd_max, open_geclusterd_opp, r_binair_open_opp)
-gc()
-```
-
-
-```{r Bosranden bepalen}
-# ------------------------------------------------------------------------------
-# STAP 3: Bosranden bepalen (Parallel)
-# ------------------------------------------------------------------------------
-message("-> Genereren van bosranden (expert-correctie)...")
-
-# Spoor A: MAX
-if(!is.null(hazelmuis_voortplanting1_max) && !is.null(hazelmuis_open1_max)) {
-  bos_buffer_max <- terra::buffer(hazelmuis_voortplanting1_max, width = 10)
-  hazelmuis_bosrand_max <- terra::mask(bos_buffer_max, hazelmuis_open1_max)
-} else {
-  hazelmuis_bosrand_max <- template_TV * NA
-}
-
-bosrand_geclusterd_max <- cluster_filter_compleet(
-  masker = hazelmuis_bosrand_max,
-  opp_laag = hazelmuis_bosrand_max,
-  drempel_m2 = 0.2 * 10000,
-  dist_m = 100,
-  werkelijk = FALSE
-)
-hazelmuis_bosrand_finaal_max <- bosrand_geclusterd_max$raster
-
-# Spoor B: OPP
-if(!is.null(hazelmuis_voortplanting1_opp) && !is.null(hazelmuis_open1_opp)) {
-  r_binair_vp1_opp <- terra::ifel(!is.na(hazelmuis_voortplanting1_opp) & hazelmuis_voortplanting1_opp > 0, 1, NA)
-  r_binair_open1_opp <- terra::ifel(!is.na(hazelmuis_open1_opp) & hazelmuis_open1_opp > 0, 1, NA)
-  
-  bos_buffer_opp <- terra::buffer(r_binair_vp1_opp, width = 10)
-  r_bosrand_mask_opp <- terra::mask(bos_buffer_opp, r_binair_open1_opp)
-  hazelmuis_bosrand_opp <- terra::mask(hazelmuis_voortplanting1_opp, r_bosrand_mask_opp)
-} else {
-  hazelmuis_bosrand_opp <- template_TV * NA
-}
-
-r_binair_bosrand_opp <- terra::ifel(!is.na(hazelmuis_bosrand_opp) & hazelmuis_bosrand_opp > 0, 1, NA)
-bosrand_geclusterd_opp <- cluster_filter_compleet(
-  masker = r_binair_bosrand_opp,
-  opp_laag = hazelmuis_bosrand_opp,
-  drempel_m2 = 0.2 * 10000,
-  dist_m = 100,
-  werkelijk = TRUE
-)
-hazelmuis_bosrand_finaal_opp <- bosrand_geclusterd_opp$raster
-
-rm(bosrand_geclusterd_max, bosrand_geclusterd_opp)
-gc()
-```
-
-
-```{r Lineaire voortplantingsgebieden}
-# ------------------------------------------------------------------------------
-# STAP 4: Lineaire voortplantingsgebieden (Parallel)
-# ------------------------------------------------------------------------------
-message("-> Berekenen lineaire elementen (Drempel: 0.2 ha) + Bos-aansluiting...")
-
-# Spoor A: MAX
-lineair_geclusterd_max <- cluster_filter_compleet(
-  masker = voortplanting_lineair_max,
-  opp_laag = voortplanting_lineair_opp,
-  drempel_m2 = 0.2 * 10000,
-  dist_m = 100,
-  werkelijk = FALSE
-)
-hazelmuis_lineair_gefilterd_max <- lineair_geclusterd_max$raster
-
-if(!is.null(hazelmuis_lineair_gefilterd_max) && !is.null(hazelmuis_voortplanting1_max)) {
-  bos_aansluiting_zone_max <- terra::buffer(hazelmuis_voortplanting1_max, width = 20)
-  hazelmuis_leefgebied_lineair1_max <- terra::mask(hazelmuis_lineair_gefilterd_max, bos_aansluiting_zone_max)
-} else {
-  hazelmuis_leefgebied_lineair1_max <- template_TV * NA
-}
-
-# Spoor B: OPP
-r_binair_lin_opp <- terra::ifel(!is.na(voortplanting_lineair_opp) & voortplanting_lineair_opp > 0, 1, NA)
-lineair_geclusterd_opp <- cluster_filter_compleet(
-  masker = r_binair_lin_opp,
-  opp_laag = voortplanting_lineair_opp,
-  drempel_m2 = 0.2 * 10000,
-  dist_m = 100,
-  werkelijk = TRUE
-)
-hazelmuis_lineair_gefilterd_opp <- lineair_geclusterd_opp$raster
-
-if(!is.null(hazelmuis_lineair_gefilterd_opp) && !is.null(hazelmuis_voortplanting1_opp)) {
-  r_binair_vp1_opp <- terra::ifel(!is.na(hazelmuis_voortplanting1_opp) & hazelmuis_voortplanting1_opp > 0, 1, NA)
-  bos_aansluiting_zone_opp <- terra::buffer(r_binair_vp1_opp, width = 20)
-  hazelmuis_leefgebied_lineair1_opp <- terra::mask(hazelmuis_lineair_gefilterd_opp, bos_aansluiting_zone_opp)
-} else {
-  hazelmuis_leefgebied_lineair1_opp <- template_TV * NA
-}
-
-rm(lineair_geclusterd_max, lineair_geclusterd_opp, r_binair_lin_opp)
-gc()
-```
-
-```{r Combinatie}
-# ------------------------------------------------------------------------------
-# STAP 5: Combinatie tot Finaal Leefgebied (Parallel)
-# ------------------------------------------------------------------------------
-message("-> Combineren en finaliseren leefgebied (Minimaal 0.5 ha)...")
-
-# Spoor A: MAX
-hazelmuis_leefgebied1_max <- terra::cover(hazelmuis_bosrand_finaal_max, hazelmuis_leefgebied_lineair1_max)
-
-leefgebied_finaal_geclusterd_max <- cluster_filter_compleet(
-  masker = hazelmuis_leefgebied1_max,
-  opp_laag = hazelmuis_leefgebied1_max,
-  drempel_m2 = 0.5 * 10000,
-  dist_m = 100,
+  drempel_m2 = min_opp_m2, 
+  dist_m = afstand_biotoop_m, 
   werkelijk = FALSE
 )
 hazelmuis_leefgebied_max <- leefgebied_finaal_geclusterd_max$raster
 
 # Spoor B: OPP
-b_opp_nul <- terra::ifel(is.na(hazelmuis_bosrand_finaal_opp), 0, hazelmuis_bosrand_finaal_opp)
-l_opp_nul <- terra::ifel(is.na(hazelmuis_leefgebied_lineair1_opp), 0, hazelmuis_leefgebied_lineair1_opp)
-
-hazelmuis_leefgebied1_opp_raw <- terra::clamp(b_opp_nul + l_opp_nul, upper = 1.0)
-hazelmuis_leefgebied1_opp     <- terra::ifel(hazelmuis_leefgebied1_opp_raw > 0, hazelmuis_leefgebied1_opp_raw, NA)
-r_binair_leef1_opp            <- terra::ifel(!is.na(hazelmuis_leefgebied1_opp) & hazelmuis_leefgebied1_opp > 0, 1, NA)
-
+r_binair_vp_opp <- terra::ifel(!is.na(voortplanting_opp) & voortplanting_opp > 0, 1, NA)
 leefgebied_finaal_geclusterd_opp <- cluster_filter_compleet(
-  masker = r_binair_leef1_opp,
-  opp_laag = hazelmuis_leefgebied1_opp,
-  drempel_m2 = 0.5 * 10000,
-  dist_m = 100,
+  masker = r_binair_vp_opp, 
+  opp_laag = voortplanting_opp, 
+  drempel_m2 = min_opp_m2, 
+  dist_m = afstand_biotoop_m, 
   werkelijk = TRUE
 )
 hazelmuis_leefgebied_opp <- leefgebied_finaal_geclusterd_opp$raster
@@ -438,21 +276,20 @@ totaal_ha <- calc_ha_exact(final_opp)
 cat("--- MODELLERING AFGEROND ---\n")
 cat("Totaal berekend leefgebied Hazelmuis in studiegebied (ha):", totaal_ha, "\n")
 
-rm(b_opp_nul, l_opp_nul, hazelmuis_leefgebied1_opp_raw, r_binair_leef1_opp)
+rm(r_binair_vp_opp)
 gc()
 ```
 
 # Resultaten en Statistiek
 ```{r Resultaten en statistiek}
 # --- ECOLOOG-MAPPING: KOPPEL GENERIEKE VARIABELEN AAN HAZELMUIS RASTERS ---
-cl_max         <- leefgebied_finaal_geclusterd$clusters
-bwk_opp        <- hazelmuis_leefgebied1
-final_max      <- hazelmuis_leefgebied
-final_opp      <- hazelmuis_leefgebied
+cl_max         <- leefgebied_finaal_geclusterd_max$clusters
+bwk_opp        <- voortplanting_opp
+final_max      <- hazelmuis_leefgebied_max
+final_opp      <- hazelmuis_leefgebied_opp
 
-# EXPERT-EISSEN: Drempels kogelvrij instellen op 0.5 ha
-oppervlakte_ha <- 0.5
-drempel_m2     <- 5000
+oppervlakte_ha <- min_opp_m2 / 10000
+drempel_m2      <- min_opp_m2
 
 # Binnen masker is de binaire template van Turnhouts Vennegebied
 binnen_masker  <- template_TV
@@ -504,17 +341,17 @@ if (!is.null(cl_max) && !all(is.na(terra::values(cl_max, mat=FALSE)))) {
   stats_gecombineerd$Werk_ha[is.na(stats_gecombineerd$Werk_ha)] <- 0
   stats_gecombineerd$Werk_ha <- pmin(stats_gecombineerd$Werk_ha, stats_gecombineerd$Pot_ha)
 
-  # 3. Filter nu pas op basis van de gekoppelde ID's
+  # 3. Filter op basis van de gekoppelde ID's
   ids_potentieel_totaal <- stats_gecombineerd$ID[stats_gecombineerd$Pot_ha >= oppervlakte_ha]
   ids_werkelijk_totaal  <- stats_gecombineerd$ID[(stats_gecombineerd$Werk_ha * 10000) >= drempel_m2]
   
-  # 4. Bepaal welke clusters het Turnhouts Vennegebied (binnen) raken
+  # 4. Bepaal welke clusters het studiegebied (binnen) raken
   zonal_zone <- terra::zonal(binnen_masker, cl_max, fun = "max", na.rm = TRUE)
   zonal_zone <- as.data.frame(zonal_zone)
   colnames(zonal_zone) <- c("ID", "In_TV")
   ids_die_TV_raken <- zonal_zone$ID[!is.na(zonal_zone$In_TV) & zonal_zone$In_TV > 0]
   
-  # 5. De opsplitsing
+  # 5. Opsplitsing binnen vs buiten
   ids_pot_bin   <- intersect(ids_potentieel_totaal, ids_die_TV_raken)
   ids_pot_buit  <- setdiff(ids_potentieel_totaal, ids_die_TV_raken)
   
@@ -585,8 +422,6 @@ tabel_totaal %>%
 
 # Interactieve kaart
 ```{r Interactieve kaart}
-# --- INTERACTIEVE KAART: METADATA EN PARALLELLE GEGEVENSKOPPELING ---
-
 if (has_observations && nrow(df_points_sf) > 0) {
   waarneming_smear_web <- st_transform(waarneming_smear_sf, 4326)
   points_web           <- st_transform(df_points_sf, 4326)
@@ -595,7 +430,6 @@ if (has_observations && nrow(df_points_sf) > 0) {
   points_web           <- st_sf(st_sfc(crs = 4326))
 }
 
-# --- GEFIXT: DATA EN POPUPS RECHTSTREEKS GEKOPPELD AAN DE HAZELMUIS CLUSTERS ---
 if (!is.null(cl_max) && !all(is.na(terra::values(cl_max, mat=FALSE))) && nrow(stats_gecombineerd) > 0) {
   cluster_info_A <- stats_gecombineerd %>%
     left_join(zonal_zone, by = "ID") %>% 
@@ -622,7 +456,6 @@ if (!is.null(cl_max) && !all(is.na(terra::values(cl_max, mat=FALSE))) && nrow(st
   cl_poly_final_A <- st_sf(st_sfc(crs = 4326))
 }
 
-# --- GEFIXT: R_STATUS PIXEL-LAAG OPBOUW ZONDER SCRIPT-MISMATCH ---
 if (!is.null(cl_max) && !all(is.na(terra::values(cl_max, mat=FALSE))) && nrow(stats_gecombineerd) > 0) {
   bin_w  <- if(length(ids_werk_bin) > 0) ids_werk_bin else -999
   buit_w <- if(length(ids_werk_buit) > 0) ids_werk_buit else -999
@@ -649,7 +482,6 @@ pal_4 <- colorFactor(
   na.color = "transparent"
 )
 
-# --- LEAFLET INTERACTIEVE KAART OPBOUW ---
 map <- leaflet() %>%
   addTiles(group = "OSM (Kaart)") %>%
   addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet") %>%
@@ -723,7 +555,7 @@ if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
 export_config <- list(
   list(rast = final_max,              naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
   list(rast = werkelijk_export_rast, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,      naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
+  list(rast = arpl_export_rast,      naam = "ARPL",                      folder = folders$arpl,         type = "INT1U"),
   list(rast = verspreiding_raster,   naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 

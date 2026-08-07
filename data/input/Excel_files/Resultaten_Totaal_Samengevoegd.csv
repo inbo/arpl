@@ -7231,9 +7231,7 @@ eikelmuis,bwk,gmn,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,hab,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,hcb,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,hdb,bevat,5.0,20.0,5000.0
-eikelmuis,bwk,hf,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,2190,bevat,5.0,20.0,5000.0
-eikelmuis,bwk,6430,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,hjb,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,hkb,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,hmb,bevat,5.0,20.0,5000.0
@@ -7261,7 +7259,6 @@ eikelmuis,bwk,kpa,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,kpk,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,ks,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,kr,bevat,5.0,20.0,5000.0
-eikelmuis,bwk,ku,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,kw,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,l,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,n,bevat,5.0,20.0,5000.0
@@ -7276,7 +7273,6 @@ eikelmuis,bwk,mc,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,ur,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,uv,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,ui,bevat,5.0,20.0,5000.0
-eikelmuis,bwk,kd+,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,kf,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,kf-,bevat,5.0,20.0,5000.0
 eikelmuis,bwk,kc,bevat,5.0,20.0,5000.0
@@ -7558,7 +7554,6 @@ europeseotter,v,91D0,bevat,400.0,100.0,nan
 hazelmuis,voortplanting,9130,bevat,0.3,100.0,nan
 hazelmuis,voortplanting,9150,bevat,0.3,100.0,nan
 hazelmuis,voortplanting,9160,bevat,0.3,100.0,nan
-hazelmuis,voortplanting,cp,bevat,0.3,100.0,nan
 hazelmuis,voortplanting,9120,bevat,0.3,100.0,nan
 hazelmuis,voortplanting,fa,bevat,0.3,100.0,nan
 hazelmuis,voortplanting,fe,bevat,0.3,100.0,nan
@@ -7581,8 +7576,6 @@ hazelmuis,voortplanting,91E0,bevat,0.3,100.0,nan
 hazelmuis,voortplanting,91F0,bevat,0.3,100.0,nan
 hazelmuis,voortplanting,sf,bevat,0.3,100.0,nan
 hazelmuis,voortplanting,rbbsf,bevat,0.3,100.0,nan
-hazelmuis,voortplanting,sm,bevat,0.3,100.0,nan
-hazelmuis,voortplanting,rbbsm,bevat,0.3,100.0,nan
 hazelmuis,voortplanting,sz,bevat,0.3,100.0,nan
 hazelmuis,voortplanting,va,bevat,0.3,100.0,nan
 hazelmuis,voortplanting,vc,bevat,0.3,100.0,nan
@@ -7591,7 +7584,12 @@ hazelmuis,voortplanting,vm,bevat,0.3,100.0,nan
 hazelmuis,voortplanting,vn,bevat,0.3,100.0,nan
 hazelmuis,voortplanting,vo,bevat,0.3,100.0,nan
 hazelmuis,voortplanting,vt,bevat,0.3,100.0,nan
-hazelmuis,voortplanting,91D0,bevat,0.3,100.0,nan
+hazelmuis,voortplanting,kt(sz%,bevat,0.3,100.0,nan
+hazelmuis,voortplanting,kt,exact,0.3,100.0,nan
+hazelmuis,voortplanting,k(ku%,bevat,0.3,100.0,nan
+hazelmuis,voortplanting,kh(vc%,bevat,0.3,100.0,nan
+hazelmuis,voortplanting,kh%,bevat,0.3,100.0,nan
+hazelmuis,voortplanting,kw%,bevat,0.3,100.0,nan
 hazelmuis,open,cdb,bevat,0.3,100.0,nan
 hazelmuis,open,cg,bevat,0.3,100.0,nan
 hazelmuis,open,ha,bevat,0.3,100.0,nan
@@ -7618,8 +7616,6 @@ veldspitsmuis,bwk,6430,bevat,5.0,20.0,nan
 veldspitsmuis,hagen,kb,bevat,5.0,20.0,nan
 veldspitsmuis,hagen,kh,bevat,5.0,20.0,nan
 veldspitsmuis,hagen,kt,bevat,5.0,20.0,nan
-waterspitsmuis,water_bwk,6430,bevat,5.0,20.0,2500.0
-waterspitsmuis,water_bwk,91E0,bevat,5.0,20.0,2500.0
 waterspitsmuis,water_bwk,ae,exact,5.0,20.0,2500.0
 waterspitsmuis,water_bwk,2190,bevat,5.0,20.0,2500.0
 waterspitsmuis,water_bwk,3140,bevat,5.0,20.0,2500.0
@@ -7629,6 +7625,14 @@ waterspitsmuis,water_bwk,aer,exact,5.0,20.0,2500.0
 waterspitsmuis,water_bwk,aer+,exact,5.0,20.0,2500.0
 waterspitsmuis,water_bwk,aev,exact,5.0,20.0,2500.0
 waterspitsmuis,water_bwk,aev+,exact,5.0,20.0,2500.0
+waterspitsmuis,water_bwk,vc,bevat,5.0,20.0,2500.0
+waterspitsmuis,water_bwk,ao-,exact,5.0,20.0,2500.0
+waterspitsmuis,water_bwk,ao,exact,5.0,20.0,2500.0
+waterspitsmuis,water_bwk,ao+,exact,5.0,20.0,2500.0
+waterspitsmuis,water_bwk,aom-,exact,5.0,20.0,2500.0
+waterspitsmuis,water_bwk,aom,exact,5.0,20.0,2500.0
+waterspitsmuis,water_bwk,aom+,exact,5.0,20.0,2500.0
+waterspitsmuis,water_bwk,m,bevat,5.0,20.0,2500.0
 waterspitsmuis,waterlopen1_bwk,3260,bevat,5.0,20.0,2500.0
 waterspitsmuis,bwk_land,6430,bevat,5.0,20.0,2500.0
 waterspitsmuis,bwk_land,91E0,bevat,5.0,20.0,2500.0
@@ -7662,6 +7666,12 @@ waterspitsmuis,bwk_land,vn,bevat,5.0,20.0,2500.0
 waterspitsmuis,bwk_land,vm,bevat,5.0,20.0,2500.0
 waterspitsmuis,bwk_land,vo,bevat,5.0,20.0,2500.0
 waterspitsmuis,bwk_land,vt,bevat,5.0,20.0,2500.0
+waterspitsmuis,bwk_land,rbbmc,bevat,5.0,20.0,2500.0
+waterspitsmuis,bwk_land,rbbms,bevat,5.0,20.0,2500.0
+waterspitsmuis,bwk_land,rbbhc,bevat,5.0,20.0,2500.0
+waterspitsmuis,bwk_land,ce,bevat,5.0,20.0,2500.0
+waterspitsmuis,bwk_land,hc,bevat,5.0,20.0,2500.0
+waterspitsmuis,bwk_land,hm,bevat,5.0,20.0,2500.0
 waterspitsmuis,bwk_land,91D0,bevat,5.0,20.0,2500.0
 geleluzernevlinder,biotoop,6120,bevat,1.0,50.0,5000.0
 geleluzernevlinder,biotoop,hu+,exact,1.0,50.0,5000.0

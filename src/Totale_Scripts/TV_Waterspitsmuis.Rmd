@@ -1,5 +1,5 @@
 ---
-title: "Leefgebiedenscript in R: Turnhouts Vennegebied"
+title: "Leefgebiedenscript in R: Turnhouts Vennegebied - Waterspitsmuis"
 author: "Bert Van Hecke"
 date: "`r Sys.Date()`"
 output: 
@@ -59,37 +59,62 @@ maak_kaart_laag <- function(res_list) {
 }
 
 cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
+  # 1. Controleer of het raster leeg is
   if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
     return(list(raster = masker * NA, clusters = masker * NA))
   }
   
-  temp_mask <- masker
-  if(dist_m > 0) temp_mask <- terra::buffer(masker, width = dist_m / 2)
+  # ----------------------------------------------------------------------------
+  # STAP 1: VEILIGE & SNELLER NETWERKVORMING ZONDER RAM-CRASH
+  # ----------------------------------------------------------------------------
+  if (dist_m > 0) {
+    # Maak binaire kaart (1 = biotoop, NA = rest)
+    r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
+    
+    # Buffer de BINAIR kaart (dit kost vrijwel geen geheugen!)
+    # Volle afstand dist_m zorgt dat plukjes binnen dist_m gegarandeerd samensmelten
+    r_buffered <- terra::buffer(r_binair, width = dist_m)
+    
+    # Maak unieke Netwerk-ID's op de gebufferde zones
+    cl_network <- terra::patches(r_buffered, directions = 8, zeroAsNA = TRUE)
+    
+    # Snijd de Netwerk-ID's direct terug naar waar de originele biotooppixels liggen
+    cl_biotoop_only <- terra::mask(cl_network, masker)
+  } else {
+    cl_network <- terra::patches(masker, directions = 8, zeroAsNA = TRUE)
+    cl_biotoop_only <- cl_network
+  }
   
-  cl <- terra::patches(temp_mask, directions = 8, zeroAsNA = TRUE) %>% terra::mask(masker)
-  
+  # ----------------------------------------------------------------------------
+  # STAP 2: OPPERVLAKTE-OPTELSOM PER GEKOPPELD NETWERK
+  # ----------------------------------------------------------------------------
   if(werkelijk) {
-    stats_df <- terra::zonal(opp_laag, cl, fun = "sum", na.rm = TRUE)
+    stats_df <- terra::zonal(opp_laag, cl_biotoop_only, fun = "sum", na.rm = TRUE)
     colnames(stats_df) <- c("ID", "Waarde")
-    # CORRECTIE: Waarde is de som van fracties (1 pixel = 1.0). 
-    # Vermenigvuldigen met 100 geeft de juiste Area in m2!
     stats_df$Area_m2 <- stats_df$Waarde * 100 
   } else {
-    f <- terra::freq(cl)
+    f <- terra::freq(cl_biotoop_only)
     stats_df <- data.frame(ID = f$value, Waarde = f$count)
-    stats_df$Area_m2 <- stats_df$Waarde * 100 # 1 binaire pixel = 100m2
+    stats_df$Area_m2 <- stats_df$Waarde * 100 
   }
   
   stats_df <- stats_df[!is.na(stats_df$ID), ]
-  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = cl * NA))
+  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
+  # ----------------------------------------------------------------------------
+  # STAP 3: FILTEREN OP TOTALE NETWERK-OPPERVLAKTE >= DREMPEL
+  # ----------------------------------------------------------------------------
   voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
-  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = cl * NA))
+  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
-  masker_binair <- cl %in% voldoet_ids
-  final_mask <- terra::ifel(masker_binair == 1, 1, NA)
+  # Behaal alleen de winnende netwerk-ID's
+  masker_binair <- cl_biotoop_only %in% voldoet_ids
+  final_network_mask <- terra::ifel(masker_binair == 1, 1, NA)
   
-  return(list(raster = terra::mask(masker, final_mask), clusters = cl))
+  r_finaal  <- terra::mask(masker, final_network_mask)
+  cl_finaal <- terra::mask(cl_biotoop_only, r_finaal) 
+  
+  return(list(raster = r_finaal, clusters = cl_finaal))
 }
 ```
 
@@ -99,13 +124,14 @@ df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
 soort <- "waterspitsmuis"
 
 resultaat <- df %>%
-filter(Soort == soort) %>%
-select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
+  filter(Soort == soort) %>%
+  select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
 
 # Variabelen definiëren
-oppervlakte_ha <- resultaat$MinOpp_ha
-afstand_m <- resultaat$AfstandBiotopen_m
-buffer_m <- resultaat$Dispersiecap_m
+oppervlakte_ha    <- resultaat$MinOpp_ha[1]
+drempel_m2        <- oppervlakte_ha * 10000
+afstand_m         <- resultaat$AfstandBiotopen_m[1]
+buffer_m          <- resultaat$Dispersiecap_m[1]
 
 print(resultaat)
 rm(df, resultaat)
@@ -153,7 +179,6 @@ gc()
 
 # Biotoopfiltering (BWK-codes)
 ```{r Biotoopfiltering}
-# 1. LAAD DE BRON-CROSSWALK/DICTIONARY IN
 df_nieuw <- read_csv(here("data/input/Excel_files/Resultaten_Totaal_Samengevoegd.csv"), show_col_types = FALSE)
 
 resultaten_gegroepeerd <- df_nieuw %>%
@@ -162,16 +187,13 @@ resultaten_gegroepeerd <- df_nieuw %>%
   group_by(Type) %>%
   nest(Data = c(Code, Match))
 
-# 2. LAAD DE REGIONALE TABEL IN
 tabel_vlaanderen <- readRDS(here("data/input/Raster_Vlaanderen/BWK_Tabel_Turnhouts_Vennegebied_Plus_50km.rds"))
 setDT(tabel_vlaanderen)
 tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
 
-# Initialiseer de lijsten voor de verschillende habitat-bouwstenen
 lijst_matches      <- list()
 lijst_oppervlaktes <- list()
 
-# 3. VERWERK ELK HABITAT-TYPE DYNAMISCH VIA DATA.TABLE
 for(i in 1:nrow(resultaten_gegroepeerd)) {
   h_type <- resultaten_gegroepeerd$Type[i]
   h_data <- resultaten_gegroepeerd$Data[[i]]
@@ -180,24 +202,17 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   bevat_codes <- tolower(trimws(h_data$Code[h_data$Match == "bevat"]))
   
   if(length(bevat_codes) > 0) {
-    # 1. Ontsnap speciale regex-tekens (zoals haakjes) om syntaxfouten te voorkomen
-    bevat_codes_escaped <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
-    
-    # 2. CRUCIALE FIX: Plak een '^' voor elke individuele code. 
-    # Dit dwingt grepl() om alleen te matchen als de BWK-code BEGINT met deze letters.
+    bevat_codes_escaped  <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
     bevat_codes_anchored <- paste0("^", bevat_codes_escaped)
-    regex_term <- paste0(bevat_codes_anchored, collapse = "|")
-    
-    # Filteren: EXACT-matches (geen letters voor/na) OF codes die BEGINNEN met de bevat-termen
-    tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes | grepl(regex_term, CODE)]
+    regex_term           <- paste0(bevat_codes_anchored, collapse = "|")
+    tabel_gefilterd      <- tabel_vlaanderen[CODE %in% exact_codes | grepl(regex_term, CODE)]
   } else {
-    tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes]
+    tabel_gefilterd      <- tabel_vlaanderen[CODE %in% exact_codes]
   }
   
-  # Filter op studiegebied
-  tabel_TV <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
+  tabel_TV        <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
   tabel_TV_unique <- unique(tabel_TV, by = c("cel_id", "CODE"))
-  tabel_cel_som <- tabel_TV_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)), by = .(cel_id)]
+  tabel_cel_som   <- tabel_TV_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)), by = .(cel_id)]
   
   r_match_type <- id_raster_TV * NA
   r_opp_type   <- id_raster_TV * NA
@@ -217,37 +232,32 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
       }
       r_opp_type[tabel_finaal_mapping$lokale_id] <- tabel_finaal_mapping$Oppervlakte
       
-      # Sla de gegenereerde rasters op
       lijst_matches[[h_type]]      <- r_match_type
       lijst_oppervlaktes[[h_type]] <- r_opp_type
     }
   }
 }
 
-# Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
-water_bwk_max <- lijst_matches[["water_bwk"]]
-water_bwk_opp <- lijst_oppervlaktes[["water_bwk"]]
+water_bwk_max       <- lijst_matches[["water_bwk"]]
+water_bwk_opp       <- lijst_oppervlaktes[["water_bwk"]]
 waterlopen1_bwk_max <- lijst_matches[["waterlopen1_bwk"]]
 waterlopen1_bwk_opp <- lijst_oppervlaktes[["waterlopen1_bwk"]]
-land_bwk_max <- lijst_matches[["bwk_land"]]
-land_bwk_opp <- lijst_oppervlaktes[["bwk_land"]]
+land_bwk_max       <- lijst_matches[["bwk_land"]]
+land_bwk_opp       <- lijst_oppervlaktes[["bwk_land"]]
 
-# Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
 rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
 ```{r omgevingslagen en waterlopen}
 # ==============================================================================
-# STAP 1: TABEL-GEBASEERDE BEBOUWINGSBUFFER (200M) EN LETTERS WATERLOPEN
+# STAP 1: TABEL-GEBASEERDE BEBOUWINGSBUFFER (100M) EN LETTERS WATERLOPEN
 # ==============================================================================
 message("-> Bebouwingslagen isoleren uit de BWK-tabel (alle u-codes behalve ulm)...")
 
-# 1. Selecteer de bebouwingscodes conform je grutto-logica
 bebouwings_lagen <- gouden_namenlijst[grepl("^u[a-z0-9]", gouden_namenlijst) | gouden_namenlijst == "u"]
 bebouwings_lagen <- bebouwings_lagen[bebouwings_lagen != "ulm"]
 
-# Filter de tabel en aggregeer de aanwezigheid per cel
 tabel_bebouw_TV <- tabel_vlaanderen[CODE %in% bebouwings_lagen & cel_id %in% studiegebied_globale_ids]
 tabel_bebouw_som <- tabel_bebouw_TV[, .(Present = ifelse(sum(BWK_FRAC, na.rm = TRUE) > 0, 1, 0)), by = .(cel_id)]
 
@@ -263,29 +273,21 @@ if(nrow(tabel_bebouw_som) > 0) {
   }
 }
 
-# --- EXPERT-UITSLUITING: HUISSPITSMUIS DRUK (200M BUFFER ROND BEBOUWING) ---
-message("-> Huisspitsmuis uitsluitingszone berekenen (200m rondom alle bebouwing)...")
-r_bebouwing_buffer <- terra::buffer(r_bebouwing_raw, width = 200)
+message("-> Huisspitsmuis uitsluitingszone berekenen (100m rondom alle bebouwing)...")
+r_bebouwing_buffer <- terra::buffer(r_bebouwing_raw, width = 100)
 r_bebouwing_masker <- !is.na(r_bebouwing_buffer) & r_bebouwing_buffer == 1
 
-
-# --- WATERLOPEN CONFORM HUETZON VIA LABELS (CATS METHODE) ---
 message("-> Hydrografische waterlopen synchroniseren op basis van Huetzon-letters...")
 r_waterlopen_raw <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_huetzon_10m.tif"))
 r_waterlopen     <- terra::resample(r_waterlopen_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
 
-# Definieer de exacte letters uit het ecologische verhaal
 gewenste_huetzon_letters <- c("Bg", "BgK", "Bk1", "Bk2", "BkK1", "BkK2", "Rk")
 
-# Haal het paspoort (de categoriemetadata) op en map de letters naar de actuele cijfers
 wl_cats <- terra::cats(r_waterlopen)[[1]]
 ids_waterlopen_ok <- wl_cats$value[wl_cats$Label %in% gewenste_huetzon_letters]
 
-# Maak de binaire geschikte waterlopenkaart
 r_waterlopen_huetzon <- r_waterlopen %in% ids_waterlopen_ok
 
-
-# Opschonen van de specifieke tijdelijke objecten uit deze stap
 rm(tabel_bebouw_TV, tabel_bebouw_som, tabel_bebouw_mapping, bebouwings_lagen, 
    r_bebouwing_raw, r_bebouwing_buffer, r_waterlopen_raw, r_waterlopen, wl_cats, ids_waterlopen_ok, gewenste_huetzon_letters)
 gc()
@@ -293,20 +295,23 @@ gc()
 
 ```{r basishabitat scheiden}
 # ==============================================================================
-# STAP 2: SPLITSING WATER- EN LANDHABITAT EN BEBOUWINGSFILTER (PARALLEL)
+# STAP 2: SPLITSING WATER- EN LANDHABITAT (ONGESNEDEN BASIS)
 # ==============================================================================
-message("-> Water- en landbiotopen construeren en zuiveren van bebouwingsdruk...")
+message("-> Water- en landbiotopen opbouwen (volledige basishabitats)...")
 
-# --- SPOOR A: MAX ---
-water_basis_max <- (!is.na(water_bwk_max) & water_bwk_max == 1) | 
-                   (!is.na(waterlopen1_bwk_max) & waterlopen1_bwk_max == 1) | 
-                   (!is.na(r_waterlopen_huetzon) & r_waterlopen_huetzon == 1)
+if(is.null(land_bwk_max) || !inherits(land_bwk_max, "SpatRaster")) {
+  land_bwk_max <- id_raster_TV * NA
+  land_bwk_opp <- id_raster_TV * NA
+}
 
-water_basis_max <- terra::ifel(water_basis_max == 1 & !r_bebouwing_masker, 1, NA)
+# --- SPOOR A: MAX (Ongesneden) ---
+water_basis_max <- terra::cover(water_bwk_max, waterlopen1_bwk_max)
+water_basis_max <- terra::cover(water_basis_max, terra::ifel(r_waterlopen_huetzon == 1, 1, NA))
+water_basis_max <- terra::clamp(water_basis_max, lower = 1, upper = 1, values = FALSE)
 
-land_basis_max <- terra::ifel((!is.na(land_bwk_max) & land_bwk_max == 1) & !r_bebouwing_masker, 1, NA)
+land_basis_max  <- terra::clamp(land_bwk_max, lower = 1, upper = 1, values = FALSE)
 
-# --- SPOOR B: OPP (Parallel & Autonoom) ---
+# --- SPOOR B: OPP (Ongesneden) ---
 water_basis_opp_raw <- terra::app(
   terra::sds(
     terra::ifel(is.na(water_bwk_opp), 0, water_bwk_opp),
@@ -315,121 +320,432 @@ water_basis_opp_raw <- terra::app(
   ),
   fun = function(x) pmin(sum(x, na.rm = TRUE), 1)
 )
+
 water_basis_opp <- terra::mask(water_basis_opp_raw, water_basis_max)
+land_basis_opp  <- terra::mask(land_bwk_opp, land_basis_max)
 
-land_basis_opp <- terra::mask(land_bwk_opp, land_basis_max)
-
-rm(water_bwk_max, water_bwk_opp, waterlopen1_bwk_max, waterlopen1_bwk_opp, land_bwk_max, land_bwk_opp, r_waterlopen_huetzon, water_basis_opp_raw)
+rm(r_waterlopen_huetzon, water_basis_opp_raw)
 gc()
 ```
 
-```{r landclustering en interactie}
+```{r water oever filtering en miniclusters}
 # ==============================================================================
-# STAP 3: LANDCLUSTERING (20M FUZZY) EN INTERACTIE (25 HA DREMPEL - PARALLEL)
+# STAP 3: DUBBELE OEVERCHECK (WATER GEBIED MET 30% LAND OF LAND MET 30% WATER)
 # ==============================================================================
-message("-> Landbiotoop clusteren op 20m onderlinge afstand...")
+message("-> Symmetrische oevercheck uitvoeren voor water- en landclusters...")
 
-# --- SPOOR A: MAX ---
-land_clusters_max <- cluster_filter_compleet(
-  masker     = land_basis_max,
-  opp_laag   = land_basis_opp,
-  drempel_m2 = 25 * 10000, 
-  dist_m     = 20,       
-  werkelijk  = FALSE      
-)
-r_land_25ha_max <- land_clusters_max$raster
+m_buren <- matrix(c(1, 1, 1,
+                    1, 0, 1,
+                    1, 1, 1), nrow = 3, ncol = 3)
 
-# --- SPOOR B: OPP (Parallel & Autonoom) ---
-r_binair_land_opp <- terra::ifel(!is.na(land_basis_opp) & land_basis_opp > 0, 1, NA)
-land_clusters_opp <- cluster_filter_compleet(
-  masker     = r_binair_land_opp,
-  opp_laag   = land_basis_opp,
-  drempel_m2 = 25 * 10000, 
-  dist_m     = 20,       
-  werkelijk  = TRUE      
-)
-r_land_25ha_opp <- land_clusters_opp$raster
+# ------------------------------------------------------------------------------
+# SPOOR A: MAX
+# ------------------------------------------------------------------------------
+r_bin_water_max <- terra::ifel(!is.na(water_basis_max) & water_basis_max == 1, 1, 0)
+r_bin_land_max  <- terra::ifel(!is.na(land_basis_max) & land_basis_max == 1, 1, 0)
 
-message("-> Wederzijdse afstandsinteractie berekenen (500m oeverbereik)...")
+# A1. WATERCLUSTERS TESTEN OP 30% GESCHIKT LAND LANGS OEVER
+# Tel per waterpixel hoeveel buren geschikt land zijn
+land_buren_w_max  <- terra::focal(r_bin_land_max, w = m_buren, fun = "sum", na.rm = TRUE)
+land_buren_w_max  <- terra::mask(land_buren_w_max, r_bin_water_max == 1, maskvalues = FALSE)
 
-r_land_finaal_max  <- template_TV * NA
-r_water_finaal_max <- template_TV * NA
+# Tel per waterpixel het totaal aantal niet-water buren (de hele oeveromtrek)
+niet_water_max    <- terra::ifel(r_bin_water_max == 0 & !is.na(template_TV), 1, 0)
+oever_tot_w_max   <- terra::focal(niet_water_max, w = m_buren, fun = "sum", na.rm = TRUE)
+oever_tot_w_max   <- terra::mask(oever_tot_w_max, r_bin_water_max == 1, maskvalues = FALSE)
 
-if (!all(is.na(terra::values(r_land_25ha_max, mat=FALSE))) && !all(is.na(terra::values(water_basis_max, mat=FALSE)))) {
-  buffer_500m_land_max  <- terra::buffer(r_land_25ha_max, width = 500)
-  buffer_500m_water_max <- terra::buffer(water_basis_max, width = 500)
-  
-  r_land_finaal_max  <- terra::mask(r_land_25ha_max, buffer_500m_water_max)
-  r_water_finaal_max <- terra::mask(water_basis_max, buffer_500m_land_max)
-  
-  rm(buffer_500m_land_max, buffer_500m_water_max)
+water_patches_max <- terra::patches(water_basis_max, directions = 8, zeroAsNA = TRUE)
+
+stats_tot_w_max  <- terra::zonal(oever_tot_w_max, water_patches_max, fun = "sum", na.rm = TRUE)
+stats_land_w_max <- terra::zonal(land_buren_w_max, water_patches_max, fun = "sum", na.rm = TRUE)
+
+colnames(stats_tot_w_max)  <- c("ID", "Tot_oever_contacten")
+colnames(stats_land_w_max) <- c("ID", "Land_contacten")
+
+df_w_max <- merge(stats_tot_w_max, stats_land_w_max, by = "ID", all.x = TRUE)
+df_w_max$Land_contacten[is.na(df_w_max$Land_contacten)] <- 0
+df_w_max$Ratio <- ifelse(df_w_max$Tot_oever_contacten > 0, 
+                          df_w_max$Land_contacten / df_w_max$Tot_oever_contacten, 0)
+
+water_ids_ok_max <- df_w_max$ID[df_w_max$Ratio >= 0.30]
+
+
+# A2. LANDCLUSTERS TESTEN OP 30% WATER LANGS RAND (OMGEKEERDE REGEL)
+# Tel per landpixel hoeveel buren geschikt water zijn
+water_buren_l_max <- terra::focal(r_bin_water_max, w = m_buren, fun = "sum", na.rm = TRUE)
+water_buren_l_max <- terra::mask(water_buren_l_max, r_bin_land_max == 1, maskvalues = FALSE)
+
+# Tel per landpixel het totaal aantal niet-land buren (de hele rand)
+niet_land_max     <- terra::ifel(r_bin_land_max == 0 & !is.na(template_TV), 1, 0)
+rand_tot_l_max    <- terra::focal(niet_land_max, w = m_buren, fun = "sum", na.rm = TRUE)
+rand_tot_l_max    <- terra::mask(rand_tot_l_max, r_bin_land_max == 1, maskvalues = FALSE)
+
+land_patches_max  <- terra::patches(land_basis_max, directions = 8, zeroAsNA = TRUE)
+
+stats_tot_l_max   <- terra::zonal(rand_tot_l_max, land_patches_max, fun = "sum", na.rm = TRUE)
+stats_water_l_max <- terra::zonal(water_buren_l_max, land_patches_max, fun = "sum", na.rm = TRUE)
+
+colnames(stats_tot_l_max)   <- c("ID", "Tot_rand_contacten")
+colnames(stats_water_l_max) <- c("ID", "Water_contacten")
+
+df_l_max <- merge(stats_tot_l_max, stats_water_l_max, by = "ID", all.x = TRUE)
+df_l_max$Water_contacten[is.na(df_l_max$Water_contacten)] <- 0
+df_l_max$Ratio <- ifelse(df_l_max$Tot_rand_contacten > 0, 
+                          df_l_max$Water_contacten / df_l_max$Tot_rand_contacten, 0)
+
+land_ids_ok_max <- df_l_max$ID[df_l_max$Ratio >= 0.30]
+
+
+# A3. COMBINEREN & AANEENGESLOTEN 50M OEVERSTROOK BOUWEN
+# A3. COMBINEREN & AANEENGESLOTEN 50M OEVERSTROOK BOUWEN
+water_geschikt_max <- if(length(water_ids_ok_max) > 0) terra::mask(water_basis_max, water_patches_max %in% water_ids_ok_max, maskvalues = 0) else id_raster_TV * NA
+land_geschikt_direct_max <- if(length(land_ids_ok_max) > 0) terra::mask(land_basis_max, land_patches_max %in% land_ids_ok_max, maskvalues = 0) else id_raster_TV * NA
+
+# 50m buffer rond goedgekeurd water op land leggen
+water_buff_50m_max <- terra::buffer(water_geschikt_max, width = 50)
+land_oever_raw_max <- terra::mask(land_basis_max, water_buff_50m_max)
+
+# Filter losse eilandjes eruit: behoud enkel landbiotoop dat fysiek contact maakt met het water
+land_patches_oever_max <- terra::patches(land_oever_raw_max, directions = 8, zeroAsNA = TRUE)
+
+# GEFIXTE RAAK-CHECK VIA 10M WATERBUFFER
+water_touch_zone_max <- terra::buffer(water_geschikt_max, width = 10)
+land_touching_max   <- terra::mask(land_patches_oever_max, water_touch_zone_max)
+ids_land_raakt_water_max <- unique(na.omit(terra::values(land_touching_max, mat = FALSE)))
+
+if(length(ids_land_raakt_water_max) > 0) {
+  land_oever_50m_max <- terra::mask(land_oever_raw_max, land_patches_oever_max %in% ids_land_raakt_water_max, maskvalues = 0)
+} else {
+  land_oever_50m_max <- id_raster_TV * NA
 }
 
-r_land_finaal_opp  <- template_TV * NA
-r_water_finaal_opp <- template_TV * NA
+minicluster_max_raw <- terra::cover(water_geschikt_max, land_oever_50m_max)
+minicluster_max_raw <- terra::cover(minicluster_max_raw, land_geschikt_direct_max)
 
-if (!all(is.na(terra::values(r_land_25ha_opp, mat=FALSE))) && !all(is.na(terra::values(water_basis_opp, mat=FALSE)))) {
-  r_binair_land25_opp <- terra::ifel(!is.na(r_land_25ha_opp) & r_land_25ha_opp > 0, 1, NA)
-  r_binair_water_opp  <- terra::ifel(!is.na(water_basis_opp) & water_basis_opp > 0, 1, NA)
-  
-  buffer_500m_land_opp  <- terra::buffer(r_binair_land25_opp, width = 500)
-  buffer_500m_water_opp <- terra::buffer(r_binair_water_opp, width = 500)
-  
-  r_land_finaal_opp  <- terra::mask(r_land_25ha_opp, buffer_500m_water_opp)
-  r_water_finaal_opp <- terra::mask(water_basis_opp, buffer_500m_land_opp)
-  
-  rm(r_binair_land25_opp, r_binair_water_opp, buffer_500m_land_opp, buffer_500m_water_opp)
+# BEBOUWINGSFILTER (100m uitsluiting) TOEPASSEN OP HET RESULTAAT VAN STAP 3
+minicluster_max    <- terra::mask(minicluster_max_raw, r_bebouwing_masker, maskvalues = TRUE)
+water_geschikt_max <- terra::mask(water_geschikt_max, r_bebouwing_masker, maskvalues = TRUE)
+land_geschikt_max  <- terra::mask(terra::cover(land_oever_50m_max, land_geschikt_direct_max), r_bebouwing_masker, maskvalues = TRUE)
+
+
+# ------------------------------------------------------------------------------
+# SPOOR B: OPP (Parallel & Autonoom)
+# ------------------------------------------------------------------------------
+r_bin_water_opp <- terra::ifel(!is.na(water_basis_opp) & water_basis_opp > 0, 1, 0)
+r_bin_land_opp  <- terra::ifel(!is.na(land_basis_opp) & land_basis_opp > 0, 1, 0)
+
+# B1. Waterclusters testen
+land_buren_w_opp  <- terra::focal(r_bin_land_opp, w = m_buren, fun = "sum", na.rm = TRUE)
+land_buren_w_opp  <- terra::mask(land_buren_w_opp, r_bin_water_opp == 1, maskvalues = FALSE)
+
+niet_water_opp    <- terra::ifel(r_bin_water_opp == 0 & !is.na(template_TV), 1, 0)
+oever_tot_w_opp   <- terra::focal(niet_water_opp, w = m_buren, fun = "sum", na.rm = TRUE)
+oever_tot_w_opp   <- terra::mask(oever_tot_w_opp, r_bin_water_opp == 1, maskvalues = FALSE)
+
+water_patches_opp <- terra::patches(water_basis_opp, directions = 8, zeroAsNA = TRUE)
+
+stats_tot_w_opp  <- terra::zonal(oever_tot_w_opp, water_patches_opp, fun = "sum", na.rm = TRUE)
+stats_land_w_opp <- terra::zonal(land_buren_w_opp, water_patches_opp, fun = "sum", na.rm = TRUE)
+
+colnames(stats_tot_w_opp)  <- c("ID", "Tot_oever_contacten")
+colnames(stats_land_w_opp) <- c("ID", "Land_contacten")
+
+df_w_opp <- merge(stats_tot_w_opp, stats_land_w_opp, by = "ID", all.x = TRUE)
+df_w_opp$Land_contacten[is.na(df_w_opp$Land_contacten)] <- 0
+df_w_opp$Ratio <- ifelse(df_w_opp$Tot_oever_contacten > 0, 
+                          df_w_opp$Land_contacten / df_w_opp$Tot_oever_contacten, 0)
+
+water_ids_ok_opp <- df_w_opp$ID[df_w_opp$Ratio >= 0.30]
+
+
+# B2. Landclusters testen
+water_buren_l_opp <- terra::focal(r_bin_water_opp, w = m_buren, fun = "sum", na.rm = TRUE)
+water_buren_l_opp <- terra::mask(water_buren_l_opp, r_bin_land_opp == 1, maskvalues = FALSE)
+
+niet_land_opp     <- terra::ifel(r_bin_land_opp == 0 & !is.na(template_TV), 1, 0)
+rand_tot_l_opp    <- terra::focal(niet_land_opp, w = m_buren, fun = "sum", na.rm = TRUE)
+rand_tot_l_opp    <- terra::mask(rand_tot_l_opp, r_bin_land_opp == 1, maskvalues = FALSE)
+
+land_patches_opp  <- terra::patches(land_basis_opp, directions = 8, zeroAsNA = TRUE)
+
+stats_tot_l_opp   <- terra::zonal(rand_tot_l_opp, land_patches_opp, fun = "sum", na.rm = TRUE)
+stats_water_l_opp <- terra::zonal(water_buren_l_opp, land_patches_opp, fun = "sum", na.rm = TRUE)
+
+colnames(stats_tot_l_opp)   <- c("ID", "Tot_rand_contacten")
+colnames(stats_water_l_opp) <- c("ID", "Water_contacten")
+
+df_l_opp <- merge(stats_tot_l_opp, stats_water_l_opp, by = "ID", all.x = TRUE)
+df_l_opp$Water_contacten[is.na(df_l_opp$Water_contacten)] <- 0
+df_l_opp$Ratio <- ifelse(df_l_opp$Tot_rand_contacten > 0, 
+                          df_l_opp$Water_contacten / df_l_opp$Tot_rand_contacten, 0)
+
+land_ids_ok_opp <- df_l_opp$ID[df_l_opp$Ratio >= 0.30]
+
+
+# B3. Samensmelten OPP
+# B3. Samensmelten OPP
+water_geschikt_opp <- if(length(water_ids_ok_opp) > 0) terra::mask(water_basis_opp, water_patches_opp %in% water_ids_ok_opp, maskvalues = 0) else id_raster_TV * NA
+land_geschikt_direct_opp <- if(length(land_ids_ok_opp) > 0) terra::mask(land_basis_opp, land_patches_opp %in% land_ids_ok_opp, maskvalues = 0) else id_raster_TV * NA
+
+r_bin_water_ok_opp  <- terra::ifel(!is.na(water_geschikt_opp) & water_geschikt_opp > 0, 1, NA)
+water_buff_50m_opp  <- terra::buffer(r_bin_water_ok_opp, width = 50)
+land_oever_raw_opp  <- terra::mask(land_basis_opp, water_buff_50m_opp)
+
+land_patches_oever_opp <- terra::patches(land_oever_raw_opp, directions = 8, zeroAsNA = TRUE)
+
+# GEFIXTE RAAK-CHECK VIA 10M WATERBUFFER
+water_touch_zone_opp <- terra::buffer(r_bin_water_ok_opp, width = 10)
+land_touching_opp    <- terra::mask(land_patches_oever_opp, water_touch_zone_opp)
+ids_land_raakt_water_opp <- unique(na.omit(terra::values(land_touching_opp, mat = FALSE)))
+
+if(length(ids_land_raakt_water_opp) > 0) {
+  land_oever_50m_opp <- terra::mask(land_oever_raw_opp, land_patches_oever_opp %in% ids_land_raakt_water_opp, maskvalues = 0)
+} else {
+  land_oever_50m_opp <- id_raster_TV * NA
 }
 
-rm(land_clusters_max, land_clusters_opp, r_binair_land_opp, water_basis_max, water_basis_opp, 
-   r_land_25ha_max, r_land_25ha_opp, r_bebouwing_masker)
+w_opp_nul  <- terra::ifel(is.na(water_geschikt_opp), 0, water_geschikt_opp)
+l1_opp_nul <- terra::ifel(is.na(land_oever_50m_opp), 0, land_oever_50m_opp)
+l2_opp_nul <- terra::ifel(is.na(land_geschikt_direct_opp), 0, land_geschikt_direct_opp)
+
+minicluster_opp_raw <- terra::clamp(w_opp_nul + l1_opp_nul + l2_opp_nul, upper = 1.0)
+minicluster_opp_raw <- terra::ifel(minicluster_opp_raw > 0, minicluster_opp_raw, NA)
+
+minicluster_opp <- terra::mask(minicluster_opp_raw, r_bebouwing_masker, maskvalues = TRUE)
+
+rm(m_buren, r_bin_water_max, r_bin_land_max, niet_water_max, niet_land_max, df_w_max, df_l_max,
+   r_bin_water_opp, r_bin_land_opp, niet_water_opp, niet_land_opp, df_w_opp, df_l_opp,
+   w_opp_nul, l1_opp_nul, l2_opp_nul, minicluster_opp_raw, minicluster_max_raw, r_bebouwing_masker)
 gc()
 ```
 
 ```{r finale samensmelting}
 # ==============================================================================
-# STAP 4: LOGISCHE SAMENSMELTING EN PARALLEL OPPERVLAKTESPOOR (PARALLEL)
+# STAP 4: MINICLUSTER KOPPELING (250M) EN DREMPELFILTERING (25 HA)
 # ==============================================================================
-message("-> Land- en waterleefgebieden samensmelten tot eindrapportage...")
+message("-> Miniclusters koppelen op 250m afstand en filteren op >= 25 ha netwerkoppervlakte...")
 
-# Spoor A: MAX
-waterspitsmuis_leefgebied_max <- !is.na(r_land_finaal_max) | !is.na(r_water_finaal_max)
-waterspitsmuis_leefgebied_max <- terra::ifel(waterspitsmuis_leefgebied_max == 1, 1, NA)
-waterspitsmuis_leefgebied_max <- terra::crop(waterspitsmuis_leefgebied_max, template_TV)
+# --- SPOOR A: MAX ---
+geclusterd_max <- cluster_filter_compleet(
+  masker     = minicluster_max,
+  opp_laag   = minicluster_max,
+  drempel_m2 = drempel_m2,
+  dist_m     = afstand_m,
+  werkelijk  = FALSE
+)
+waterspitsmuis_leefgebied_max <- geclusterd_max$raster
 
-# Spoor B: OPP (Parallel & Autonoom)
-w_clean <- terra::ifel(is.na(r_water_finaal_opp), 0, r_water_finaal_opp)
-l_clean <- terra::ifel(is.na(r_land_finaal_opp), 0, r_land_finaal_opp)
-som_raw <- w_clean + l_clean
-som_cl  <- terra::clamp(som_raw, upper = 1.0)
+# --- SPOOR B: OPP ---
+r_binair_mini_opp <- terra::ifel(!is.na(minicluster_opp) & minicluster_opp > 0, 1, NA)
+geclusterd_opp <- cluster_filter_compleet(
+  masker     = r_binair_mini_opp,
+  opp_laag   = minicluster_opp,
+  drempel_m2 = drempel_m2,
+  dist_m     = afstand_m,
+  werkelijk  = TRUE
+)
+waterspitsmuis_leefgebied_opp <- geclusterd_opp$raster
 
-waterspitsmuis_leefgebied_opp <- terra::ifel(som_cl > 0, som_cl, NA)
-waterspitsmuis_leefgebied_opp <- terra::crop(waterspitsmuis_leefgebied_opp, template_TV)
+r_land_finaal_max  <- terra::mask(land_geschikt_max, waterspitsmuis_leefgebied_max)
+r_water_finaal_max <- terra::mask(water_geschikt_max, waterspitsmuis_leefgebied_max)
 
 cat("Definitief leefgebied Waterspitsmuis MAX (ha):", round(calc_ha_exact(waterspitsmuis_leefgebied_max), 2), "\n")
 cat("Definitief leefgebied Waterspitsmuis OPP (ha):", round(calc_ha_exact(waterspitsmuis_leefgebied_opp), 2), "\n")
 
-rm(w_clean, l_clean, som_raw, som_cl)
+rm(r_binair_mini_opp)
 gc()
+```
+
+```{r}
+# --- STAP 1: BEBOUWING (100M BUFFER) & HUETZON ---
+bebouwings_lagen <- gouden_namenlijst[grepl("^u[a-z0-9]", gouden_namenlijst) | gouden_namenlijst == "u"]
+bebouwings_lagen <- bebouwings_lagen[bebouwings_lagen != "ulm"]
+
+tabel_bebouw_TV  <- tabel_vlaanderen[CODE %in% bebouwings_lagen & cel_id %in% studiegebied_globale_ids]
+tabel_bebouw_som <- tabel_bebouw_TV[, .(Present = ifelse(sum(BWK_FRAC, na.rm = TRUE) > 0, 1, 0)), by = .(cel_id)]
+
+r_bebouwing_raw <- id_raster_TV * NA
+if(nrow(tabel_bebouw_som) > 0) {
+  setnames(tabel_bebouw_som, "cel_id", "globale_id")
+  tabel_bebouw_mapping <- merge(tabel_bebouw_som, vertaal_df, by = "globale_id", all.x = TRUE)
+  tabel_bebouw_mapping <- tabel_bebouw_mapping[!is.na(lokale_id) & Present == 1]
+  if(nrow(tabel_bebouw_mapping) > 0) r_bebouwing_raw[tabel_bebouw_mapping$lokale_id] <- 1
+}
+
+# AANGEPAST: 100m uitsluitingsbuffer rond bebouwing
+r_bebouwing_buffer <- terra::buffer(r_bebouwing_raw, width = 100)
+r_bebouwing_masker <- !is.na(r_bebouwing_buffer) & r_bebouwing_buffer == 1
+
+r_waterlopen_raw <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_huetzon_10m.tif"))
+r_waterlopen     <- terra::resample(r_waterlopen_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
+gewenste_huetzon_letters <- c("Bg", "BgK", "Bk1", "Bk2", "BkK1", "BkK2", "Rk")
+wl_cats          <- terra::cats(r_waterlopen)[[1]]
+ids_waterlopen_ok<- wl_cats$value[wl_cats$Label %in% gewenste_huetzon_letters]
+r_waterlopen_huetzon <- r_waterlopen %in% ids_waterlopen_ok
+
+
+# --- STAP 2: BASIS WATER EN LAND (ONGESNEDEN) ---
+water_basis_raw <- terra::cover(water_bwk_max, waterlopen1_bwk_max)
+water_basis_raw <- terra::cover(water_basis_raw, terra::ifel(r_waterlopen_huetzon == 1, 1, NA))
+water_basis_max <- terra::clamp(water_basis_raw, lower = 1, upper = 1, values = FALSE)
+land_basis_max  <- terra::clamp(land_bwk_max, lower = 1, upper = 1, values = FALSE)
+
+
+# --- STAP 3: DUBBELE OEVERANALYSE (WATER MET LAND OF LAND MET WATER) ---
+m_buren <- matrix(c(1, 1, 1, 1, 0, 1, 1, 1, 1), nrow = 3, ncol = 3)
+
+r_bin_water_max <- terra::ifel(!is.na(water_basis_max) & water_basis_max == 1, 1, 0)
+r_bin_land_max  <- terra::ifel(!is.na(land_basis_max) & land_basis_max == 1, 1, 0)
+
+# 1. WATER MET MINSTENS 30% LAND
+land_buren_w_max  <- terra::focal(r_bin_land_max, w = m_buren, fun = "sum", na.rm = TRUE)
+land_buren_w_max  <- terra::mask(land_buren_w_max, r_bin_water_max == 1, maskvalues = FALSE)
+
+niet_water_max    <- terra::ifel(r_bin_water_max == 0 & !is.na(template_TV), 1, 0)
+oever_tot_w_max   <- terra::focal(niet_water_max, w = m_buren, fun = "sum", na.rm = TRUE)
+oever_tot_w_max   <- terra::mask(oever_tot_w_max, r_bin_water_max == 1, maskvalues = FALSE)
+
+water_patches_max <- terra::patches(water_basis_max, directions = 8, zeroAsNA = TRUE)
+
+stats_tot_w_max  <- terra::zonal(oever_tot_w_max, water_patches_max, fun = "sum", na.rm = TRUE)
+stats_land_w_max <- terra::zonal(land_buren_w_max, water_patches_max, fun = "sum", na.rm = TRUE)
+
+colnames(stats_tot_w_max)  <- c("ID", "Tot_oever_contacten")
+colnames(stats_land_w_max) <- c("ID", "Land_contacten")
+
+df_w_max <- merge(stats_tot_w_max, stats_land_w_max, by = "ID", all.x = TRUE)
+df_w_max$Land_contacten[is.na(df_w_max$Land_contacten)] <- 0
+df_w_max$Ratio <- ifelse(df_w_max$Tot_oever_contacten > 0, df_w_max$Land_contacten / df_w_max$Tot_oever_contacten, 0)
+
+water_ids_ok_max <- df_w_max$ID[df_w_max$Ratio >= 0.30]
+
+# 2. LAND MET MINSTENS 30% WATER (OMGEKEERD)
+water_buren_l_max <- terra::focal(r_bin_water_max, w = m_buren, fun = "sum", na.rm = TRUE)
+water_buren_l_max <- terra::mask(water_buren_l_max, r_bin_land_max == 1, maskvalues = FALSE)
+
+niet_land_max     <- terra::ifel(r_bin_land_max == 0 & !is.na(template_TV), 1, 0)
+rand_tot_l_max    <- terra::focal(niet_land_max, w = m_buren, fun = "sum", na.rm = TRUE)
+rand_tot_l_max    <- terra::mask(rand_tot_l_max, r_bin_land_max == 1, maskvalues = FALSE)
+
+land_patches_max  <- terra::patches(land_basis_max, directions = 8, zeroAsNA = TRUE)
+
+stats_tot_l_max   <- terra::zonal(rand_tot_l_max, land_patches_max, fun = "sum", na.rm = TRUE)
+stats_water_l_max <- terra::zonal(water_buren_l_max, land_patches_max, fun = "sum", na.rm = TRUE)
+
+colnames(stats_tot_l_max)   <- c("ID", "Tot_rand_contacten")
+colnames(stats_water_l_max) <- c("ID", "Water_contacten")
+
+df_l_max <- merge(stats_tot_l_max, stats_water_l_max, by = "ID", all.x = TRUE)
+df_l_max$Water_contacten[is.na(df_l_max$Water_contacten)] <- 0
+df_l_max$Ratio <- ifelse(df_l_max$Tot_rand_contacten > 0, df_l_max$Water_contacten / df_l_max$Tot_rand_contacten, 0)
+
+land_ids_ok_max <- df_l_max$ID[df_l_max$Ratio >= 0.30]
+
+# 3. COMBINEREN EN AANEENGESLOTEN 50M BUFFER BOUWEN
+water_geschikt_max <- if(length(water_ids_ok_max) > 0) terra::mask(water_basis_max, water_patches_max %in% water_ids_ok_max, maskvalues = 0) else id_raster_TV * NA
+land_geschikt_direct_max <- if(length(land_ids_ok_max) > 0) terra::mask(land_basis_max, land_patches_max %in% land_ids_ok_max, maskvalues = 0) else id_raster_TV * NA
+
+water_buff_50m_max <- terra::buffer(water_geschikt_max, width = 50)
+land_oever_raw_max <- terra::mask(land_basis_max, water_buff_50m_max)
+
+land_patches_oever_max <- terra::patches(land_oever_raw_max, directions = 8, zeroAsNA = TRUE)
+water_touch_zone_max   <- terra::buffer(water_geschikt_max, width = 10)
+land_touching_max      <- terra::mask(land_patches_oever_max, water_touch_zone_max)
+ids_land_raakt_water_max <- unique(na.omit(terra::values(land_touching_max, mat = FALSE)))
+
+if(length(ids_land_raakt_water_max) > 0) {
+  land_oever_50m_max <- terra::mask(land_oever_raw_max, land_patches_oever_max %in% ids_land_raakt_water_max, maskvalues = 0)
+} else {
+  land_oever_50m_max <- id_raster_TV * NA
+}
+
+minicluster_raw <- terra::cover(water_geschikt_max, land_oever_50m_max)
+minicluster_raw <- terra::cover(minicluster_raw, land_geschikt_direct_max)
+
+# BEBOUWINGSFILTER (100M) PAS HIER TOEPASSEN
+minicluster <- terra::mask(minicluster_raw, r_bebouwing_masker, maskvalues = TRUE)
+
+
+# --- STAP 4: KOPPELING EN NETWERK (250m & 25ha) ---
+cl_network <- terra::buffer(terra::ifel(!is.na(minicluster), 1, NA), width = afstand_m) %>% 
+  terra::patches(directions = 8, zeroAsNA = TRUE)
+cl_biotoop <- terra::mask(cl_network, minicluster)
+
+freq_df <- as.data.frame(terra::freq(cl_biotoop))
+freq_df$Area_ha <- freq_df$count * 0.01
+valid_ids <- freq_df$value[freq_df$Area_ha >= oppervlakte_ha]
+
+if(length(valid_ids) > 0) {
+  finaal_leefgebied <- terra::mask(minicluster, cl_biotoop %in% valid_ids, maskvalues = 0)
+} else {
+  finaal_leefgebied <- id_raster_TV * NA
+}
+
+# Projectie naar EPSG:4326 voor Leaflet
+to_web <- function(r) {
+  if(is.null(r) || all(is.na(terra::values(r, mat=FALSE)))) return(NULL)
+  terra::project(r, "EPSG:4326", method = "near")
+}
+
+r_web_water_basis    <- to_web(water_basis_max)
+r_web_land_basis     <- to_web(land_basis_max)
+r_web_water_geschikt <- to_web(water_geschikt_max)
+r_web_minicluster    <- to_web(minicluster)
+r_web_finaal         <- to_web(finaal_leefgebied)
+
+grens_web <- st_transform(sf::st_as_sf(area_shape_proj), 4326)
+bbox      <- st_bbox(grens_web)
+
+map <- leaflet() %>%
+  addTiles(group = "OSM (Kaart)") %>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet") %>%
+  fitBounds(bbox[['xmin']], bbox[['ymin']], bbox[['xmax']], bbox[['ymax']])
+
+# 1. Onverstoorde Basisbiotopen (Volledig potentieel)
+if(!is.null(r_web_water_basis)) {
+  map <- map %>% addRasterImage(r_web_water_basis, colors = "#377eb8", opacity = 0.6, group = "1. Water Basis (Onverstoord)")
+}
+if(!is.null(r_web_land_basis)) {
+  map <- map %>% addRasterImage(r_web_land_basis, colors = "#4daf4a", opacity = 0.5, group = "1. Land Basis (Onverstoord)")
+}
+
+# 2. Goedgekeurde Biotopen & Miniclusters
+if(!is.null(r_web_water_geschikt)) {
+  map <- map %>% addRasterImage(r_web_water_geschikt, colors = "#00f0ff", opacity = 0.9, group = "2A. Goedgekeurd Water/Land (30% Regel)")
+}
+if(!is.null(r_web_minicluster)) {
+  map <- map %>% addRasterImage(r_web_minicluster, colors = "#ff7f00", opacity = 0.7, group = "2B. Miniclusters (Na 100m Bebouwingsfilter)")
+}
+
+# 3. Finaal leefgebied
+if(!is.null(r_web_finaal)) {
+  map <- map %>% addRasterImage(r_web_finaal, colors = "#00ff00", opacity = 1.0, group = "3. Finaal Leefgebied (>=25 ha)")
+}
+
+map %>%
+  addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens Studiegebied") %>%
+  addLayersControl(
+    baseGroups = c("OSM (Kaart)", "Satelliet"),
+    overlayGroups = c("1. Water Basis (Onverstoord)", 
+                      "1. Land Basis (Onverstoord)",
+                      "2A. Goedgekeurd Water/Land (30% Regel)",
+                      "2B. Miniclusters (Na 100m Bebouwingsfilter)",
+                      "3. Finaal Leefgebied (>=25 ha)"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
 ```
 
 # Resultaten en Statistiek
 ```{r Resultaten en statistiek}
 # ==============================================================================
-# ECOLOOG-MAPPING: BRUG TUSSEN SCRIPT EN STATISTIEK (GEFIXT)
+# ECOLOOG-MAPPING: BRUG TUSSEN SCRIPT EN STATISTIEK
 # ==============================================================================
-# We wijzen hier de gegenereerde waterspitsmuisrasters toe aan de generieke QA-namen
-cl_max    <- waterspitsmuis_leefgebied_max
+cl_max    <- geclusterd_max$clusters
 final_max <- waterspitsmuis_leefgebied_max
-bwk_opp   <- waterspitsmuis_leefgebied_opp
+bwk_opp   <- minicluster_opp
 final_opp <- waterspitsmuis_leefgebied_opp
 
-# EXPERT-EISEN: Netwerkgrootte instellen op 25 ha
-oppervlakte_ha <- 25
-drempel_m2     <- 250000
-
-# Binnen masker is de binaire template van Turnhouts Vennegebied
-binnen_masker  <- template_TV
+binnen_masker <- template_TV
 
 # --- BEREKENING EN STATISTIEK ---
 soort_format <- paste0(toupper(substr(soort, 1, 1)), tolower(substr(soort, 2, nchar(soort))))
@@ -460,15 +776,13 @@ if (file.exists(waarnemingen_path)) {
 verspreiding_raster <- terra::rast(template_TV, vals = NA)
 verspreiding_netwerk_count <- 0
 
-if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
+if (!is.null(cl_max) && !all(is.na(terra::values(cl_max, mat=FALSE)))) {
   
-  # 1. Haal de binaire frequenties/oppervlaktes op
   stats_max_raw <- terra::freq(cl_max)
   stats_max_raw <- as.data.frame(stats_max_raw)
   colnames(stats_max_raw) <- c("layer", "ID", "count")
   stats_max_raw$Pot_ha <- stats_max_raw$count * 0.01
   
-  # 2. Haal de werkelijke habitat-oppervlaktes op
   zonal_raw <- terra::zonal(bwk_opp, cl_max, fun = "sum", na.rm = TRUE)
   zonal_raw <- as.data.frame(zonal_raw)
   colnames(zonal_raw) <- c("ID", "Werk_ha_raw")
@@ -478,24 +792,20 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   stats_gecombineerd$Werk_ha[is.na(stats_gecombineerd$Werk_ha)] <- 0
   stats_gecombineerd$Werk_ha <- pmin(stats_gecombineerd$Werk_ha, stats_gecombineerd$Pot_ha)
 
-  # 3. Filter op basis van de gekoppelde ID's en de 25 ha expert-eis
   ids_potentieel_totaal <- stats_gecombineerd$ID[stats_gecombineerd$Pot_ha >= oppervlakte_ha]
   ids_werkelijk_totaal  <- stats_gecombineerd$ID[(stats_gecombineerd$Werk_ha * 10000) >= drempel_m2]
   
-  # 4. Bepaal welke clusters het Turnhouts Vennegebied (binnen) raken
   zonal_zone <- terra::zonal(binnen_masker, cl_max, fun = "max", na.rm = TRUE)
   zonal_zone <- as.data.frame(zonal_zone)
   colnames(zonal_zone) <- c("ID", "In_TV")
   ids_die_TV_raken <- zonal_zone$ID[!is.na(zonal_zone$In_TV) & zonal_zone$In_TV > 0]
   
-  # 5. De opsplitsing
   ids_pot_bin   <- intersect(ids_potentieel_totaal, ids_die_TV_raken)
   ids_pot_buit  <- setdiff(ids_potentieel_totaal, ids_die_TV_raken)
   
   ids_werk_bin  <- intersect(ids_werkelijk_totaal, ids_die_TV_raken)
   ids_werk_buit <- setdiff(ids_werkelijk_totaal, ids_die_TV_raken)
   
-  # A. ARPL Extractie
   if(has_observations && nrow(df_points_sf) > 0) {
     extract_ids_max <- terra::extract(cl_max, waarneming_blobs_vect, ID = FALSE)
     ids_raken_waarneming <- if(nrow(extract_ids_max) > 0) unique(na.omit(extract_ids_max[[1]])) else c()
@@ -504,7 +814,6 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   }
   ids_actueel_relevant <- intersect(ids_werkelijk_totaal, ids_raken_waarneming)
 
-  # B. Actuele Verspreiding Extractie
   if(has_observations && nrow(df_points_sf) > 0) {
     extract_ids_verspr <- terra::extract(cl_max, waarneming_punten_vect, ID = FALSE)
     ids_raken_punten <- if(nrow(extract_ids_verspr) > 0) unique(na.omit(extract_ids_verspr[[1]])) else c()
@@ -558,7 +867,7 @@ tabel_totaal %>%
 ```
 
 ```{r Interactieve kaart}
-# --- INTERACTIEVE KAART: METADATA EN ECO-VISUELE SPLITSING (LAND/WATER) ---
+# --- INTERACTIEVE EINDKAART: DEFINITIEF LEEFGEBIED & STATISTIEK ---
 
 if (has_observations && nrow(df_points_sf) > 0) {
   waarneming_smear_web <- st_transform(waarneming_smear_sf, 4326)
@@ -568,61 +877,8 @@ if (has_observations && nrow(df_points_sf) > 0) {
   points_web           <- st_sf(st_sfc(crs = 4326))
 }
 
-# --- 1. SPREID DE POLYGONEN UIT NAAR EEN ECHTE LAND EN WATER SCHEIDING ---
-cl_poly_land_final  <- st_sf(st_sfc(crs = 4326))
-cl_poly_water_final <- st_sf(st_sfc(crs = 4326))
-
-if (!all(is.na(terra::values(cl_max, mat=FALSE))) && nrow(stats_gecombineerd) > 0) {
-  
-  # A. Isoleer en vectoriseer de LAND-componenten
-  r_land_scherp <- terra::mask(cl_max, r_land_finaal_max)
-  if (!all(is.na(terra::values(r_land_scherp, mat=FALSE)))) {
-    cl_poly_land <- terra::as.polygons(r_land_scherp, aggregate = TRUE) %>% st_as_sf() %>% st_transform(4326)
-    cluster_info_land <- stats_gecombineerd %>%
-      left_join(zonal_zone, by = "ID") %>% 
-      mutate(
-        Zone = ifelse(!is.na(In_TV) & In_TV > 0, "Binnen TV", "Buiten TV (Buffer)"),
-        ARPL = ID %in% ids_actueel_relevant,
-        Status = ifelse(ID %in% ids_werkelijk_totaal, "Werkelijk Habitat", "Potentieel (Onder Drempel)"),
-        Popup = paste0(
-          "<div style='font-family: Arial; min-width: 180px;'>",
-          "<strong style='color:#4daf4a;'>Waterspitsmuis: Landbiotoop</strong><br><hr>",
-          "<strong>Cluster ID:</strong> ", ID, "<br>",
-          "<strong>Zone:</strong> ", Zone, "<br>",
-          "<strong>Status netwerk:</strong> ", Status, "<br><br>",
-          "<strong>Totaal netwerkoppervlak (Land+Water):</strong> ", round(Werk_ha, 2), " ha",
-          "</div>"
-        )
-      )
-    cl_poly_land_final <- cl_poly_land %>% inner_join(cluster_info_land, by = setNames("ID", names(cl_poly_land)[1]))
-  }
-  
-  # B. Isoleer en vectoriseer de WATER-componenten
-  r_water_scherp <- terra::mask(cl_max, r_water_finaal_max)
-  if (!all(is.na(terra::values(r_water_scherp, mat=FALSE)))) {
-    cl_poly_water <- terra::as.polygons(r_water_scherp, aggregate = TRUE) %>% st_as_sf() %>% st_transform(4326)
-    cluster_info_water <- stats_gecombineerd %>%
-      left_join(zonal_zone, by = "ID") %>% 
-      mutate(
-        Zone = ifelse(!is.na(In_TV) & In_TV > 0, "Binnen TV", "Buiten TV (Buffer)"),
-        ARPL = ID %in% ids_actueel_relevant,
-        Status = ifelse(ID %in% ids_werkelijk_totaal, "Werkelijk Habitat", "Potentieel (Onder Drempel)"),
-        Popup = paste0(
-          "<div style='font-family: Arial; min-width: 180px;'>",
-          "<strong style='color:#377eb8;'>Waterspitsmuis: Waterbiotoop</strong><br><hr>",
-          "<strong>Gekoppeld Cluster ID:</strong> ", ID, "<br>",
-          "<strong>Zone:</strong> ", Zone, "<br>",
-          "<strong>Status netwerk:</strong> ", Status, "<br><br>",
-          "<strong>Totaal netwerkoppervlak (Land+Water):</strong> ", round(Werk_ha, 2), " ha",
-          "</div>"
-        )
-      )
-    cl_poly_water_final <- cl_poly_water %>% inner_join(cluster_info_water, by = setNames("ID", names(cl_poly_water)[1]))
-  }
-}
-
-# --- 2. BEREKEN DE STATUSPIXELS VOOR DE ACHTERGROND (BLIJFT FUNCTIONEEL GELIJK) ---
-if (!all(is.na(terra::values(cl_max, mat=FALSE))) && nrow(stats_gecombineerd) > 0) {
+# 1. BEREKEN STATUSPIXELS (Werkelijk / Potentieel / ARPL)
+if (!is.null(cl_max) && !all(is.na(terra::values(cl_max, mat=FALSE))) && nrow(stats_gecombineerd) > 0) {
   bin_w  <- if(length(ids_werk_bin) > 0) ids_werk_bin else -999
   buit_w <- if(length(ids_werk_buit) > 0) ids_werk_buit else -999
   bin_p  <- if(length(ids_pot_bin) > 0) ids_pot_bin else -999
@@ -637,58 +893,70 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE))) && nrow(stats_gecombineerd) > 
   r_web_status <- terra::rast(template_TV, vals = NA) %>% terra::project("EPSG:4326")
 }
 
+# 2. VECTORISEER HET DEFINITIEVE LEEFGEBIED VOOR SCHERPE POLYGONEN EN POPUPS
+if (!is.null(cl_max) && !all(is.na(terra::values(cl_max, mat=FALSE))) && nrow(stats_gecombineerd) > 0) {
+  cl_poly_A <- terra::as.polygons(cl_max, aggregate = TRUE) %>% st_as_sf() %>% st_transform(4326)
+  
+  cluster_info_A <- stats_gecombineerd %>%
+    left_join(zonal_zone, by = "ID") %>% 
+    mutate(
+      Zone = ifelse(!is.na(In_TV) & In_TV > 0, "Binnen TV", "Buiten TV (Buffer)"),
+      ARPL = ID %in% ids_actueel_relevant,
+      Type = ifelse(ID %in% ids_werkelijk_totaal, "Werkelijk Habitat", "Potentieel (Niet Werkelijk)"),
+      Popup = paste0(
+        "<div style='font-family: Arial; min-width: 180px;'>",
+        "<strong>Waterspitsmuis Leefgebied Netwerk</strong><br>",
+        "<strong>Cluster ID:</strong> ", ID, "<br>",
+        "<strong>Zone:</strong> ", Zone, "<br><hr>",
+        "<strong>Status:</strong> ", Type, "<br>",
+        "<strong>Actueel Relevant (ARPL):</strong> ", ifelse(ARPL, "<span style='color:green;font-weight:bold;'>JA</span>", "<span style='color:red;'>NEE</span>"), "<br>",
+        "<strong>Potentieel Oppervlak:</strong> ", round(Pot_ha, 2), " ha<br>",
+        "<strong>Werkelijk Habitat binnen dit netwerk:</strong> ", round(coalesce(Werk_ha, 0), 2), " ha",
+        "</div>"
+      )
+    )
+  cl_poly_final_A <- cl_poly_A %>% inner_join(cluster_info_A, by = setNames("ID", names(cl_poly_A)[1]))
+} else {
+  cl_poly_final_A <- st_sf(st_sfc(crs = 4326))
+}
+
 grens_web <- st_transform(st_as_sf(area_shape_proj), 4326)
 bbox      <- st_bbox(grens_web)
 
-pal_4 <- colorFactor(
-  palette = c("#FF00FF", "#FF8C00", "#4daf4a", "#377eb8"), 
-  levels = c("1", "2", "3", "4"), 
-  na.color = "transparent"
-)
+pal_status <- colorFactor(palette = c("#4daf4a", "#e41a1c"), levels = c("Werkelijk Habitat", "Potentieel (Niet Werkelijk)"))
+pal_4      <- colorFactor(palette = c("#FF00FF", "#FF8C00", "#4daf4a", "#377eb8"), levels = c("1", "2", "3", "4"), na.color = "transparent")
 
-# --- 3. LEAFLET INTERACTIEVE KAART OPBOUW ---
+# --- LEAFLET INTERACTIEVE KAART OPBOUW ---
 map <- leaflet() %>%
   addTiles(group = "OSM (Kaart)") %>%
   addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet") %>%
   fitBounds(bbox[['xmin']], bbox[['ymin']], bbox[['xmax']], bbox[['ymax']])
 
+# Status pixels (achtergrond)
 if(!all(is.na(terra::values(r_web_status, mat=FALSE)))) {
-  map <- map %>% addRasterImage(terra::as.int(r_web_status), colors = pal_4, opacity = 0.3, group = "Habitat Status (Pixels)")
+  map <- map %>% addRasterImage(terra::as.int(r_web_status), colors = pal_4, opacity = 0.4, group = "Habitat Status (Pixels)")
 }
 
-# BIOTOOP LAAG 1: De Landbiotopen (Mooi Groen afgebeeld)
-if(nrow(cl_poly_land_final) > 0) {
+# Definitieve leefgebied polygonen
+if(nrow(cl_poly_final_A) > 0) {
   map <- map %>% addPolygons(
-    data = cl_poly_land_final,
-    fillColor = "#4daf4a",
+    data = cl_poly_final_A,
+    fillColor = ~pal_status(Type),
     fillOpacity = ~ifelse(ARPL, 0.6, 0.15), 
-    color = "#2ca25f", 
+    color = ~pal_status(Type), 
     weight = ~ifelse(ARPL, 2.5, 0.5), 
     opacity = 1,
     popup = ~Popup,
-    group = "Landbiotoop (Groen)"
+    group = "Leefgebieden (Netwerk)"
   )
 }
 
-# BIOTOOP LAAG 2: De Waterbiotopen & Waterlopen (Prachtig Blauw afgebeeld!)
-if(nrow(cl_poly_water_final) > 0) {
-  map <- map %>% addPolygons(
-    data = cl_poly_water_final,
-    fillColor = "#377eb8",
-    fillOpacity = ~ifelse(ARPL, 0.65, 0.2), 
-    color = "#1c9099", 
-    weight = ~ifelse(ARPL, 2.5, 0.5), 
-    opacity = 1,
-    popup = ~Popup,
-    group = "Waterbiotoop (Blauw)"
-  )
-}
-
+# Waarnemingen & Smear
 if(has_observations && nrow(df_points_sf) > 0) {
   map <- map %>%
     addPolygons(
       data = waarneming_smear_web,  
-      color = "#984ea3", weight = 1.5, fill = FALSE, dashArray = "10, 5", 
+      color = "#377eb8", weight = 2, fill = FALSE, dashArray = "10, 5", 
       group = "Dispersiebereik (Smear)"
     ) %>%
     addCircles(
@@ -702,7 +970,7 @@ map %>%
   addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens Studiegebied") %>%
   addLayersControl(
     baseGroups = c("OSM (Kaart)", "Satelliet"),
-    overlayGroups = c("Landbiotoop (Groen)", "Waterbiotoop (Blauw)", "Habitat Status (Pixels)", 
+    overlayGroups = c("Leefgebieden (Netwerk)", "Habitat Status (Pixels)", 
                       "Dispersiebereik (Smear)", "Waarnemingen", "Grens Studiegebied"),
     options = layersControlOptions(collapsed = FALSE)
   )
@@ -735,7 +1003,7 @@ if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
 export_config <- list(
   list(rast = final_max,              naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
   list(rast = werkelijk_export_rast, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,      naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
+  list(rast = arpl_export_rast,      naam = "ARPL",                      folder = folders$arpl,         type = "INT1U"),
   list(rast = verspreiding_raster,   naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 
