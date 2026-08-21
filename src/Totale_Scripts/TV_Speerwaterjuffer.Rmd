@@ -326,7 +326,7 @@ land_nabij_filter_opp     <- terra::ifel(!is.na(land_nabij_filter_opp_raw) & lan
 land_nabij_clusters_max <- cluster_filter_compleet(
   masker     = land_nabij_filter_max,
   opp_laag   = land_nabij_filter_opp,
-  drempel_m2 = 50000,   
+  drempel_m2 = 100000,   
   dist_m     = 20,       
   werkelijk  = FALSE      
 )
@@ -335,7 +335,7 @@ r_binair_land_nabij_opp <- terra::ifel(!is.na(land_nabij_filter_opp) & land_nabi
 land_nabij_clusters_opp <- cluster_filter_compleet(
   masker     = r_binair_land_nabij_opp,
   opp_laag   = land_nabij_filter_opp,
-  drempel_m2 = 50000,   
+  drempel_m2 = 100000,   
   dist_m     = 20,       
   werkelijk  = TRUE      
 )
@@ -346,9 +346,9 @@ gc()
 
 ```{r boscheck}
 # ==============================================================================
-# ECOLOGISCH GECORRIGEERD: STRIKTE 50% BOS-MOZAÏEK CHECK OP HET LANDBIOTOOP (PARALLEL)
+# ECOLOGISCH GECORRIGEERD: STRIKTE 60% BOS-MOZAÏEK CHECK OP HET LANDBIOTOOP (PARALLEL)
 # ==============================================================================
-message("-> Nabij landbiotoop filteren op basis van netto 50% bos-eis binnenshuis...")
+message("-> Nabij landbiotoop filteren op basis van netto 60% bos-eis binnenshuis...")
 
 # --- SPOOR A: MAX ---
 cl_land_nabij_max <- land_nabij_clusters_max$clusters
@@ -373,7 +373,7 @@ if (!all(is.na(terra::values(cl_land_nabij_max, mat=FALSE)))) {
   df_criteria_max[is.na(df_criteria_max)] <- 0
   df_criteria_max$Percentage_Bos <- (df_criteria_max$Bos_ha / df_criteria_max$Land_ha) * 100
   
-  goedgekeurde_land_ids_max <- df_criteria_max$ID[df_criteria_max$Land_ha >= 10 & df_criteria_max$Percentage_Bos >= 50]
+  goedgekeurde_land_ids_max <- df_criteria_max$ID[df_criteria_max$Land_ha >= 10 & df_criteria_max$Percentage_Bos >= 60]
   
   if (length(goedgekeurde_land_ids_max) > 0) {
     masker_land_bin_max <- cl_land_nabij_max %in% goedgekeurde_land_ids_max
@@ -411,7 +411,7 @@ if (!all(is.na(terra::values(cl_land_nabij_opp, mat=FALSE)))) {
   df_criteria_opp[is.na(df_criteria_opp)] <- 0
   df_criteria_opp$Percentage_Bos <- (df_criteria_opp$Bos_ha / df_criteria_opp$Land_ha) * 100
   
-  goedgekeurde_land_ids_opp <- df_criteria_opp$ID[df_criteria_opp$Land_ha >= 10 & df_criteria_opp$Percentage_Bos >= 50]
+  goedgekeurde_land_ids_opp <- df_criteria_opp$ID[df_criteria_opp$Land_ha >= 10 & df_criteria_opp$Percentage_Bos >= 60]
   
   if (length(goedgekeurde_land_ids_opp) > 0) {
     masker_land_bin_opp <- cl_land_nabij_opp %in% goedgekeurde_land_ids_opp
@@ -438,7 +438,7 @@ r_ruim_bos_src_max[is.na(r_ruim_bos_src_max) | r_ruim_bos_src_max == 0] <- NA
 land_ruim_clusters_list_max <- cluster_filter_compleet(
   masker     = r_ruim_land_src_max, 
   opp_laag   = land_ruim_max, 
-  drempel_m2 = 400000, 
+  drempel_m2 = 500000, 
   dist_m     = 50, 
   werkelijk  = FALSE
 )
@@ -473,7 +473,7 @@ r_binair_ruim_opp_init <- terra::ifel(!is.na(land_ruim_opp) & land_ruim_opp > 0,
 land_ruim_clusters_list_opp <- cluster_filter_compleet(
   masker     = r_binair_ruim_opp_init, 
   opp_laag   = land_ruim_opp, 
-  drempel_m2 = 400000, 
+  drempel_m2 = 500000, 
   dist_m     = 50, 
   werkelijk  = TRUE
 )

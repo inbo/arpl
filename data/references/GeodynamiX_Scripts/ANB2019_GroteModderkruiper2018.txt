@@ -21,3 +21,21 @@ deleteVariable(grotemodderkruiper_water1_cluster)
 // 0/1 kaarten maken
 write('ANB2019_GroteModderkruiper2018.asc', IsNonZero(grotemodderkruiper_leefgebied))
 deleteVariable(grotemodderkruiper_leefgebied)
+
+rest van vlaanderen (kustduinen en polders zijn anders!)
+Tophabitat:
+bwk(ae+, aop+, aom+, mc+, mk+, kn+, ka+, 3150%; 3260%, rbbmc%, rbbmr%)
+plassen = blauwe laag
+mogen geen ap zijn (bwk(ap%))
+waterlopen (15,16)
+effectief overstroomd of mogelijk overstroomd (1, 2)
+max 10 m van elkaar, 0.04 ha
+
+Randbiotoop:
+bwk(3150%,3260%,3270%,ae, ae+, aop, aop+, aom, aom+, mc, mc+, mk, mk+, kn, kn+, ka,
+ka+,rbbmc%, rbbmr%)
+plassen = blauwe laag
+mogen geen ap zijn (bwk(ap%))
+waterlopen (15,16)
+effectief overstroomd of mogelijk overstroomd (1, 2)
+max 10 m van elkaar, 0.04 ha

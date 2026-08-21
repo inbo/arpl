@@ -260,6 +260,8 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
 # Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
 bwk_max <- lijst_matches[["bwk"]]
 bwk_opp <- lijst_oppervlaktes[["bwk"]]
+not_bwk_max <- lijst_matches[["not_bwk"]]
+not_bwk_opp <- lijst_oppervlaktes[["not_bwk"]]
 
 # Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
 rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
@@ -297,29 +299,86 @@ r_waterlopen_bin <- r_huetzon_local %in% valide_ids
 r_waterlopen_bin <- terra::ifel(r_waterlopen_bin == 1, 1, NA)
 ```
 
+```{r plassen}
+# ==============================================================================
+# 7b. PLASSEN INLADEN EN NORMEREN (EXCL. NOT_BWK / AP)
+# ==============================================================================
+message("-> Plassen raster inlezen en filteren op not_bwk...")
+r_plassen_vlaanderen <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_watervlakken_2024_10m.tif"))
+
+r_plassen_local <- r_plassen_vlaanderen %>% 
+  terra::crop(area_buffer_fix) %>% 
+  terra::resample(template_TV, method = "near")
+
+# Binaire plassenkaart (1 waar plassen zijn)
+r_plassen_bin <- terra::ifel(r_plassen_local == 1, 1, NA)
+
+# Plassen verminderen met not_bwk (mogen geen 'ap%' bevatten)
+if (exists("not_bwk_max") && !is.null(not_bwk_max)) {
+  
+  # Spoor A: Waar not_bwk aanwezig is (> 0), wordt de plas uitgesloten (NA)
+  r_plassen_geschikt_max <- terra::ifel(!is.na(not_bwk_max) & not_bwk_max > 0, NA, r_plassen_bin)
+  
+  # Spoor B: Bereken beschikbare fractie (1 - not_bwk_opp) voor cel met een plas
+  # Als not_bwk_opp NA is of 0, blijft het 1. Als er wel not_bwk is, trekken we het af.
+  r_not_bwk_zero <- terra::ifel(is.na(not_bwk_opp), 0, not_bwk_opp)
+  r_rest_opp <- terra::clamp(1 - r_not_bwk_zero, lower = 0, upper = 1)
+  
+  # Alleen toepassen waar daadwerkelijk een plas ligt en rest-oppervlakte > 0 is
+  r_plassen_geschikt_opp <- terra::ifel(!is.na(r_plassen_bin) & r_rest_opp > 0, r_rest_opp, NA)
+
+} else {
+  r_plassen_geschikt_max <- r_plassen_bin
+  r_plassen_geschikt_opp <- r_plassen_bin
+}
+```
+
+```{r drainagekaart}
+# ==============================================================================
+# 7c. DRAINAGEKAART INLADEN EN FILTEREN OP NATTE GRONDEN
+# ==============================================================================
+message("-> Drainagekaart inlezen en natte bodems filteren op categorieën...")
+
+r_drain_raw   <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_ovstrg_10m.tif"))
+r_drain_local <- r_drain_raw %>% 
+  terra::crop(area_buffer_fix) %>% 
+  terra::resample(template_TV, method = "near")
+
+valide_drain_ids <- c(1,2)
+
+# Binaire masker-kaart voor natte gronden (1 = geschikt / nat, NA = overig)
+r_drain_bin <- r_drain_local %in% valide_drain_ids
+r_natte_gronden_bin <- terra::ifel(r_drain_bin == 1, 1, NA)
+```
+
 ```{r}
 # ==============================================================================
-# 8. PARALLELLE FUSIE: SPOOR A (MAX) EN SPOOR B (OPP) STRIKT GESCHEIDEN
+# 8. PARALLELLE FUSIE: SPOOR A (MAX) EN SPOOR B (OPP) MET DRAINAGEKAART
 # ==============================================================================
-message("-> Strikt gescheiden parallelle fusie uitvoeren...")
+message("-> Parallelle fusie uitvoeren (BWK + Plassen + Waterlopen x Natte Drainagegronden)...")
 
-# --- SPOOR A: MAXIMALE POTENTIE (Binair spoor) ---
-grotemodderkruiper_voortplanting_max <- terra::cover(bwk_max, r_waterlopen_bin)
-names(grotemodderkruiper_voortplanting_max) <- "Match_Max"
+# --- 1. Samenvoegen Basishabitat: BWK + Plassen + Waterlopen ---
+leefgebied1_max <- terra::cover(bwk_max, r_plassen_geschikt_max)
+leefgebied1_max <- terra::cover(leefgebied1_max, r_waterlopen_bin)
 
-# --- SPOOR B: WERKELIJKE OPPERVLAKTE (Fractie spoor) ---
-# CORRECTION: Waterlopen beslaan de hele cel in deze logica, dus fractie = 1 (niet 0.01)
 r_waterlopen_opp <- terra::ifel(r_waterlopen_bin == 1, 1, NA)
-grotemodderkruiper_voortplanting_opp <- terra::cover(bwk_opp, r_waterlopen_opp)
+leefgebied1_opp  <- terra::cover(bwk_opp, r_plassen_geschikt_opp)
+leefgebied1_opp  <- terra::cover(leefgebied1_opp, r_waterlopen_opp)
+
+# --- 2. Filteren op Natte Drainagegronden ---
+grotemodderkruiper_voortplanting_max <- terra::mask(leefgebied1_max, r_natte_gronden_bin)
+grotemodderkruiper_voortplanting_opp <- terra::mask(leefgebied1_opp, r_natte_gronden_bin)
+
+names(grotemodderkruiper_voortplanting_max) <- "Match_Max"
 names(grotemodderkruiper_voortplanting_opp) <- "Oppervlakte_Real"
 
-# [Hierna volgt je bestaande backwards compatibility code...]
+# Overdragen aan hoofdvariabelen voor clustering
 alle_matches      <- grotemodderkruiper_voortplanting_max
 alle_oppervlaktes <- grotemodderkruiper_voortplanting_opp
 
-# Schoonmaak van alle tijdelijke objecten om RAM vrij te maken
-rm(tabel_vlaanderen, tabel_gefilterd, tabel_TV, tabel_cel_som, vertaal_df,
-   r_bwk_max, r_bwk_opp, r_huetzon_vlaanderen, r_huetzon_local, r_waterlopen_bin, r_waterlopen_opp)
+# Opruimen tijdelijke rasters
+rm(r_plassen_vlaanderen, r_plassen_local, r_plassen_bin, r_plassen_geschikt_max, r_plassen_geschikt_opp,
+   r_drain_raw, r_drain_local, r_drain_bin, r_natte_gronden_bin, leefgebied1_max, leefgebied1_opp)
 gc()
 ```
 
@@ -610,21 +669,31 @@ for(item in export_config) {
 
 ```{r Interactieve kaart}
 # ==============================================================================
-# STAP 14: INTERACTIEVE KAART (LEAFLET MET COALESCE FUNCTIE - GEFIXT)
+# STAP 14: INTERACTIEVE KAART (GESYNCHRONISEERDE METRICA)
 # ==============================================================================
 if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   
-  # 1. Cluster data frame opbouwen
-  cluster_info <- data.frame(
-      ID = stats_max_raw$value, 
-      Pot_ha = stats_max_raw$count * 0.01
-    ) %>%
-    left_join(stats_act_raw, by = "ID") %>%
-    left_join(zonal_zone_max, by = "ID") %>% # <-- GEFIXT: zonal_zone gewijzigd naar zonal_zone_max
+  # 1. Bereken Potentiële Oppervlakte (Spoor A) per uniek Cluster ID op cl_max
+  # (alle_matches bevat de unieke 0.01 ha pixels binnen de clusters)
+  stats_pot_corr <- terra::zonal(alle_matches * 0.01, cl_max, fun = "sum", na.rm = TRUE)
+  colnames(stats_pot_corr) <- c("ID", "Pot_ha")
+
+  # 2. Bereken Werkelijke Oppervlakte (Spoor B) per uniek Cluster ID op cl_max
+  # (alle_oppervlaktes bevat de reële BWK/plas-fracties binnen de clusters)
+  stats_werk_corr <- terra::zonal(alle_oppervlaktes * 0.01, cl_max, fun = "sum", na.rm = TRUE)
+  colnames(stats_werk_corr) <- c("ID", "Werk_ha")
+
+  # 3. Koppel de metrica op ID en voeg de zone/ARPL-status toe
+  cluster_info <- stats_pot_corr %>%
+    left_join(stats_werk_corr, by = "ID") %>%
+    left_join(zonal_zone_max, by = "ID") %>%
     mutate(
+      Pot_ha = round(Pot_ha, 2),
+      Werk_ha = round(coalesce(Werk_ha, 0), 2),
       Zone = ifelse(!is.na(In_TV) & In_TV > 0, "Binnen TV", "Buiten TV (Buffer)"),
       ARPL = ID %in% ids_actueel_relevant,
-      Type = ifelse(ID %in% ids_werkelijk_totaal, "Werkelijk Habitat", "Potentieel (Niet Werkelijk)"),
+      # Status bepalen: is het werkelijk habitat >= drempel?
+      Type = ifelse(Werk_ha >= oppervlakte_ha, "Werkelijk Habitat", "Potentieel (Niet Werkelijk)"),
       Popup = paste0(
         "<div style='font-family: Arial; min-width: 180px;'>",
         "<strong>Cluster ID:</strong> ", ID, "<br>",
@@ -633,19 +702,20 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
         "<strong>Actueel Relevant (ARPL):</strong> ", 
         ifelse(ARPL, "<span style='color:green; font-weight:bold;'>JA (Populatielaag)</span>", 
                      "<span style='color:red;'>NEE (Geen waarneming of onder drempel)</span>"), "<br><br>",
-        "<strong>Potentieel Oppervlak:</strong> ", round(Pot_ha, 2), " ha<br>",
-        "<strong>Werkelijk Habitat:</strong> ", round(coalesce(Werk_ha, 0), 2), " ha",
+        "<strong>Potentieel Oppervlak:</strong> ", Pot_ha, " ha<br>",
+        "<strong>Werkelijk Habitat:</strong> ", Werk_ha, " ha",
         "</div>"
       )
     )
 
-  # 2. Vectoriseren van de clusters naar Polygonen
+  # 4. Vectoriseren naar Polygonen voor Leaflet
   cl_poly <- terra::as.polygons(cl_max, aggregate = TRUE) %>% 
     st_as_sf() %>% 
     st_transform(4326)
 
   cl_poly_final <- cl_poly %>%
     inner_join(cluster_info, by = setNames("ID", names(cl_poly)[1]))
+
 } else {
   cl_poly_final <- st_sf(st_sfc(crs = 4326))
 }

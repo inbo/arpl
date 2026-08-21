@@ -251,12 +251,17 @@ gc()
 
 ```{r omgevingslagen en waterlopen}
 # ==============================================================================
-# STAP 1: TABEL-GEBASEERDE BEBOUWINGSBUFFER (100M) EN LETTERS WATERLOPEN
+# STAP 1: TABEL-GEBASEERDE GECLUSTERDE BEBOUWINGSFILTER EN HUETZON WATERLOPEN
 # ==============================================================================
-message("-> Bebouwingslagen isoleren uit de BWK-tabel (alle u-codes behalve ulm)...")
+message("-> Bebouwingslagen isoleren uit de BWK-tabel (enkel harde bebouwing)...")
 
-bebouwings_lagen <- gouden_namenlijst[grepl("^u[a-z0-9]", gouden_namenlijst) | gouden_namenlijst == "u"]
-bebouwings_lagen <- bebouwings_lagen[bebouwings_lagen != "ulm"]
+# Vervang grepl(...) door een expliciete lijst van echte bebouwingscodes
+harde_bebouwingscodes <- c("u", "ua", "ub", "uc", "ud", "ui", "un", "ur")
+
+# Filter enkel de geselecteerde codes die in je gouden namenlijst voorkomen
+bebouwings_lagen <- intersect(gouden_namenlijst, harde_bebouwingscodes)
+
+message("Geselecteerde harde bebouwingscodes: ", paste(bebouwings_lagen, collapse = ", "))
 
 tabel_bebouw_TV <- tabel_vlaanderen[CODE %in% bebouwings_lagen & cel_id %in% studiegebied_globale_ids]
 tabel_bebouw_som <- tabel_bebouw_TV[, .(Present = ifelse(sum(BWK_FRAC, na.rm = TRUE) > 0, 1, 0)), by = .(cel_id)]
@@ -273,9 +278,30 @@ if(nrow(tabel_bebouw_som) > 0) {
   }
 }
 
-message("-> Huisspitsmuis uitsluitingszone berekenen (100m rondom alle bebouwing)...")
-r_bebouwing_buffer <- terra::buffer(r_bebouwing_raw, width = 100)
-r_bebouwing_masker <- !is.na(r_bebouwing_buffer) & r_bebouwing_buffer == 1
+# 1. Harde binaire schoonmaak
+r_bebouwing_schoon <- terra::ifel(!is.na(r_bebouwing_raw) & r_bebouwing_raw == 1, 1, NA)
+
+# 2. Clusteren op geconcentreerde bebouwing / woonwijken (>= 1,5 ha bij 50m koppeling)
+# Dit laat losse woningen/boerderijen toe, maar filtert villawijken en dorpskernen.
+res_bebouw_groot <- cluster_filter_compleet(
+  masker     = r_bebouwing_schoon,
+  opp_laag   = r_bebouwing_schoon,
+  drempel_m2 = 15000, # 1.5 ha drempelwaarde
+  dist_m     = 50,    # 50m koppelafstand voor woonwijkclusters
+  werkelijk  = FALSE
+)
+
+r_bebouw_groot <- res_bebouw_groot$raster
+
+# 3. Maken van het masker met 100m verstoringszone rondom ENKEL de grote clusters
+if (!is.null(r_bebouw_groot) && !terra::global(is.na(r_bebouw_groot), "sum")[[1]] == terra::ncell(r_bebouw_groot)) {
+  buf_bebouw <- terra::buffer(r_bebouw_groot, width = 100)
+  r_bebouwing_masker <- !is.na(buf_bebouw) & buf_bebouw > 0
+  message("-> Geclusterde bebouwingsfilter (>= 1.5 ha) succesvol opgebouwd met 100m verstoringszone.")
+} else {
+  r_bebouwing_masker <- terra::ifel(!is.na(id_raster_TV), FALSE, FALSE)
+  message("-> Geen bebouwingsclusters >= 1.5 ha gevonden. Geen bebouwingsuitsluiting toegepast.")
+}
 
 message("-> Hydrografische waterlopen synchroniseren op basis van Huetzon-letters...")
 r_waterlopen_raw <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_huetzon_10m.tif"))
@@ -289,7 +315,8 @@ ids_waterlopen_ok <- wl_cats$value[wl_cats$Label %in% gewenste_huetzon_letters]
 r_waterlopen_huetzon <- r_waterlopen %in% ids_waterlopen_ok
 
 rm(tabel_bebouw_TV, tabel_bebouw_som, tabel_bebouw_mapping, bebouwings_lagen, 
-   r_bebouwing_raw, r_bebouwing_buffer, r_waterlopen_raw, r_waterlopen, wl_cats, ids_waterlopen_ok, gewenste_huetzon_letters)
+   r_bebouwing_raw, r_bebouwing_schoon, res_bebouw_groot, r_bebouw_groot,
+   r_waterlopen_raw, r_waterlopen, wl_cats, ids_waterlopen_ok, gewenste_huetzon_letters)
 gc()
 ```
 
@@ -397,7 +424,6 @@ land_ids_ok_max <- df_l_max$ID[df_l_max$Ratio >= 0.30]
 
 
 # A3. COMBINEREN & AANEENGESLOTEN 50M OEVERSTROOK BOUWEN
-# A3. COMBINEREN & AANEENGESLOTEN 50M OEVERSTROOK BOUWEN
 water_geschikt_max <- if(length(water_ids_ok_max) > 0) terra::mask(water_basis_max, water_patches_max %in% water_ids_ok_max, maskvalues = 0) else id_raster_TV * NA
 land_geschikt_direct_max <- if(length(land_ids_ok_max) > 0) terra::mask(land_basis_max, land_patches_max %in% land_ids_ok_max, maskvalues = 0) else id_raster_TV * NA
 
@@ -483,7 +509,6 @@ land_ids_ok_opp <- df_l_opp$ID[df_l_opp$Ratio >= 0.30]
 
 
 # B3. Samensmelten OPP
-# B3. Samensmelten OPP
 water_geschikt_opp <- if(length(water_ids_ok_opp) > 0) terra::mask(water_basis_opp, water_patches_opp %in% water_ids_ok_opp, maskvalues = 0) else id_raster_TV * NA
 land_geschikt_direct_opp <- if(length(land_ids_ok_opp) > 0) terra::mask(land_basis_opp, land_patches_opp %in% land_ids_ok_opp, maskvalues = 0) else id_raster_TV * NA
 
@@ -515,7 +540,7 @@ minicluster_opp <- terra::mask(minicluster_opp_raw, r_bebouwing_masker, maskvalu
 
 rm(m_buren, r_bin_water_max, r_bin_land_max, niet_water_max, niet_land_max, df_w_max, df_l_max,
    r_bin_water_opp, r_bin_land_opp, niet_water_opp, niet_land_opp, df_w_opp, df_l_opp,
-   w_opp_nul, l1_opp_nul, l2_opp_nul, minicluster_opp_raw, minicluster_max_raw, r_bebouwing_masker)
+   w_opp_nul, l1_opp_nul, l2_opp_nul, minicluster_opp_raw, minicluster_max_raw)
 gc()
 ```
 
@@ -556,181 +581,71 @@ rm(r_binair_mini_opp)
 gc()
 ```
 
-```{r}
-# --- STAP 1: BEBOUWING (100M BUFFER) & HUETZON ---
-bebouwings_lagen <- gouden_namenlijst[grepl("^u[a-z0-9]", gouden_namenlijst) | gouden_namenlijst == "u"]
-bebouwings_lagen <- bebouwings_lagen[bebouwings_lagen != "ulm"]
+```{r Diagnostische_Kaart_Bebouwing}
+# ==============================================================================
+# DIAGNOSTISCHE KAART: IMPACT VAN DE BEBOUWINGSFILTER (100M BUFFER)
+# ==============================================================================
 
-tabel_bebouw_TV  <- tabel_vlaanderen[CODE %in% bebouwings_lagen & cel_id %in% studiegebied_globale_ids]
-tabel_bebouw_som <- tabel_bebouw_TV[, .(Present = ifelse(sum(BWK_FRAC, na.rm = TRUE) > 0, 1, 0)), by = .(cel_id)]
-
-r_bebouwing_raw <- id_raster_TV * NA
-if(nrow(tabel_bebouw_som) > 0) {
-  setnames(tabel_bebouw_som, "cel_id", "globale_id")
-  tabel_bebouw_mapping <- merge(tabel_bebouw_som, vertaal_df, by = "globale_id", all.x = TRUE)
-  tabel_bebouw_mapping <- tabel_bebouw_mapping[!is.na(lokale_id) & Present == 1]
-  if(nrow(tabel_bebouw_mapping) > 0) r_bebouwing_raw[tabel_bebouw_mapping$lokale_id] <- 1
-}
-
-# AANGEPAST: 100m uitsluitingsbuffer rond bebouwing
-r_bebouwing_buffer <- terra::buffer(r_bebouwing_raw, width = 100)
-r_bebouwing_masker <- !is.na(r_bebouwing_buffer) & r_bebouwing_buffer == 1
-
-r_waterlopen_raw <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_huetzon_10m.tif"))
-r_waterlopen     <- terra::resample(r_waterlopen_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
-gewenste_huetzon_letters <- c("Bg", "BgK", "Bk1", "Bk2", "BkK1", "BkK2", "Rk")
-wl_cats          <- terra::cats(r_waterlopen)[[1]]
-ids_waterlopen_ok<- wl_cats$value[wl_cats$Label %in% gewenste_huetzon_letters]
-r_waterlopen_huetzon <- r_waterlopen %in% ids_waterlopen_ok
-
-
-# --- STAP 2: BASIS WATER EN LAND (ONGESNEDEN) ---
-water_basis_raw <- terra::cover(water_bwk_max, waterlopen1_bwk_max)
-water_basis_raw <- terra::cover(water_basis_raw, terra::ifel(r_waterlopen_huetzon == 1, 1, NA))
-water_basis_max <- terra::clamp(water_basis_raw, lower = 1, upper = 1, values = FALSE)
-land_basis_max  <- terra::clamp(land_bwk_max, lower = 1, upper = 1, values = FALSE)
-
-
-# --- STAP 3: DUBBELE OEVERANALYSE (WATER MET LAND OF LAND MET WATER) ---
-m_buren <- matrix(c(1, 1, 1, 1, 0, 1, 1, 1, 1), nrow = 3, ncol = 3)
-
-r_bin_water_max <- terra::ifel(!is.na(water_basis_max) & water_basis_max == 1, 1, 0)
-r_bin_land_max  <- terra::ifel(!is.na(land_basis_max) & land_basis_max == 1, 1, 0)
-
-# 1. WATER MET MINSTENS 30% LAND
-land_buren_w_max  <- terra::focal(r_bin_land_max, w = m_buren, fun = "sum", na.rm = TRUE)
-land_buren_w_max  <- terra::mask(land_buren_w_max, r_bin_water_max == 1, maskvalues = FALSE)
-
-niet_water_max    <- terra::ifel(r_bin_water_max == 0 & !is.na(template_TV), 1, 0)
-oever_tot_w_max   <- terra::focal(niet_water_max, w = m_buren, fun = "sum", na.rm = TRUE)
-oever_tot_w_max   <- terra::mask(oever_tot_w_max, r_bin_water_max == 1, maskvalues = FALSE)
-
-water_patches_max <- terra::patches(water_basis_max, directions = 8, zeroAsNA = TRUE)
-
-stats_tot_w_max  <- terra::zonal(oever_tot_w_max, water_patches_max, fun = "sum", na.rm = TRUE)
-stats_land_w_max <- terra::zonal(land_buren_w_max, water_patches_max, fun = "sum", na.rm = TRUE)
-
-colnames(stats_tot_w_max)  <- c("ID", "Tot_oever_contacten")
-colnames(stats_land_w_max) <- c("ID", "Land_contacten")
-
-df_w_max <- merge(stats_tot_w_max, stats_land_w_max, by = "ID", all.x = TRUE)
-df_w_max$Land_contacten[is.na(df_w_max$Land_contacten)] <- 0
-df_w_max$Ratio <- ifelse(df_w_max$Tot_oever_contacten > 0, df_w_max$Land_contacten / df_w_max$Tot_oever_contacten, 0)
-
-water_ids_ok_max <- df_w_max$ID[df_w_max$Ratio >= 0.30]
-
-# 2. LAND MET MINSTENS 30% WATER (OMGEKEERD)
-water_buren_l_max <- terra::focal(r_bin_water_max, w = m_buren, fun = "sum", na.rm = TRUE)
-water_buren_l_max <- terra::mask(water_buren_l_max, r_bin_land_max == 1, maskvalues = FALSE)
-
-niet_land_max     <- terra::ifel(r_bin_land_max == 0 & !is.na(template_TV), 1, 0)
-rand_tot_l_max    <- terra::focal(niet_land_max, w = m_buren, fun = "sum", na.rm = TRUE)
-rand_tot_l_max    <- terra::mask(rand_tot_l_max, r_bin_land_max == 1, maskvalues = FALSE)
-
-land_patches_max  <- terra::patches(land_basis_max, directions = 8, zeroAsNA = TRUE)
-
-stats_tot_l_max   <- terra::zonal(rand_tot_l_max, land_patches_max, fun = "sum", na.rm = TRUE)
-stats_water_l_max <- terra::zonal(water_buren_l_max, land_patches_max, fun = "sum", na.rm = TRUE)
-
-colnames(stats_tot_l_max)   <- c("ID", "Tot_rand_contacten")
-colnames(stats_water_l_max) <- c("ID", "Water_contacten")
-
-df_l_max <- merge(stats_tot_l_max, stats_water_l_max, by = "ID", all.x = TRUE)
-df_l_max$Water_contacten[is.na(df_l_max$Water_contacten)] <- 0
-df_l_max$Ratio <- ifelse(df_l_max$Tot_rand_contacten > 0, df_l_max$Water_contacten / df_l_max$Tot_rand_contacten, 0)
-
-land_ids_ok_max <- df_l_max$ID[df_l_max$Ratio >= 0.30]
-
-# 3. COMBINEREN EN AANEENGESLOTEN 50M BUFFER BOUWEN
-water_geschikt_max <- if(length(water_ids_ok_max) > 0) terra::mask(water_basis_max, water_patches_max %in% water_ids_ok_max, maskvalues = 0) else id_raster_TV * NA
-land_geschikt_direct_max <- if(length(land_ids_ok_max) > 0) terra::mask(land_basis_max, land_patches_max %in% land_ids_ok_max, maskvalues = 0) else id_raster_TV * NA
-
-water_buff_50m_max <- terra::buffer(water_geschikt_max, width = 50)
-land_oever_raw_max <- terra::mask(land_basis_max, water_buff_50m_max)
-
-land_patches_oever_max <- terra::patches(land_oever_raw_max, directions = 8, zeroAsNA = TRUE)
-water_touch_zone_max   <- terra::buffer(water_geschikt_max, width = 10)
-land_touching_max      <- terra::mask(land_patches_oever_max, water_touch_zone_max)
-ids_land_raakt_water_max <- unique(na.omit(terra::values(land_touching_max, mat = FALSE)))
-
-if(length(ids_land_raakt_water_max) > 0) {
-  land_oever_50m_max <- terra::mask(land_oever_raw_max, land_patches_oever_max %in% ids_land_raakt_water_max, maskvalues = 0)
-} else {
-  land_oever_50m_max <- id_raster_TV * NA
-}
-
+# 1. SAMENSTELLEN VAN HET RUWE MINICLUSTER (VÓÓR BEBOUWINGSFILTER)
 minicluster_raw <- terra::cover(water_geschikt_max, land_oever_50m_max)
 minicluster_raw <- terra::cover(minicluster_raw, land_geschikt_direct_max)
 
-# BEBOUWINGSFILTER (100M) PAS HIER TOEPASSEN
-minicluster <- terra::mask(minicluster_raw, r_bebouwing_masker, maskvalues = TRUE)
+# 2. BEBOUWINGSVERSTORING ISOLEREN
+minicluster_uitgesneden <- terra::mask(minicluster_raw, r_bebouwing_masker, maskvalues = FALSE)
+minicluster_gefilterd   <- terra::mask(minicluster_raw, r_bebouwing_masker, maskvalues = TRUE)
 
-
-# --- STAP 4: KOPPELING EN NETWERK (250m & 25ha) ---
-cl_network <- terra::buffer(terra::ifel(!is.na(minicluster), 1, NA), width = afstand_m) %>% 
-  terra::patches(directions = 8, zeroAsNA = TRUE)
-cl_biotoop <- terra::mask(cl_network, minicluster)
-
-freq_df <- as.data.frame(terra::freq(cl_biotoop))
-freq_df$Area_ha <- freq_df$count * 0.01
-valid_ids <- freq_df$value[freq_df$Area_ha >= oppervlakte_ha]
-
-if(length(valid_ids) > 0) {
-  finaal_leefgebied <- terra::mask(minicluster, cl_biotoop %in% valid_ids, maskvalues = 0)
-} else {
-  finaal_leefgebied <- id_raster_TV * NA
-}
-
-# Projectie naar EPSG:4326 voor Leaflet
+# 3. RASTERS OMZETTEN NAAR WEBPROJECTIE (EPSG:4326)
 to_web <- function(r) {
   if(is.null(r) || all(is.na(terra::values(r, mat=FALSE)))) return(NULL)
   terra::project(r, "EPSG:4326", method = "near")
 }
 
-r_web_water_basis    <- to_web(water_basis_max)
-r_web_land_basis     <- to_web(land_basis_max)
-r_web_water_geschikt <- to_web(water_geschikt_max)
-r_web_minicluster    <- to_web(minicluster)
-r_web_finaal         <- to_web(finaal_leefgebied)
+r_web_water_ok      <- to_web(water_geschikt_max)
+r_web_land_ok       <- to_web(land_geschikt_direct_max)
+r_web_land_oever    <- to_web(land_oever_50m_max)
+# CORRECTIE: 'r_bebouwing_masker' is direct bruikbaar als logische conditie
+r_web_bebouw_buf    <- to_web(terra::ifel(r_bebouwing_masker, 1, NA))
+r_web_verstoring    <- to_web(minicluster_uitgesneden)
+r_web_mini_finaal   <- to_web(minicluster_gefilterd)
 
-grens_web <- st_transform(sf::st_as_sf(area_shape_proj), 4326)
-bbox      <- st_bbox(grens_web)
+grens_web <- sf::st_transform(sf::st_as_sf(area_shape_proj), 4326)
+bbox      <- sf::st_bbox(grens_web)
 
-map <- leaflet() %>%
+# 4. OPBOUW INTERACTIEVE DIAGNOSTISCHE LEAFLET KAART
+map_diag <- leaflet() %>%
   addTiles(group = "OSM (Kaart)") %>%
   addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet") %>%
   fitBounds(bbox[['xmin']], bbox[['ymin']], bbox[['xmax']], bbox[['ymax']])
 
-# 1. Onverstoorde Basisbiotopen (Volledig potentieel)
-if(!is.null(r_web_water_basis)) {
-  map <- map %>% addRasterImage(r_web_water_basis, colors = "#377eb8", opacity = 0.6, group = "1. Water Basis (Onverstoord)")
+if(!is.null(r_web_water_ok)) {
+  map_diag <- map_diag %>% addRasterImage(r_web_water_ok, colors = "#00bfff", opacity = 0.8, group = "1A. Goedgekeurd Water (30% Regel)")
 }
-if(!is.null(r_web_land_basis)) {
-  map <- map %>% addRasterImage(r_web_land_basis, colors = "#4daf4a", opacity = 0.5, group = "1. Land Basis (Onverstoord)")
+if(!is.null(r_web_land_ok)) {
+  map_diag <- map_diag %>% addRasterImage(r_web_land_ok, colors = "#33a02c", opacity = 0.7, group = "1B. Goedgekeurd Land (30% Regel Direct)")
 }
-
-# 2. Goedgekeurde Biotopen & Miniclusters
-if(!is.null(r_web_water_geschikt)) {
-  map <- map %>% addRasterImage(r_web_water_geschikt, colors = "#00f0ff", opacity = 0.9, group = "2A. Goedgekeurd Water/Land (30% Regel)")
+if(!is.null(r_web_land_oever)) {
+  map_diag <- map_diag %>% addRasterImage(r_web_land_oever, colors = "#b2df8a", opacity = 0.7, group = "1C. Aangesloten Land (50m Oeverzone)")
 }
-if(!is.null(r_web_minicluster)) {
-  map <- map %>% addRasterImage(r_web_minicluster, colors = "#ff7f00", opacity = 0.7, group = "2B. Miniclusters (Na 100m Bebouwingsfilter)")
+if(!is.null(r_web_bebouw_buf)) {
+  map_diag <- map_diag %>% addRasterImage(r_web_bebouw_buf, colors = "#fb9a99", opacity = 0.5, group = "2A. Bebouwingsbuffer (100m Zone)")
 }
-
-# 3. Finaal leefgebied
-if(!is.null(r_web_finaal)) {
-  map <- map %>% addRasterImage(r_web_finaal, colors = "#00ff00", opacity = 1.0, group = "3. Finaal Leefgebied (>=25 ha)")
+if(!is.null(r_web_verstoring)) {
+  map_diag <- map_diag %>% addRasterImage(r_web_verstoring, colors = "#e41a1c", opacity = 0.9, group = "2B. Verwijderd Habitat (Impact Bebouwing)")
+}
+if(!is.null(r_web_mini_finaal)) {
+  map_diag <- map_diag %>% addRasterImage(r_web_mini_finaal, colors = "#ff7f00", opacity = 0.85, group = "3. Minicluster Finaal (Na Bebouwingsfilter)")
 }
 
-map %>%
-  addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens Studiegebied") %>%
+map_diag %>%
+  addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 2.5, group = "Grens Studiegebied") %>%
   addLayersControl(
     baseGroups = c("OSM (Kaart)", "Satelliet"),
-    overlayGroups = c("1. Water Basis (Onverstoord)", 
-                      "1. Land Basis (Onverstoord)",
-                      "2A. Goedgekeurd Water/Land (30% Regel)",
-                      "2B. Miniclusters (Na 100m Bebouwingsfilter)",
-                      "3. Finaal Leefgebied (>=25 ha)"),
+    overlayGroups = c("1A. Goedgekeurd Water (30% Regel)",
+                      "1B. Goedgekeurd Land (30% Regel Direct)",
+                      "1C. Aangesloten Land (50m Oeverzone)",
+                      "2A. Bebouwingsbuffer (100m Zone)",
+                      "2B. Verwijderd Habitat (Impact Bebouwing)",
+                      "3. Minicluster Finaal (Na Bebouwingsfilter)"),
     options = layersControlOptions(collapsed = FALSE)
   )
 ```

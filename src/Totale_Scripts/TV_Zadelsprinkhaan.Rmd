@@ -602,6 +602,11 @@ tabel_totaal %>%
 ```
 
 ```{r, export}
+# ==============================================================================
+# GEFORMATTEERDE EXPORT MET NUL-OPVULLING VOOR ZADELSPRINKHAAN
+# ==============================================================================
+message("-> Start geformatteerde export met nul-opvulling voor zadelsprinkhaan...")
+
 base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
 folders <- list(
   potentie     = file.path(base_dir, "01_Maximale_Potentie"),
@@ -612,33 +617,41 @@ folders <- list(
 
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-if(length(ids_actueel_relevant) > 0) {
-  arpl_export_rast <- cl_max %in% ids_actueel_relevant
-  arpl_export_rast <- terra::ifel(arpl_export_rast, 1, NA)
-} else {
-  arpl_export_rast <- terra::rast(template_TV, vals = NA)
-}
-
-if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
-  werkelijk_export_rast <- terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA)
+# 1. Binaire rasters opbouwen op basis van de specifieke zadelsprinkhaan-lagen
+if (exists("zadelsprinkhaan_leefgebied_opp") && !all(is.na(terra::values(zadelsprinkhaan_leefgebied_opp, mat = FALSE)))) {
+  werkelijk_export_rast <- terra::ifel(!is.na(zadelsprinkhaan_leefgebied_opp) & zadelsprinkhaan_leefgebied_opp > 0, 1, NA)
 } else {
   werkelijk_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
+if (exists("zadelsprinkhaan_arpl_opp") && !all(is.na(terra::values(zadelsprinkhaan_arpl_opp, mat = FALSE)))) {
+  arpl_export_rast <- terra::ifel(!is.na(zadelsprinkhaan_arpl_opp) & zadelsprinkhaan_arpl_opp > 0, 1, NA)
+} else {
+  arpl_export_rast <- terra::rast(template_TV, vals = NA)
+}
+
+if (exists("zadelsprinkhaan_verspreiding_bin") && !all(is.na(terra::values(zadelsprinkhaan_verspreiding_bin, mat = FALSE)))) {
+  verspreiding_export_rast <- terra::ifel(!is.na(zadelsprinkhaan_verspreiding_bin) & zadelsprinkhaan_verspreiding_bin > 0, 1, NA)
+} else {
+  verspreiding_export_rast <- terra::rast(template_TV, vals = NA)
+}
+
+# 2. Export configuratie met de juiste bronrasters
 export_config <- list(
-  list(rast = final_max,              naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,      naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
-  list(rast = verspreiding_raster,   naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
+  list(rast = zadelsprinkhaan_leefgebied_max, naam = "Maximale_Potentie",       folder = folders$potentie,     type = "INT1U"),
+  list(rast = werkelijk_export_rast,         naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
+  list(rast = arpl_export_rast,              naam = "ARPL",                    folder = folders$arpl,         type = "INT1U"),
+  list(rast = verspreiding_export_rast,      naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 
-for(item in export_config) {
+# 3. Rasters schrijven
+for (item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
   export_rast <- terra::deepcopy(item$rast)
   export_rast <- terra::mask(export_rast, area_buffer_fix)
   
-  if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
+  if (all(is.na(terra::values(export_rast, mat = FALSE)))) {
     export_rast <- terra::ifel(is.na(export_rast), 0, 0)
     export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
   } else {
@@ -652,8 +665,12 @@ for(item in export_config) {
               datatype = item$type)
 }
 
-rm(werkelijk_export_rast, arpl_export_rast, verspreiding_raster, export_config, export_rast)
+suppressWarnings(
+  rm(werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
+)
 gc()
+
+message("🏁 EXPORT SUCCESVOL AFGEROND VOOR ", soort, "!")
 ```
 
 ```{r Interactieve kaart}

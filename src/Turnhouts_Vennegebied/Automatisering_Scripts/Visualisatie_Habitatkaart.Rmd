@@ -1,0 +1,140 @@
+---
+title: "Habitatkaart & Codetabel"
+output: 
+  html_document:
+    self_contained: true
+    toc: false
+    theme: flatly
+params:
+  soort: "maanwaterjuffer"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+library(here)
+library(terra)
+library(sf)
+library(tidyverse)
+library(readxl)
+library(leaflet)
+library(knitr)
+library(kableExtra)
+
+# Dynamische soortvariabele uit parameters
+soort_selectie <- tolower(trimws(params$soort))
+
+# Padconfiguratie
+base_dir  <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
+path_hts   <- here("data/input/Excel_files/HTS.xlsx")
+path_csv   <- here("data/input/Excel_files/Resultaten_Totaal_Samengevoegd.csv")
+path_area  <- here("data/input/Turnhouts_Vennegebied.shp")
+
+# Studiegebied laden
+area_shape <- vect(path_area)
+grens_web  <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
+```
+
+```{r codes}
+# BWK-codes opzoeken
+df_codes <- read_csv(path_csv, show_col_types = FALSE)
+
+tabel_codes <- df_codes %>%
+  mutate(Soort_clean = tolower(trimws(Soort))) %>%
+  filter(Soort_clean == soort_selectie) %>%
+  group_by(Type, Match) %>%
+  summarise(
+    Aantal_Codes = n(),
+    Codes = paste(sort(unique(Code)), collapse = ", "),
+    .groups = "drop"
+  ) %>%
+  arrange(Type, Match)
+
+if (nrow(tabel_codes) > 0) {
+  tabel_codes %>%
+    select(Type, Match, Aantal_Codes, Codes) %>%
+    knitr::kable(
+      caption = paste("Toegepaste BWK-codes voor:", stringr::str_to_title(soort_selectie)),
+      col.names = c("Biotoop Type", "Match Type", "Aantal Codes", "Overzicht Codes")
+    ) %>%
+    kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>%
+    kableExtra::column_spec(4, width = "50em")
+} else {
+  cat("⚠️ Geen specifieke BWK-codes gevonden in de resultatentabel voor deze soort.")
+}
+```
+
+```{r}
+# Controle HTS-status
+df_hts <- read_excel(path_hts)
+kolom_naam <- names(df_hts)[grepl("soort", names(df_hts), ignore.case = TRUE)][1]
+is_hts <- soort_selectie %in% tolower(trimws(df_hts[[kolom_naam]]))
+
+path_arpl <- file.path(base_dir, "03_ARPL", paste0("Habitat_ARPL_", soort_selectie, ".tif"))
+path_opp  <- file.path(base_dir, "02_Werkelijke_Oppervlakte", paste0("Habitat_Werkelijke_Oppervlaktes_", soort_selectie, ".tif"))
+
+# Bepalen welk raster te laden
+if (is_hts && file.exists(path_arpl)) {
+  raster_pad <- path_arpl
+  kaart_type <- "ARPL (Actueel Relevant Potential Area)"
+} else {
+  raster_pad <- path_opp
+  kaart_type <- "Werkelijke Oppervlakte"
+}
+
+kaart_geladen <- FALSE
+
+if (file.exists(raster_pad)) {
+  r_habitat <- terra::rast(raster_pad)
+  r_actief  <- terra::ifel(r_habitat == 1, 1, NA)
+  
+  if (!all(is.na(terra::values(r_actief, mat = FALSE)))) {
+    habitat_poly <- terra::as.polygons(r_actief, aggregate = TRUE) %>%
+      sf::st_as_sf() %>%
+      sf::st_transform(4326)
+    
+    kaart_geladen <- TRUE
+  }
+}
+```
+
+```{r interactieve kaart}
+if (kaart_geladen) {
+  pal_kleur <- ifelse(is_hts, "#4daf4a", "#377eb8")
+  
+  leaflet() %>%
+    addTiles(group = "OSM (Kaart)") %>%
+    addProviderTiles(providers$OpenTopoMap, group = "OpenTopoMap") %>%
+    addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet") %>%
+    addPolygons(
+      data = habitat_poly,
+      fillColor = pal_kleur,
+      fillOpacity = 0.6,
+      color = pal_kleur,
+      weight = 1,
+      label = paste("Habitat:", kaart_type),
+      group = "Geselecteerd Habitat"
+    ) %>%
+    addPolygons(
+      data = grens_web,
+      fill = FALSE,
+      color = "black",
+      weight = 2,
+      group = "Grens Studiegebied"
+    ) %>%
+    addLegend(
+      colors = pal_kleur,
+      labels = kaart_type,
+      title = paste("Status:", stringr::str_to_title(soort_selectie)),
+      position = "bottomright"
+    ) %>%
+    addLayersControl(
+      baseGroups = c("OSM (Kaart)", "OpenTopoMap", "Satelliet"),
+      overlayGroups = c("Geselecteerd Habitat", "Grens Studiegebied"),
+      options = layersControlOptions(collapsed = FALSE)
+    )
+} else {
+  cat(paste0("⚠️ **Geen kaart beschikbaar:** Het rasterbestand (", basename(raster_pad), ") bevat geen habitat of is niet aanwezig."))
+}
+```
+

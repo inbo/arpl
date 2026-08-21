@@ -73,61 +73,66 @@ maak_kaart_laag <- function(res_list) {
   return(finaal)
 }
 
-cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
-  # 1. Controleer of het raster leeg is
+cluster_filter_twee_drempels <- function(masker, opp_laag, min_opp_ha, min_totale_opp_ha, dist_m, werkelijk = FALSE) {
   if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
     return(list(raster = masker * NA, clusters = masker * NA))
   }
   
-  # ----------------------------------------------------------------------------
-  # STAP 1: VEILIGE & SNELLER NETWERKVORMING ZONDER RAM-CRASH
-  # ----------------------------------------------------------------------------
-  if (dist_m > 0) {
-    # Maak binaire kaart (1 = biotoop, NA = rest)
-    r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
-    
-    # Buffer de BINAIR kaart (dit kost vrijwel geen geheugen!)
-    # Volle afstand dist_m zorgt dat plukjes binnen dist_m gegarandeerd samensmelten
-    r_buffered <- terra::buffer(r_binair, width = dist_m)
-    
-    # Maak unieke Netwerk-ID's op de gebufferde zones
-    cl_network <- terra::patches(r_buffered, directions = 8, zeroAsNA = TRUE)
-    
-    # Snijd de Netwerk-ID's direct terug naar waar de originele biotooppixels liggen
-    cl_biotoop_only <- terra::mask(cl_network, masker)
+  min_opp_m2 <- min_opp_ha * 10000
+  min_totale_m2 <- min_totale_opp_ha * 10000
+  
+  # 1. Eerst individuele clusters identificeren en filteren op MinOpp_ha
+  cl_individueel <- terra::patches(masker, directions = 8, zeroAsNA = TRUE)
+  
+  if(werkelijk) {
+    stats_indiv <- terra::zonal(opp_laag, cl_individueel, fun = "sum", na.rm = TRUE)
+    colnames(stats_indiv) <- c("ID", "Waarde")
+    stats_indiv$Area_m2 <- stats_indiv$Waarde * 100
   } else {
-    cl_network <- terra::patches(masker, directions = 8, zeroAsNA = TRUE)
+    f_indiv <- terra::freq(cl_individueel)
+    stats_indiv <- data.frame(ID = f_indiv$value, Waarde = f_indiv$count)
+    stats_indiv$Area_m2 <- stats_indiv$Waarde * 100
+  }
+  
+  voldoet_indiv_ids <- stats_indiv$ID[!is.na(stats_indiv$ID) & stats_indiv$Area_m2 >= min_opp_m2]
+  if(length(voldoet_indiv_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  
+  masker_gefilterd <- cl_individueel %in% voldoet_indiv_ids
+  masker_gefilterd <- terra::ifel(masker_gefilterd == 1, masker, NA)
+  
+  # 2. Netwerkvorming op basis van Dispersiecap (dist_m)
+  if (dist_m > 0) {
+    r_binair <- terra::ifel(!is.na(masker_gefilterd) & masker_gefilterd > 0, 1, NA)
+    r_buffered <- terra::buffer(r_binair, width = dist_m)
+    cl_network <- terra::patches(r_buffered, directions = 8, zeroAsNA = TRUE)
+    cl_biotoop_only <- terra::mask(cl_network, masker_gefilterd)
+  } else {
+    cl_network <- terra::patches(masker_gefilterd, directions = 8, zeroAsNA = TRUE)
     cl_biotoop_only <- cl_network
   }
   
-  # ----------------------------------------------------------------------------
-  # STAP 2: OPPERVLAKTE-OPTELSOM PER GEKOPPELD NETWERK
-  # ----------------------------------------------------------------------------
+  # 3. Oppervlakte-optelsom per netwerk en filteren op Min_totale_opp
   if(werkelijk) {
-    stats_df <- terra::zonal(opp_laag, cl_biotoop_only, fun = "sum", na.rm = TRUE)
-    colnames(stats_df) <- c("ID", "Waarde")
-    stats_df$Area_m2 <- stats_df$Waarde * 100 
+    stats_net <- terra::zonal(opp_laag, cl_biotoop_only, fun = "sum", na.rm = TRUE)
+    colnames(stats_net) <- c("ID", "Waarde")
+    stats_net$Area_m2 <- stats_net$Waarde * 100
   } else {
-    f <- terra::freq(cl_biotoop_only)
-    stats_df <- data.frame(ID = f$value, Waarde = f$count)
-    stats_df$Area_m2 <- stats_df$Waarde * 100 
+    f_net <- terra::freq(cl_biotoop_only)
+    stats_net <- data.frame(ID = f_net$value, Waarde = f_net$count)
+    stats_net$Area_m2 <- stats_net$Waarde * 100
   }
   
-  stats_df <- stats_df[!is.na(stats_df$ID), ]
-  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  stats_net <- stats_net[!is.na(stats_net$ID), ]
+  if(nrow(stats_net) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
-  # ----------------------------------------------------------------------------
-  # STAP 3: FILTEREN OP TOTALE NETWERK-OPPERVLAKTE >= DREMPEL
-  # ----------------------------------------------------------------------------
-  voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
-  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  voldoet_net_ids <- stats_net$ID[stats_net$Area_m2 >= min_totale_m2]
+  if(length(voldoet_net_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
-  # Behaal alleen de winnende netwerk-ID's
-  masker_binair <- cl_biotoop_only %in% voldoet_ids
-  final_network_mask <- terra::ifel(masker_binair == 1, 1, NA)
+  final_network_mask <- cl_biotoop_only %in% voldoet_net_ids
+  final_network_mask <- terra::ifel(final_network_mask == 1, 1, NA)
   
-  r_finaal  <- terra::mask(masker, final_network_mask)
-  cl_finaal <- terra::mask(cl_biotoop_only, r_finaal) 
+  r_finaal  <- terra::mask(masker_gefilterd, final_network_mask)
+  cl_finaal <- terra::mask(cl_biotoop_only, r_finaal)
   
   return(list(raster = r_finaal, clusters = cl_finaal))
 }
@@ -135,17 +140,20 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
 
 # Soort informatie ophalen
 ```{r Soort informatie}
+# Soort informatie ophalen
 df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
 soort <- "gladdeslang"
 
 resultaat <- df %>%
-filter(Soort == soort) %>%
-select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
+  filter(Soort == soort) %>%
+  select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
 
 # Variabelen definiëren
-oppervlakte_ha <- resultaat$MinOpp_ha
-afstand_m <- resultaat$AfstandBiotopen_m
-buffer_m <- resultaat$Dispersiecap_m
+min_oppervlakte_ha <- 20
+oppervlakte_ha     <- min_oppervlakte_ha # Voor backward compatibility met statistiek-chunk
+min_totale_opp_ha  <- 760
+afstand_m          <- 0   # Geen waterbiotoop-koppeling vereist
+buffer_m           <- 500 # Dispersiecap tussen clusters
 
 print(resultaat)
 rm(df, resultaat)
@@ -283,7 +291,7 @@ gladdeslang_biotoop1_max <- cover(heide_max, lijn_max)
 gladdeslang_biotoop1_opp <- cover(heide_opp, lijn_opp)
 ```
 
-```{r Strikte filtering open biotoop en cluster drempel FUZZY CLUSTERING}
+```{r Strikte filtering open biotoop en netwerkanalyse}
 hooggroen_raw          <- rast(here("data/input/ASCI Files/Groenkaart_2021.tif"))
 area_buffer_groen_crs <- project(area_buffer_fix, crs(hooggroen_raw))
 hooggroen_local_raw   <- crop(hooggroen_raw, area_buffer_groen_crs)
@@ -294,20 +302,12 @@ hooggroen_sync    <- project(hooggroen_10m_raw, crs(id_raster_TV)) %>% terra::re
 
 rand_breedte_m <- 50
 
-cat("\n=== [AUDIT] START GLADDESLANG HABITATANALYSE ===\n")
-cat("0. Basisinvoer vanuit BWK-crosswalk:\n")
-cat("   - Bruto potentieel (pixels):", round(terra::global(gladdeslang_biotoop1_max, "notNA")$notNA * 0.01, 2), "ha\n")
-cat("   - Netto werkelijk (fracties):", round(terra::global(gladdeslang_biotoop1_opp, "sum", na.rm=TRUE)[[1]] * 0.01, 2), "ha\n\n")
-
 # ==============================================================================
-# STAP 1: FILTER OP OPEN HABITAT (Boomkronen uitsluiten)
+# STAP 1 & 2: HABITATOPBOUW (Open habitat + 50m bosrand)
 # ==============================================================================
 gladdeslang_open_max <- terra::mask(gladdeslang_biotoop1_max, hooggroen_sync, maskvalues = 1)
 gladdeslang_open_opp <- terra::mask(gladdeslang_biotoop1_opp, hooggroen_sync, maskvalues = 1)
 
-# ==============================================================================
-# STAP 2: STRIKTE BOSRAND-GENERATIE (Enkel de eerste X meter bosrand)
-# ==============================================================================
 zoekzone_rand_max <- terra::buffer(gladdeslang_open_max, width = rand_breedte_m)
 r_binair_open_opp <- terra::ifel(!is.na(gladdeslang_open_opp) & gladdeslang_open_opp > 0, 1, NA)
 zoekzone_rand_opp <- terra::buffer(r_binair_open_opp, width = rand_breedte_m)
@@ -319,46 +319,63 @@ bruto_biotoop3_max <- terra::cover(gladdeslang_open_max, gladdeslang_bufferbos_m
 bruto_biotoop3_opp <- terra::cover(gladdeslang_open_opp, gladdeslang_bufferbos_opp)
 
 # ==============================================================================
-# STAP 3: CLUSTERING VIA FUZZY BUFFER (PARALLEL)
+# STAP 3: DUBBELE DREMPELFILTERING (Individueel >= 20 ha EN Netwerk >= 760 ha)
 # ==============================================================================
-fuzzy_mask_max <- terra::buffer(bruto_biotoop3_max, width = 50)
-cl_fuzzy_max   <- terra::patches(fuzzy_mask_max, directions = 8, zeroAsNA = TRUE)
-cl_max_bruto   <- terra::mask(cl_fuzzy_max, bruto_biotoop3_max)
+res_max <- cluster_filter_twee_drempels(
+  masker            = bruto_biotoop3_max,
+  opp_laag          = bruto_biotoop3_opp,
+  min_opp_ha        = min_oppervlakte_ha,
+  min_totale_opp_ha = min_totale_opp_ha,
+  dist_m            = buffer_m, # 500m netwerk-overbrugging
+  werkelijk         = FALSE
+)
 
 r_binair_bruto_opp <- terra::ifel(!is.na(bruto_biotoop3_opp) & bruto_biotoop3_opp > 0, 1, NA)
-fuzzy_mask_opp     <- terra::buffer(r_binair_bruto_opp, width = 50)
-cl_fuzzy_opp       <- terra::patches(fuzzy_mask_opp, directions = 8, zeroAsNA = TRUE)
-cl_opp_bruto       <- terra::mask(cl_fuzzy_opp, r_binair_bruto_opp)
+res_opp <- cluster_filter_twee_drempels(
+  masker            = r_binair_bruto_opp,
+  opp_laag          = bruto_biotoop3_opp,
+  min_opp_ha        = min_oppervlakte_ha,
+  min_totale_opp_ha = min_totale_opp_ha,
+  dist_m            = buffer_m,
+  werkelijk         = TRUE
+)
 
-# ==============================================================================
-# STAP 4: MINIMALE OPPERVLAKTETHEREPEL (20 ha filter - PARALLEL)
-# ==============================================================================
-drempel_pixels <- (oppervlakte_ha * 10000) / 100 
+final_max <- res_max$raster
+final_opp <- res_opp$raster
+cl_max    <- res_max$clusters
+cl_opp    <- res_opp$clusters
 
-# Spoor A: Maximaal Potentieel Filter (Pixels >= 2000)
-f_max <- as.data.frame(terra::freq(cl_max_bruto))
-ids_voldoet_max <- f_max$value[f_max$count >= drempel_pixels & !is.na(f_max$value)]
+# SYNCHRONISATIE EN MASKERS VOOR KAART EN EXPORT
+grens_merged  <- terra::aggregate(area_shape_proj)
+binnen_masker <- terra::rasterize(grens_merged, template_TV, field = 1)
 
-# Spoor B: Werkelijk Habitat Filter (Som van reële fracties >= 20 ha)
-zonal_opp_ha <- as.data.frame(terra::zonal(bruto_biotoop3_opp, cl_opp_bruto, fun = "sum", na.rm = TRUE))
-colnames(zonal_opp_ha) <- c("Cluster_ID", "Som_BWK_FRAC")
-ids_voldoet_opp <- zonal_opp_ha$Cluster_ID[zonal_opp_ha$Som_BWK_FRAC >= oppervlakte_ha & !is.na(zonal_opp_ha$Cluster_ID)]
+if (!all(is.na(terra::values(final_max, mat=FALSE)))) {
+  is_loss   <- !is.na(final_max) & is.na(final_opp)
+  is_kept   <- !is.na(final_opp)
+  is_inside <- !is.na(binnen_masker)
 
-cl_max <- terra::ifel(cl_max_bruto %in% ids_voldoet_max, cl_max_bruto, NA)
-cl_opp <- terra::ifel(cl_opp_bruto %in% ids_voldoet_opp, cl_opp_bruto, NA)
+  r_status <- terra::ifel(is_loss & is_inside, 1, NA)
+  r_status <- terra::cover(r_status, terra::ifel(is_loss & !is_inside, 2, NA))
+  r_status <- terra::cover(r_status, terra::ifel(is_kept & is_inside, 3, NA))
+  r_status <- terra::cover(r_status, terra::ifel(is_kept & !is_inside, 4, NA))
+} else {
+  r_status <- terra::rast(template_TV, vals = NA)
+}
 
-final_max <- terra::ifel(!is.na(cl_max), bruto_biotoop3_max, NA)
-final_opp <- terra::mask(bruto_biotoop3_opp, cl_opp %in% ids_voldoet_opp, maskvalues = FALSE)
+r_status <- terra::as.factor(r_status)
+status_labels <- data.frame(ID = c(1, 2, 3, 4), 
+                            Label = c("Maximale Potentie (Binnen)", "Maximale Potentie (Buiten)", 
+                                      "Werkelijk Habitat (Binnen)", "Werkelijk Habitat (Buiten)"))
+levels(r_status) <- status_labels
 
-# SYNCHRONISATIE VOOR MAP EN FUNCTIES
-r_status  <- terra::ifel(!is.na(final_max), 3, NA)
 cl_id_max <- cl_max
 cl_id_opp <- cl_opp
 
-rm(gladdeslang_open_max, gladdeslang_open_opp, zoekzone_rand_max, zoekzone_rand_opp, 
-   gladdeslang_bufferbos_max, gladdeslang_bufferbos_opp, r_binair_open_opp, r_binair_bruto_opp,
-   bruto_biotoop3_max, bruto_biotoop3_opp, fuzzy_mask_max, fuzzy_mask_opp, 
-   cl_fuzzy_max, cl_fuzzy_opp, cl_max_bruto, cl_opp_bruto, zonal_opp_ha)
+suppressWarnings(
+  rm(gladdeslang_open_max, gladdeslang_open_opp, zoekzone_rand_max, zoekzone_rand_opp, 
+     gladdeslang_bufferbos_max, gladdeslang_bufferbos_opp, r_binair_open_opp, r_binair_bruto_opp,
+     bruto_biotoop3_max, bruto_biotoop3_opp, hooggroen_binair, hooggroen_10m_raw)
+)
 gc()
 ```
 

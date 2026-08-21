@@ -741,11 +741,6 @@ if(!all(is.na(terra::values(r_web_status, mat=FALSE)))) {
   map <- map %>% addRasterImage(terra::as.int(r_web_status), colors = pal_4, opacity = 0.4, group = "Habitat Status (Pixels)")
 }
 
-# VOEG VOORTPLANTINGSWATEREN veldkrekel TOE (Felblauw raster)
-if(!is.null(r_web_vpt)) {
-  map <- map %>% addRasterImage(terra::as.int(r_web_vpt), colors = "#00BFFF", opacity = 0.8, group = "Voortplantingsbiotoop (Poelen/Waters)")
-}
-
 # Voeg Polygonen en Waarnemingen toe
 map <- map %>%
   addPolygons(

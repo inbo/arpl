@@ -347,15 +347,15 @@ gc()
 
 ```{r ruime omgeving}
 # ==============================================================================
-# BEREIDING RUIME OMGEVING & ZUIVERE PERCENTAGE-CHECK (>40% BOS - PARALLEL)
+# BEREIDING RUIME OMGEVING & ZUIVERE PERCENTAGE-CHECK (>60% BOS - PARALLEL)
 # ==============================================================================
-message("-> Landbiotoop ruime omgeving patches groeperen (50m) en filteren op min. 40 ha...")
+message("-> Landbiotoop ruime omgeving patches groeperen (50m) en filteren op min. 20 ha...")
 
 # --- SPOOR A: MAX ---
 land_ruim_clusters_max <- cluster_filter_compleet(
   masker     = landbiotoop_bwk_ruim_max,
   opp_laag   = landbiotoop_bwk_ruim_opp,
-  drempel_m2 = 400000,   
+  drempel_m2 = 200000,   
   dist_m     = 50,       
   werkelijk  = FALSE      
 )
@@ -377,7 +377,7 @@ if (!all(is.na(terra::values(r_patch_ids_max, mat=FALSE)))) {
   patch_stats_max$Bos_ha[is.na(patch_stats_max$Bos_ha)] <- 0
   patch_stats_max$Percentage_Bos <- (patch_stats_max$Bos_ha / patch_stats_max$Totaal_ha) * 100
   
-  goedgekeurde_patch_ids_max <- patch_stats_max$Patch_ID[patch_stats_max$Percentage_Bos >= 40]
+  goedgekeurde_patch_ids_max <- patch_stats_max$Patch_ID[patch_stats_max$Percentage_Bos >= 60]
   
   if (length(goedgekeurde_patch_ids_max) > 0) {
     venwitsnuitlibel_land_ruim_max <- terra::ifel(r_patch_ids_max %in% goedgekeurde_patch_ids_max, 1, NA)
@@ -391,7 +391,7 @@ r_binair_ruim_opp_init <- terra::ifel(!is.na(landbiotoop_bwk_ruim_opp) & landbio
 land_ruim_clusters_opp <- cluster_filter_compleet(
   masker     = r_binair_ruim_opp_init,
   opp_laag   = landbiotoop_bwk_ruim_opp,
-  drempel_m2 = 400000,   
+  drempel_m2 = 200000,   
   dist_m     = 50,       
   werkelijk  = TRUE      
 )
@@ -412,7 +412,7 @@ if (!all(is.na(terra::values(r_patch_ids_opp, mat=FALSE)))) {
   patch_stats_opp$Bos_ha[is.na(patch_stats_opp$Bos_ha)] <- 0
   patch_stats_opp$Percentage_Bos <- (patch_stats_opp$Bos_ha / patch_stats_opp$Totaal_ha) * 100
   
-  goedgekeurde_patch_ids_opp <- patch_stats_opp$Patch_ID[patch_stats_opp$Percentage_Bos >= 40]
+  goedgekeurde_patch_ids_opp <- patch_stats_opp$Patch_ID[patch_stats_opp$Percentage_Bos >= 60]
   
   if (length(goedgekeurde_patch_ids_opp) > 0) {
     venwitsnuitlibel_land_ruim_opp <- terra::mask(land_ruim_clusters_opp$raster, r_patch_ids_opp %in% goedgekeurde_patch_ids_opp)

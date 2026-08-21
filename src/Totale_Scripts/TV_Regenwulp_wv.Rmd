@@ -116,6 +116,9 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
   
   return(list(raster = r_finaal, clusters = cl_finaal))
 }
+
+# Dwing terra om heel snel C++ geheugen vrij te geven en te swappen naar schijf
+terraOptions(memfrac = 0.5, memmin = 1)
 ```
 
 # Soort informatie ophalen
@@ -448,6 +451,19 @@ if (!all(is.na(terra::values(r_grasland_slaapplaats_opp, mat=FALSE)))) {
 cat("Definitief grasland leefgebied MAX (ha):", round(calc_ha_exact(r_grasland_leefgebied_finaal_max), 2), "\n")
 cat("Definitief grasland leefgebied OPP (ha):", round(calc_ha_exact(r_grasland_leefgebied_finaal_opp), 2), "\n")
 
+# Aan het einde van stap 1c:
+# Schrijf het tussentijdse resultaat weg naar een tijdelijk bestand en maak het RAM 100% leeg
+writeRaster(r_grasland_leefgebied_finaal_max, "temp_gras_max.tif", overwrite = TRUE)
+writeRaster(r_grasland_leefgebied_finaal_opp, "temp_gras_opp.tif", overwrite = TRUE)
+
+# Verwijder de zware rasters uit het R-geheugen
+rm(r_grasland_leefgebied_finaal_max, r_grasland_leefgebied_finaal_opp)
+gc()
+
+# Laad ze heel licht opnieuw in (terra leest ze nu vanaf schijf i.p.v. RAM)
+r_grasland_leefgebied_finaal_max <- rast("temp_gras_max.tif")
+r_grasland_leefgebied_finaal_opp <- rast("temp_gras_opp.tif")
+
 suppressWarnings(rm(cl_grasland_final_max, cl_grasland_final_opp, r_grasland_slaapplaats_max, r_grasland_slaapplaats_opp))
 gc()
 ```
@@ -609,8 +625,9 @@ if (file.exists(waarnemingen_path)) {
   df_points_sf <- st_as_sf(waarnemingen_raw, coords = c("x", "y"), crs = 31370)
   
   waarneming_smear_sf <- st_buffer(df_points_sf, dist = buffer_m) %>% 
-    st_union() %>% 
-    st_sf() 
+  st_union() %>% 
+  st_simplify(dTolerance = 50) %>%  # Vereenvoudigt de randen met een tollerantie van 50m
+  st_sf() 
   
   waarneming_blobs_vect  <- vect(waarneming_smear_sf)
   waarneming_punten_vect <- vect(df_points_sf)
@@ -658,11 +675,13 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   ids_werk_buit <- setdiff(ids_werkelijk_totaal, ids_die_TV_raken)
   
   if(has_observations && nrow(df_points_sf) > 0) {
-    extract_ids_max <- terra::extract(cl_max, waarneming_blobs_vect, ID = FALSE)
-    ids_raken_waarneming <- if(nrow(extract_ids_max) > 0) unique(na.omit(extract_ids_max[[1]])) else c()
+    # Directe en veilige C++ extractie van de clusters die door de smear-polygoon overlapt worden
+    extract_smear <- terra::extract(cl_max, waarneming_blobs_vect, ID = FALSE)
+    ids_raken_waarneming <- if(nrow(extract_smear) > 0) unique(na.omit(extract_smear[[1]])) else c()
   } else {
     ids_raken_waarneming <- c()
   }
+
   ids_actueel_relevant <- intersect(ids_werkelijk_totaal, ids_raken_waarneming)
 
   if(has_observations && nrow(df_points_sf) > 0) {
@@ -855,9 +874,9 @@ if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
 }
 
 export_config <- list(
-  list(rast = final_max,              naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,      naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
+  list(rast = final_max,             naam = "Maximale_Potentie",        folder = folders$potentie,   type = "INT1U"),
+  list(rast = werkelijk_export_rast, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,  type = "INT1U"), 
+  list(rast = arpl_export_rast,      naam = "ARPL",                     folder = folders$arpl,       type = "INT1U"),
   list(rast = verspreiding_raster,   naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 
@@ -881,6 +900,10 @@ for(item in export_config) {
               datatype = item$type)
 }
 
-rm(werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
+# --- EINDOPRUIMING TIJDELIJKE BESTANDEN EN RAM ---
+temp_files <- c("temp_gras_max.tif", "temp_gras_opp.tif")
+file.remove(temp_files[file.exists(temp_files)])
+
+rm(werkelijk_export_rast, arpl_export_rast, export_config, export_rast, temp_files)
 gc()
 ```

@@ -73,6 +73,8 @@ maak_kaart_laag <- function(res_list) {
   return(finaal)
 }
 
+terraOptions(memfrac = 0.5, memmin = 1)
+
 cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
   # 1. Controleer of het raster leeg is
   if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
@@ -336,13 +338,21 @@ r_waterlopen_opp <- terra::ifel(r_waterlopen_bin == 1, 0.01, NA)
 ijsvogel_voortplanting_opp <- terra::cover(bwk_clusters_opp$raster, r_waterlopen_opp)
 names(ijsvogel_voortplanting_opp) <- "Oppervlakte_Real"
 
-alle_matches      <- ijsvogel_voortplanting_max
-alle_oppervlaktes <- ijsvogel_voortplanting_opp
+# --- SPOOR A & BOPSLAAN NAAR TIJDELIJKE BESTANDEN ---
+writeRaster(ijsvogel_voortplanting_max, "temp_ijsvogel_fusie_max.tif", overwrite = TRUE)
+writeRaster(ijsvogel_voortplanting_opp, "temp_ijsvogel_fusie_opp.tif", overwrite = TRUE)
 
-rm(tabel_vlaanderen, tabel_gefilterd, tabel_TV, tabel_cel_som, vertaal_df,
-   bwk_max, bwk_opp, bwk_clusters_max, bwk_clusters_opp, 
+# Geheugen 100% leegmaken
+rm(ijsvogel_voortplanting_max, ijsvogel_voortplanting_opp, bwk_clusters_max, bwk_clusters_opp, 
+   tabel_vlaanderen, tabel_gefilterd, tabel_TV, tabel_cel_som, vertaal_df,
    r_huetzon_vlaanderen, r_huetzon_local, r_waterlopen_bin, r_waterlopen_opp)
 gc()
+
+# Licht opnieuw inladen (als disk-pointer i.p.v. RAM)
+alle_matches      <- rast("temp_ijsvogel_fusie_max.tif")
+alle_oppervlaktes <- rast("temp_ijsvogel_fusie_opp.tif")
+names(alle_matches)     <- "Match_Max"
+names(alle_oppervlaktes) <- "Oppervlakte_Real"
 ```
 
 ```{r oevers}
@@ -371,7 +381,7 @@ temp_oever_mask        <- terra::buffer(ijsvogel_oever, width = 25)
 ijsvogel_oever_cluster <- terra::patches(temp_oever_mask, directions = 8, zeroAsNA = TRUE) %>% 
   terra::mask(ijsvogel_oever)
 
-# 3. Exacte lengteberekening via vectorisatie
+# 3. Exacte lengteberekening via vectorisatie (1 km / 2 km drempel)
 oever_polys <- terra::as.polygons(ijsvogel_oever_cluster, dissolve = TRUE)
 oever_polys$lengte_m <- terra::perim(oever_polys) / 2
 
@@ -385,22 +395,32 @@ if(length(valide_oever_clusters) > 0) {
   warning("⚠️ Geen enkele oever voldoet aan de minimale lengte van 1 km!")
 }
 
-# 4. Bereken de 100m zone rondom de goedgekeurde oevers
-dist_to_oever   <- terra::distance(ijsvogel_oever1)
-oever_zone_100m <- terra::ifel(dist_to_oever <= 100, 1, NA)
+# 4. Bereken de 20m zone rondom de goedgekeurde oevers (AANGEPAST VAN 100M NAAR 20M)
+dist_to_oever  <- terra::distance(ijsvogel_oever1)
+oever_zone_20m <- terra::ifel(dist_to_oever <= 20, 1, NA)
 
 # 5. Maskeren voor Spoor A (MAX) en Spoor B (OPP)
-ijsvogel_leefgebied_max <- terra::mask(alle_matches, oever_zone_100m)
-ijsvogel_leefgebied_opp <- terra::mask(alle_oppervlaktes, oever_zone_100m)
+ijsvogel_leefgebied_max_raw <- terra::mask(alle_matches, oever_zone_20m)
+ijsvogel_leefgebied_opp_raw <- terra::mask(alle_oppervlaktes, oever_zone_20m)
+
+# Tussentijds wegschrijven naar schijf om C++ RAM te ontlasten
+writeRaster(ijsvogel_leefgebied_max_raw, "temp_ijsvogel_leefgebied_max.tif", overwrite = TRUE)
+writeRaster(ijsvogel_leefgebied_opp_raw, "temp_ijsvogel_leefgebied_opp.tif", overwrite = TRUE)
+
+# Geheugen opruimen
+rm(alle_matches, alle_oppervlaktes, blauwe_laag_raw, r_blauwe_laag, temp_oever_mask, 
+   ijsvogel_oever_cluster, oever_polys, valide_oever_clusters, dist_to_oever, oever_zone_20m,
+   ijsvogel_leefgebied_max_raw, ijsvogel_leefgebied_opp_raw)
+gc()
+
+# Opnieuw licht inladen vanaf schijf
+ijsvogel_leefgebied_max <- rast("temp_ijsvogel_leefgebied_max.tif")
+ijsvogel_leefgebied_opp <- rast("temp_ijsvogel_leefgebied_opp.tif")
 
 names(ijsvogel_leefgebied_max) <- "Leefgebied_Max"
 names(ijsvogel_leefgebied_opp) <- "Leefgebied_Real"
 
-rm(blauwe_laag_raw, r_blauwe_laag, temp_oever_mask, ijsvogel_oever_cluster, 
-   oever_polys, valide_oever_clusters, dist_to_oever, oever_zone_100m)
-gc()
-
-message("-> Finale leefgebiedrasters op basis van >1km oeverlengte succesvol berekend!")
+message("-> Finale leefgebiedrasters op basis van >1km oeverlengte en 20m zone succesvol berekend en gecachet op schijf!")
 ```
 
 ```{r waarnemingen inlezen + audit tabel ijsvogel}
@@ -765,7 +785,16 @@ for(item in export_config) {
   message(paste("    [OK] Geëxporteerd:", basename(file_path)))
 }
 
-rm(werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
+# --- EINDOPRUIMING TIJDELIJKE CACHE BESTANDEN ---
+temp_files <- c(
+  "temp_ijsvogel_fusie_max.tif", 
+  "temp_ijsvogel_fusie_opp.tif",
+  "temp_ijsvogel_leefgebied_max.tif", 
+  "temp_ijsvogel_leefgebied_opp.tif"
+)
+file.remove(temp_files[file.exists(temp_files)])
+
+rm(werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast, temp_files)
 gc()
 ```
 

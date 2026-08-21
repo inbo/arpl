@@ -288,7 +288,7 @@ waterbiotoop_bwk_basis_opp <- terra::ifel(!is.na(waterbiotoop_bwk1_opp) & waterb
 waterbiotoop1_max_list <- cluster_filter_compleet(
   masker     = waterbiotoop_bwk_basis_max, 
   opp_laag   = waterbiotoop_bwk1_max, 
-  drempel_m2 = 200,                  # 0.02 ha = 200 m²
+  drempel_m2 = 100,                  # 0.02 ha = 200 m²
   dist_m     = 50, 
   werkelijk  = FALSE
 )
@@ -299,7 +299,7 @@ r_binair_water_opp <- terra::ifel(!is.na(waterbiotoop_bwk_basis_opp) & waterbiot
 waterbiotoop1_opp_list <- cluster_filter_compleet(
   masker     = r_binair_water_opp, 
   opp_laag   = waterbiotoop_bwk1_opp, 
-  drempel_m2 = 200, 
+  drempel_m2 = 100, 
   dist_m     = 50, 
   werkelijk  = TRUE
 )
@@ -344,7 +344,7 @@ gc()
 ```
 
 ```{r landbiotoop ruime omgeving}
-message("-> Landbiotoop ruimere omgeving & bos-samenstellingscheck berekenen (Minimaal 40% bos - PARALLEL)...")
+message("-> Landbiotoop ruimere omgeving & bos-samenstellingscheck berekenen (Minimaal 60% bos - PARALLEL)...")
 
 # ==============================================================================
 # --- SPOOR 1: MAXIMALE POTENTIE ---
@@ -352,7 +352,7 @@ message("-> Landbiotoop ruimere omgeving & bos-samenstellingscheck berekenen (Mi
 landbiotoop_ruim_max_list <- cluster_filter_compleet(
   masker     = landbiotoop_bwk_ruim_max, 
   opp_laag   = landbiotoop_bwk_ruim_max, 
-  drempel_m2 = 400000, 
+  drempel_m2 = 200000, 
   dist_m     = 50, 
   werkelijk  = FALSE
 )
@@ -375,7 +375,7 @@ df_samenstelling_max <- merge(stats_ruim_totaal_max, stats_bos_in_ruim_max, by =
 df_samenstelling_max$Bos_ha[is.na(df_samenstelling_max$Bos_ha)] <- 0
 df_samenstelling_max$Percentage_Bos <- (df_samenstelling_max$Bos_ha / df_samenstelling_max$Totaal_Ruim_ha) * 100
 
-valide_ruim_ids_max <- df_samenstelling_max$Cluster_ID[df_samenstelling_max$Percentage_Bos >= 40]
+valide_ruim_ids_max <- df_samenstelling_max$Cluster_ID[df_samenstelling_max$Percentage_Bos >= 60]
 
 if(length(valide_ruim_ids_max) > 0) {
   masker_ruim_max <- cl_id_ruim_max %in% valide_ruim_ids_max
@@ -393,7 +393,7 @@ r_binair_ruim_opp_init <- terra::ifel(!is.na(landbiotoop_bwk_ruim_opp) & landbio
 landbiotoop_ruim_opp_list <- cluster_filter_compleet(
   masker     = r_binair_ruim_opp_init, 
   opp_laag   = landbiotoop_bwk_ruim_opp, 
-  drempel_m2 = 400000, 
+  drempel_m2 = 200000, 
   dist_m     = 50, 
   werkelijk  = TRUE
 )
@@ -416,7 +416,7 @@ if(!all(is.na(terra::values(r_ruim_opp_bin, mat=FALSE)))) {
   df_samenstelling_opp$Bos_ha[is.na(df_samenstelling_opp$Bos_ha)] <- 0
   df_samenstelling_opp$Percentage_Bos <- (df_samenstelling_opp$Bos_ha / df_samenstelling_opp$Totaal_Ruim_ha) * 100
   
-  valide_ruim_ids_opp <- df_samenstelling_opp$Cluster_ID[df_samenstelling_opp$Percentage_Bos >= 40]
+  valide_ruim_ids_opp <- df_samenstelling_opp$Cluster_ID[df_samenstelling_opp$Percentage_Bos >= 60]
   
   if(length(valide_ruim_ids_opp) > 0) {
     masker_ruim_opp <- cl_id_ruim_opp %in% valide_ruim_ids_opp

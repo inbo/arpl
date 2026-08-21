@@ -72,61 +72,66 @@ maak_kaart_laag <- function(res_list) {
   return(finaal)
 }
 
-cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
-  # 1. Controleer of het raster leeg is
+cluster_filter_twee_drempels <- function(masker, opp_laag, min_opp_ha, min_totale_opp_ha, dist_m, werkelijk = FALSE) {
   if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
     return(list(raster = masker * NA, clusters = masker * NA))
   }
   
-  # ----------------------------------------------------------------------------
-  # STAP 1: VEILIGE & SNELLER NETWERKVORMING ZONDER RAM-CRASH
-  # ----------------------------------------------------------------------------
-  if (dist_m > 0) {
-    # Maak binaire kaart (1 = biotoop, NA = rest)
-    r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
-    
-    # Buffer de BINAIR kaart (dit kost vrijwel geen geheugen!)
-    # Volle afstand dist_m zorgt dat plukjes binnen dist_m gegarandeerd samensmelten
-    r_buffered <- terra::buffer(r_binair, width = dist_m)
-    
-    # Maak unieke Netwerk-ID's op de gebufferde zones
-    cl_network <- terra::patches(r_buffered, directions = 8, zeroAsNA = TRUE)
-    
-    # Snijd de Netwerk-ID's direct terug naar waar de originele biotooppixels liggen
-    cl_biotoop_only <- terra::mask(cl_network, masker)
+  min_opp_m2 <- min_opp_ha * 10000
+  min_totale_m2 <- min_totale_opp_ha * 10000
+  
+  # 1. Eerst individuele clusters identificeren en filteren op MinOpp_ha
+  cl_individueel <- terra::patches(masker, directions = 8, zeroAsNA = TRUE)
+  
+  if(werkelijk) {
+    stats_indiv <- terra::zonal(opp_laag, cl_individueel, fun = "sum", na.rm = TRUE)
+    colnames(stats_indiv) <- c("ID", "Waarde")
+    stats_indiv$Area_m2 <- stats_indiv$Waarde * 100
   } else {
-    cl_network <- terra::patches(masker, directions = 8, zeroAsNA = TRUE)
+    f_indiv <- terra::freq(cl_individueel)
+    stats_indiv <- data.frame(ID = f_indiv$value, Waarde = f_indiv$count)
+    stats_indiv$Area_m2 <- stats_indiv$Waarde * 100
+  }
+  
+  voldoet_indiv_ids <- stats_indiv$ID[!is.na(stats_indiv$ID) & stats_indiv$Area_m2 >= min_opp_m2]
+  if(length(voldoet_indiv_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  
+  masker_gefilterd <- cl_individueel %in% voldoet_indiv_ids
+  masker_gefilterd <- terra::ifel(masker_gefilterd == 1, masker, NA)
+  
+  # 2. Netwerkvorming op basis van Dispersiecap (dist_m)
+  if (dist_m > 0) {
+    r_binair <- terra::ifel(!is.na(masker_gefilterd) & masker_gefilterd > 0, 1, NA)
+    r_buffered <- terra::buffer(r_binair, width = dist_m)
+    cl_network <- terra::patches(r_buffered, directions = 8, zeroAsNA = TRUE)
+    cl_biotoop_only <- terra::mask(cl_network, masker_gefilterd)
+  } else {
+    cl_network <- terra::patches(masker_gefilterd, directions = 8, zeroAsNA = TRUE)
     cl_biotoop_only <- cl_network
   }
   
-  # ----------------------------------------------------------------------------
-  # STAP 2: OPPERVLAKTE-OPTELSOM PER GEKOPPELD NETWERK
-  # ----------------------------------------------------------------------------
+  # 3. Oppervlakte-optelsom per netwerk en filteren op Min_totale_opp
   if(werkelijk) {
-    stats_df <- terra::zonal(opp_laag, cl_biotoop_only, fun = "sum", na.rm = TRUE)
-    colnames(stats_df) <- c("ID", "Waarde")
-    stats_df$Area_m2 <- stats_df$Waarde * 100 
+    stats_net <- terra::zonal(opp_laag, cl_biotoop_only, fun = "sum", na.rm = TRUE)
+    colnames(stats_net) <- c("ID", "Waarde")
+    stats_net$Area_m2 <- stats_net$Waarde * 100
   } else {
-    f <- terra::freq(cl_biotoop_only)
-    stats_df <- data.frame(ID = f$value, Waarde = f$count)
-    stats_df$Area_m2 <- stats_df$Waarde * 100 
+    f_net <- terra::freq(cl_biotoop_only)
+    stats_net <- data.frame(ID = f_net$value, Waarde = f_net$count)
+    stats_net$Area_m2 <- stats_net$Waarde * 100
   }
   
-  stats_df <- stats_df[!is.na(stats_df$ID), ]
-  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  stats_net <- stats_net[!is.na(stats_net$ID), ]
+  if(nrow(stats_net) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
-  # ----------------------------------------------------------------------------
-  # STAP 3: FILTEREN OP TOTALE NETWERK-OPPERVLAKTE >= DREMPEL
-  # ----------------------------------------------------------------------------
-  voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
-  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  voldoet_net_ids <- stats_net$ID[stats_net$Area_m2 >= min_totale_m2]
+  if(length(voldoet_net_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
-  # Behaal alleen de winnende netwerk-ID's
-  masker_binair <- cl_biotoop_only %in% voldoet_ids
-  final_network_mask <- terra::ifel(masker_binair == 1, 1, NA)
+  final_network_mask <- cl_biotoop_only %in% voldoet_net_ids
+  final_network_mask <- terra::ifel(final_network_mask == 1, 1, NA)
   
-  r_finaal  <- terra::mask(masker, final_network_mask)
-  cl_finaal <- terra::mask(cl_biotoop_only, r_finaal) 
+  r_finaal  <- terra::mask(masker_gefilterd, final_network_mask)
+  cl_finaal <- terra::mask(cl_biotoop_only, r_finaal)
   
   return(list(raster = r_finaal, clusters = cl_finaal))
 }
@@ -134,17 +139,19 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
 
 # Soort informatie ophalen
 ```{r Soort informatie}
+# Soort informatie ophalen
 df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
 soort <- "adder"
 
 resultaat <- df %>%
-filter(Soort == soort) %>%
-select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
+  filter(Soort == soort) %>%
+  select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
 
 # Variabelen definiëren
-oppervlakte_ha <- resultaat$MinOpp_ha
-afstand_m <- resultaat$AfstandBiotopen_m
-buffer_m <- resultaat$Dispersiecap_m
+min_oppervlakte_ha <- 20
+min_totale_opp_ha  <- 760
+afstand_m          <- 0
+buffer_m           <- 500
 
 print(resultaat)
 rm(df, resultaat)
@@ -259,22 +266,34 @@ gc()
 
 # Cluster-analyse en oppervlakte filter
 ```{r Cluster}
-drempel_m2 <- oppervlakte_ha * 10000
-
 # --- SPOOR 1: MAX (Binair op basis van aanwezigheid) ---
-res_max <- cluster_filter_compleet(masker_bron, opp_bron, drempel_m2, afstand_m, werkelijk = FALSE)
+res_max <- cluster_filter_twee_drempels(
+  masker = masker_bron, 
+  opp_laag = opp_bron, 
+  min_opp_ha = min_oppervlakte_ha, 
+  min_totale_opp_ha = min_totale_opp_ha, 
+  dist_m = buffer_m, # Gebruik buffer_m (500m dispersiecap) voor netwerkvorming
+  werkelijk = FALSE
+)
 
 # --- SPOOR 2: OPP (Volledig parallel op basis van werkelijke fracties) ---
 r_binair_opp <- terra::ifel(!is.na(opp_bron) & opp_bron > 0, 1, NA)
-res_opp <- cluster_filter_compleet(r_binair_opp, opp_bron, drempel_m2, afstand_m, werkelijk = TRUE)
+res_opp <- cluster_filter_twee_drempels(
+  masker = r_binair_opp, 
+  opp_laag = opp_bron, 
+  min_opp_ha = min_oppervlakte_ha, 
+  min_totale_opp_ha = min_totale_opp_ha, 
+  dist_m = buffer_m, 
+  werkelijk = TRUE
+)
 
 final_max <- res_max$raster
 final_opp <- res_opp$raster
 cl_max    <- res_max$clusters
 cl_opp    <- res_opp$clusters
 
+# --- CRUCIALE TOEVOEGING: binnen_masker en r_status aanmaken ---
 grens_merged  <- terra::aggregate(area_shape_proj)
-buffer_lijn   <- terra::buffer(grens_merged, width = buffer_m)
 binnen_masker <- terra::rasterize(grens_merged, template_TV, field = 1)
 
 if (!all(is.na(terra::values(final_max, mat=FALSE)))) {
@@ -301,7 +320,7 @@ levels(r_status) <- status_labels
 # Resultaten en Statistiek
 ```{r Resultaten en statistiek}
 # --- BEREKENING EN STATISTIEK EERST (VOORDAT DE EXPORT DE RASTERS WIJZIGT) ---
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Adder_dummy.csv")
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Adder.csv")
 
 if (file.exists(waarnemingen_path)) {
   waarnemingen_raw <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)
@@ -336,7 +355,7 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   colnames(zonal_zone) <- c("ID", "In_TV")
   ids_binnen <- zonal_zone$ID[!is.na(zonal_zone$In_TV) & zonal_zone$In_TV > 0]
   
-  ids_werkelijk_totaal <- stats_act_raw$ID[stats_act_raw$Werk_ha >= oppervlakte_ha]
+  ids_werkelijk_totaal <- stats_act_raw$ID[stats_act_raw$Werk_ha >= min_oppervlakte_ha]
   
   # A. ARPL Extractie
   if(has_observations && nrow(df_points_sf) > 0) {

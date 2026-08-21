@@ -299,15 +299,86 @@ if (nrow(kleine_clusters_v) > 0) {
   r_witsnuit_waterbiotoop1_opp <- voortplanting_bwk_opp
 }
 
-suppressWarnings(
-  rm(watervlakken_v, watervlakken_proj, area_buffer_clean, watervlakken_clean, watervlakken_TV, 
-     watervlakken_buffered, watervlakken_fuzzy_clusters, kleine_clusters_v, kleine_watervlakken_finaal, r_witsnuit_kleinwater)
-)
 gc()
 ```
 
+```{r}
+# ==============================================================================
+# VISUELE DIAGNOSEKAART WATERCLUSTERS & BUREN (LEAFLET)
+# ==============================================================================
+
+# 1. Maak polygonen van de waterclusters en bereken centroids & afstanden
+r_water_cl <- terra::patches(r_witsnuit_waterbiotoop1, directions = 8, zeroAsNA = TRUE)
+watervl_poly <- terra::as.polygons(r_water_cl, dissolve = TRUE)
+centr <- terra::centroids(watervl_poly)
+
+dist_matrix <- terra::distance(centr)
+buren_200m_excl <- apply(dist_matrix, 1, function(row) sum(row > 0 & row <= 200))
+
+dichtste_buur_m <- apply(dist_matrix, 1, function(row) {
+  overige <- row[row > 0]
+  if (length(overige) > 0) min(overige) else NA
+})
+
+# 2. Voeg attributen toe aan de sf-vectorlagen voor Leaflet
+watervl_sf <- st_as_sf(watervl_poly) %>% st_transform(4326)
+watervl_sf$Cluster_ID      <- 1:nrow(watervl_sf)
+watervl_sf$Buren_200m      <- buren_200m_excl
+watervl_sf$Dichtst_buur_m  <- round(dichtste_buur_m, 1)
+
+watervl_sf$Popup <- paste0(
+  "<div style='font-family: Arial; min-width: 180px;'>",
+  "<strong>Water Cluster ID:</strong> ", watervl_sf$Cluster_ID, "<br><hr>",
+  "<strong>Aantal buren (<= 200m):</strong> <b style='color:", 
+  ifelse(watervl_sf$Buren_200m >= 3, "green", "red"), ";'>", 
+  watervl_sf$Buren_200m, "</b><br>",
+  "<strong>Dichtste buur:</strong> ", watervl_sf$Dichtst_buur_m, " meter",
+  "</div>"
+)
+
+# 3. Buffer-zones van 200m rondom de centroids om overlapping te zien
+centr_buf_200m_sf <- st_as_sf(terra::buffer(centr, width = 200)) %>% st_transform(4326)
+
+# 4. Bouw de Leaflet kaart
+map_diagnose <- leaflet() %>%
+  addTiles(group = "OSM Kaart") %>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet") %>%
+  
+  # 200m Bufferzones
+  addPolygons(
+    data = centr_buf_200m_sf,
+    fillColor = "orange", fillOpacity = 0.15,
+    color = "orange", weight = 1, dashArray = "4,4",
+    group = "200m Straal rond Ven"
+  ) %>%
+  
+  # Waterpartijen zelf
+  addPolygons(
+    data = watervl_sf,
+    fillColor = "#0072B2", fillOpacity = 0.7,
+    color = "#003366", weight = 1.5,
+    popup = ~Popup,
+    group = "Waterpartijen"
+  ) %>%
+  
+  # Grens studiegebied
+  addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 2.5, group = "Grens Studiegebied") %>%
+  
+  addLayersControl(
+    baseGroups = c("OSM Kaart", "Satelliet"),
+    overlayGroups = c("Waterpartijen", "200m Straal rond Ven", "Grens Studiegebied"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+map_diagnose
+```
+
 ```{r 3 Buren}
+# ==============================================================================
+# WATERBIOTOOP FILTEREN: MINSTENS 3 BUREN BINNEN 200M (ROBUUST)
+# ==============================================================================
 message("-> Unieke clusters identificeren en filteren (>= 3 buren binnen 200m)...")
+
 r_water_clusters <- terra::patches(r_witsnuit_waterbiotoop1, directions = 8, zeroAsNA = TRUE)
 
 if (!all(is.na(terra::values(r_water_clusters, mat = FALSE)))) {
@@ -318,39 +389,41 @@ if (!all(is.na(terra::values(r_water_clusters, mat = FALSE)))) {
     centroids_buffer <- terra::buffer(centroids, width = 200)
     
     intersect_matrix <- terra::relate(centroids_buffer, centroids, "intersects")
-    cluster_counts <- rowSums(intersect_matrix)
+    # Aantal buren = aantal kruisende centroids min zichzelf
+    cluster_counts <- rowSums(intersect_matrix) - 1
     
     watervlakken_poly$unieke_buren_count <- cluster_counts
-    goedgekeurde_clusters_poly <- watervlakken_poly[watervlakken_poly$unieke_buren_count >= 4, ]
+    # Minstens 3 buren binnen 200m
+    goedgekeurde_clusters_poly <- watervlakken_poly[watervlakken_poly$unieke_buren_count >= 3, ]
     
     if (nrow(goedgekeurde_clusters_poly) > 0) {
       gevlektewitsnuitlibel_voortplanting_max <- terra::rasterize(goedgekeurde_clusters_poly, template_TV, field = 1, background = NA)
-      gevlektewitsnuitlibel_water_finaal_max <- gevlektewitsnuitlibel_voortplanting_max
+      gevlektewitsnuitlibel_water_finaal_max  <- gevlektewitsnuitlibel_voortplanting_max
     } else {
       gevlektewitsnuitlibel_voortplanting_max <- template_TV * NA
-      gevlektewitsnuitlibel_water_finaal_max <- template_TV * NA
+      gevlektewitsnuitlibel_water_finaal_max  <- template_TV * NA
     }
   } else {
     gevlektewitsnuitlibel_voortplanting_max <- template_TV * NA
-    gevlektewitsnuitlibel_water_finaal_max <- template_TV * NA
+    gevlektewitsnuitlibel_water_finaal_max  <- template_TV * NA
   }
 } else {
   gevlektewitsnuitlibel_voortplanting_max <- template_TV * NA
-  gevlektewitsnuitlibel_water_finaal_max <- template_TV * NA
+  gevlektewitsnuitlibel_water_finaal_max  <- template_TV * NA
 }
 
-# --- SPOOR B: WERKELIJKE OPPERVLAKTE (Parallel & Autonoom) ---
+# --- SPOOR B: WERKELIJKE OPPERVLAKTE ---
 gevlektewitsnuitlibel_voortplanting_opp <- terra::mask(r_witsnuit_waterbiotoop1_opp, gevlektewitsnuitlibel_voortplanting_max)
 
-rm(r_water_clusters, r_witsnuit_waterbiotoop1, r_witsnuit_waterbiotoop1_opp)
+rm(r_water_clusters)
 gc()
 ```
 
 ```{r Foerageergebied Afbakenen}
 # ==============================================================================
-# STAP 1: LAND_NABIJ CLUSTERS (MIN. 5 HA & MIN. 30% BOS/STRUWEEL - PARALLEL)
+# STAP 1 & 2: LAND_NABIJ (MIN 5 HA & 30% STRUWEEL) + RUIM LAND (MIN 30 HA)
 # ==============================================================================
-message("-> 1. Land_nabij clusters filteren op min. 5 ha en 10m overbrugging...")
+message("-> 1. Land_nabij clusters filteren op min. 5 ha en 30% struweel/bos...")
 
 # --- SPOOR A: MAX ---
 if (!all(is.na(terra::values(land_nabij_max, mat = FALSE)))) {
@@ -396,7 +469,7 @@ if (!all(is.na(terra::values(land_nabij_max, mat = FALSE)))) {
   land_nabij_gefilterd_max <- template_TV * NA
 }
 
-# --- SPOOR B: OPP (Parallel & Autonoom) ---
+# --- SPOOR B: OPP ---
 r_binair_land_nabij_opp <- terra::ifel(!is.na(land_nabij_opp) & land_nabij_opp > 0, 1, NA)
 
 if (!all(is.na(terra::values(r_binair_land_nabij_opp, mat = FALSE)))) {
@@ -442,20 +515,18 @@ if (!all(is.na(terra::values(r_binair_land_nabij_opp, mat = FALSE)))) {
   land_nabij_gefilterd_opp <- template_TV * NA
 }
 
-# Schoner en korter alternatief voor de 30 ha ruim-landbiotoop filter in Stap 2:
-drempel_30ha_m2 <- 30 * 10000 # 30 ha
+# --- 2. RUIM LAND CLUSTERS (30 HA DREMPEL) ---
+drempel_30ha_m2 <- 30 * 10000
 
-# Spoor A (Max)
 res_ruim_max <- cluster_filter_compleet(
   masker     = land_ruim_max,
   opp_laag   = land_ruim_max,
   drempel_m2 = drempel_30ha_m2,
-  dist_m     = 50, # 50m overbrugging
+  dist_m     = 50,
   werkelijk  = FALSE
 )
 land_ruim_30ha_max <- res_ruim_max$raster
 
-# Spoor B (Opp)
 r_binair_land_ruim_opp <- terra::ifel(!is.na(land_ruim_opp) & land_ruim_opp > 0, 1, NA)
 res_ruim_opp <- cluster_filter_compleet(
   masker     = r_binair_land_ruim_opp,
@@ -466,8 +537,12 @@ res_ruim_opp <- cluster_filter_compleet(
 )
 land_ruim_30ha_opp <- res_ruim_opp$raster
 
+# --- CRUCIALE TUSSENSTAP: KOPPELING LAND_NABIJ EN RUIM LAND ---
+land_nabij_in_ruim_max <- terra::mask(land_nabij_gefilterd_max, land_ruim_30ha_max)
+land_nabij_in_ruim_opp <- terra::mask(land_nabij_gefilterd_opp, land_ruim_30ha_opp)
+
 # ==============================================================================
-# STAP 3: FINALE KOPPELING WATER EN LAND_NABIJ (PARALLEL)
+# STAP 3: FINALE KOPPELING WATER EN LAND_NABIJ (GEHELE CLUSTERS BINNEN 10M)
 # ==============================================================================
 message("-> 3. Finale koppeling: Water en Land_nabij binnen 10m van elkaar...")
 
@@ -475,17 +550,27 @@ message("-> 3. Finale koppeling: Water en Land_nabij binnen 10m van elkaar...")
 if (!all(is.na(terra::values(gevlektewitsnuitlibel_voortplanting_max, mat = FALSE))) && 
     !all(is.na(terra::values(land_nabij_in_ruim_max, mat = FALSE)))) {
   
-  dist_from_water_max <- terra::distance(gevlektewitsnuitlibel_voortplanting_max, target = 1, maxdist = 20)
-  dist_from_land_max  <- terra::distance(land_nabij_in_ruim_max, target = 1, maxdist = 20)
+  water_buf10_max_bin <- terra::buffer(!is.na(gevlektewitsnuitlibel_voortplanting_max) & gevlektewitsnuitlibel_voortplanting_max > 0, width = 10)
   
-  land_binnen_10m_water_max <- terra::ifel(dist_from_water_max <= 10, 1, NA)
-  water_binnen_10m_land_max  <- terra::ifel(dist_from_land_max <= 10, 1, NA)
+  # Selecteer gehele landclusters
+  cl_id_land_final_max <- terra::patches(land_nabij_in_ruim_max, directions = 8, zeroAsNA = TRUE)
+  r_land_in_water_buf_max <- terra::mask(cl_id_land_final_max, water_buf10_max_bin)
+  actieve_land_ids_max    <- unique(na.omit(terra::values(r_land_in_water_buf_max, mat = FALSE)))
   
-  gevlektewitsnuitlibel_land_finaal_max  <- terra::mask(land_nabij_in_ruim_max, land_binnen_10m_water_max)
-  gevlektewitsnuitlibel_water_finaal_max <- terra::mask(gevlektewitsnuitlibel_voortplanting_max, water_binnen_10m_land_max)
+  if (length(actieve_land_ids_max) > 0) {
+    m_land_gekoppeld_max                  <- terra::match(cl_id_land_final_max, actieve_land_ids_max)
+    gevlektewitsnuitlibel_land_finaal_max  <- terra::ifel(!is.na(m_land_gekoppeld_max), 1, NA)
+  } else {
+    gevlektewitsnuitlibel_land_finaal_max  <- template_TV * NA
+  }
+  
+  land_buf10_max_bin <- terra::buffer(!is.na(land_nabij_in_ruim_max) & land_nabij_in_ruim_max > 0, width = 10)
+  gevlektewitsnuitlibel_water_finaal_max <- terra::mask(gevlektewitsnuitlibel_voortplanting_max, land_buf10_max_bin)
   
   final_max <- terra::cover(gevlektewitsnuitlibel_water_finaal_max, gevlektewitsnuitlibel_land_finaal_max)
 } else {
+  gevlektewitsnuitlibel_land_finaal_max  <- template_TV * NA
+  gevlektewitsnuitlibel_water_finaal_max <- template_TV * NA
   final_max <- template_TV * NA
 }
 
@@ -493,20 +578,30 @@ if (!all(is.na(terra::values(gevlektewitsnuitlibel_voortplanting_max, mat = FALS
 if (!all(is.na(terra::values(gevlektewitsnuitlibel_voortplanting_opp, mat = FALSE))) && 
     !all(is.na(terra::values(land_nabij_in_ruim_opp, mat = FALSE)))) {
   
-  r_binair_vpt_opp  <- terra::ifel(!is.na(gevlektewitsnuitlibel_voortplanting_opp) & gevlektewitsnuitlibel_voortplanting_opp > 0, 1, NA)
-  r_binair_land_opp <- terra::ifel(!is.na(land_nabij_in_ruim_opp) & land_nabij_in_ruim_opp > 0, 1, NA)
+  r_binair_vpt_opp    <- terra::ifel(!is.na(gevlektewitsnuitlibel_voortplanting_opp) & gevlektewitsnuitlibel_voortplanting_opp > 0, 1, NA)
+  water_buf10_opp_bin <- terra::buffer(r_binair_vpt_opp, width = 10)
   
-  dist_from_water_opp <- terra::distance(r_binair_vpt_opp, target = 1, maxdist = 20)
-  dist_from_land_opp  <- terra::distance(r_binair_land_opp, target = 1, maxdist = 20)
+  r_binair_land_in_ruim_opp <- terra::ifel(!is.na(land_nabij_in_ruim_opp) & land_nabij_in_ruim_opp > 0, 1, NA)
+  cl_id_land_final_opp      <- terra::patches(r_binair_land_in_ruim_opp, directions = 8, zeroAsNA = TRUE)
   
-  land_binnen_10m_water_opp <- terra::ifel(dist_from_water_opp <= 10, 1, NA)
-  water_binnen_10m_land_opp  <- terra::ifel(dist_from_land_opp <= 10, 1, NA)
+  r_land_in_water_buf_opp <- terra::mask(cl_id_land_final_opp, water_buf10_opp_bin)
+  actieve_land_ids_opp    <- unique(na.omit(terra::values(r_land_in_water_buf_opp, mat = FALSE)))
   
-  gevlektewitsnuitlibel_land_finaal_opp  <- terra::mask(land_nabij_in_ruim_opp, land_binnen_10m_water_opp)
-  gevlektewitsnuitlibel_water_finaal_opp <- terra::mask(gevlektewitsnuitlibel_voortplanting_opp, water_binnen_10m_land_opp)
+  if (length(actieve_land_ids_opp) > 0) {
+    m_land_gekoppeld_opp                 <- terra::match(cl_id_land_final_opp, actieve_land_ids_opp)
+    winnende_masker_land_opp             <- terra::ifel(!is.na(m_land_gekoppeld_opp), 1, NA)
+    gevlektewitsnuitlibel_land_finaal_opp <- terra::mask(land_nabij_in_ruim_opp, winnende_masker_land_opp)
+  } else {
+    gevlektewitsnuitlibel_land_finaal_opp <- template_TV * NA
+  }
+  
+  land_buf10_opp_bin <- terra::buffer(r_binair_land_in_ruim_opp, width = 10)
+  gevlektewitsnuitlibel_water_finaal_opp <- terra::mask(gevlektewitsnuitlibel_voortplanting_opp, land_buf10_opp_bin)
   
   final_opp <- terra::cover(gevlektewitsnuitlibel_water_finaal_opp, gevlektewitsnuitlibel_land_finaal_opp)
 } else {
+  gevlektewitsnuitlibel_land_finaal_opp  <- template_TV * NA
+  gevlektewitsnuitlibel_water_finaal_opp <- template_TV * NA
   final_opp <- template_TV * NA
 }
 
@@ -531,7 +626,7 @@ status_labels <- data.frame(ID = c(1, 2, 3, 4),
                                       "Werkelijk Habitat (Binnen)", "Werkelijk Habitat (Buiten)"))
 levels(r_status) <- status_labels
 
-rm(land_nabij_opp, land_ruim_opp, struweel1_opp, gevlektewitsnuitlibel_voortplanting_opp, land_nabij_gefilterd_max, land_nabij_in_ruim_max, land_nabij_gefilterd_opp, land_nabij_in_ruim_opp)
+rm(land_nabij_opp, land_ruim_opp, struweel1_opp, gevlektewitsnuitlibel_voortplanting_opp, land_nabij_gefilterd_max, land_nabij_gefilterd_opp)
 gc()
 ```
 

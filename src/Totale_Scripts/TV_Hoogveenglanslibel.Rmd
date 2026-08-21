@@ -321,7 +321,7 @@ landbiotoop_opp <- terra::mask(land1_opp, landbiotoop_max)
 landbiotoop_clusters_max <- cluster_filter_compleet(
   masker     = landbiotoop_max,
   opp_laag   = landbiotoop_opp,
-  drempel_m2 = 50000,   # 5 ha
+  drempel_m2 = 100000,   # 5 ha
   dist_m     = 10,
   werkelijk  = FALSE
 )
@@ -331,7 +331,7 @@ r_binair_land_opp <- terra::ifel(!is.na(landbiotoop_opp) & landbiotoop_opp > 0, 
 landbiotoop_clusters_opp <- cluster_filter_compleet(
   masker     = r_binair_land_opp,
   opp_laag   = landbiotoop_opp,
-  drempel_m2 = 50000, 
+  drempel_m2 = 100000, 
   dist_m     = 10,
   werkelijk  = TRUE
 )
@@ -345,7 +345,7 @@ gc()
 ruim_land_clusters_max <- cluster_filter_compleet(
   masker     = land_ruim_max,
   opp_laag   = land_ruim_opp,
-  drempel_m2 = 500000,  # 50 ha
+  drempel_m2 = 1000000,  # 50 ha
   dist_m     = 50,
   werkelijk  = FALSE
 )
@@ -355,7 +355,7 @@ r_binair_ruim_opp <- terra::ifel(!is.na(land_ruim_opp) & land_ruim_opp > 0, 1, N
 ruim_land_clusters_opp <- cluster_filter_compleet(
   masker     = r_binair_ruim_opp,
   opp_laag   = land_ruim_opp,
-  drempel_m2 = 500000, 
+  drempel_m2 = 1000000, 
   dist_m     = 50,
   werkelijk  = TRUE
 )
@@ -364,115 +364,157 @@ rm(r_binair_ruim_opp)
 gc()
 ```
 
-```{r bos 50 % van landbiotoop}
+```{r bos 60 % van landbiotoop}
 # ==============================================================================
-# GECORRIGEERD: LANDBIOTOOP CLUSTERSAMENSTELLINGSCHECK (MIN 50% BOS - PARALLEL)
+# GECORRIGEERD: BOSPATCHES EN BOSPERCENTAGES PER CLUSTER (MIN 60% BOS)
 # ==============================================================================
-message("-> Start samenstellingsanalyse van landbiotoopclusters (min. 50% bos)...")
+message("-> Start samenstellingsanalyse van landbiotoopclusters (min. 60% bos)...")
 
 # --- SPOOR A: MAX ---
 r_land_zuiver_max <- landbiotoop_clusters_max$raster
 r_land_zuiver_max[is.na(r_land_zuiver_max) | r_land_zuiver_max == 0] <- NA
 
-r_bos_zuiver_max <- bos_max
-r_bos_zuiver_max[is.na(r_bos_zuiver_max) | r_bos_zuiver_max == 0] <- NA
-
+# Unieke ID's maken per fysieke aaneengesloten landcluster
 cl_id_land_max <- terra::patches(r_land_zuiver_max, directions = 8, zeroAsNA = TRUE)
 
-stats_land_totaal_max <- terra::zonal(r_land_zuiver_max * 0.01, cl_id_land_max, fun = "sum", na.rm = TRUE)
-colnames(stats_land_totaal_max) <- c("Cluster_ID", "Totaal_Land_ha")
+if (!all(is.na(terra::values(cl_id_land_max, mat=FALSE)))) {
+  r_binair_patch_max <- terra::ifel(!is.na(cl_id_land_max), 1, NA)
+  totale_opp_per_patch_max <- terra::zonal(r_binair_patch_max, cl_id_land_max, fun = "sum", na.rm = TRUE)
+  colnames(totale_opp_per_patch_max) <- c("Cluster_ID", "Totaal_Land_ha")
+  totale_opp_per_patch_max$Totaal_Land_ha <- totale_opp_per_patch_max$Totaal_Land_ha * 0.01
 
-bos_in_land_max <- terra::mask(r_bos_zuiver_max, cl_id_land_max)
-stats_bos_in_land_max <- terra::zonal(bos_in_land_max * 0.01, cl_id_land_max, fun = "sum", na.rm = TRUE)
-colnames(stats_bos_in_land_max) <- c("Cluster_ID", "Bos_ha")
+  bos_binair_max <- terra::ifel(!is.na(bos_max) & bos_max > 0, 1, NA)
+  bos_in_land_max <- terra::mask(bos_binair_max, cl_id_land_max)
+  stats_bos_in_land_max <- terra::zonal(bos_in_land_max, cl_id_land_max, fun = "sum", na.rm = TRUE)
+  colnames(stats_bos_in_land_max) <- c("Cluster_ID", "Bos_ha")
+  stats_bos_in_land_max$Bos_ha <- stats_bos_in_land_max$Bos_ha * 0.01
 
-df_samenstelling_land_max <- merge(stats_land_totaal_max, stats_bos_in_land_max, by = "Cluster_ID", all.x = TRUE)
-df_samenstelling_land_max$Bos_ha[is.na(df_samenstelling_land_max$Bos_ha)] <- 0
-df_samenstelling_land_max$Percentage_Bos <- (df_samenstelling_land_max$Bos_ha / df_samenstelling_land_max$Totaal_Land_ha) * 100
+  df_samenstelling_land_max <- merge(totale_opp_per_patch_max, stats_bos_in_land_max, by = "Cluster_ID", all.x = TRUE)
+  df_samenstelling_land_max$Bos_ha[is.na(df_samenstelling_land_max$Bos_ha)] <- 0
+  df_samenstelling_land_max$Percentage_Bos <- round((df_samenstelling_land_max$Bos_ha / df_samenstelling_land_max$Totaal_Land_ha) * 100, 2)
+  df_samenstelling_land_max$Totaal_Land_ha <- round(df_samenstelling_land_max$Totaal_Land_ha, 2)
+  df_samenstelling_land_max$Bos_ha <- round(df_samenstelling_land_max$Bos_ha, 2)
 
-valide_land_ids_max <- df_samenstelling_land_max$Cluster_ID[df_samenstelling_land_max$Percentage_Bos >= 50]
+  cat("\n=== [SPOOR MAX - HOOGVEENGLANSLIBEL] BOSPATCHES PER CLUSTER ===\n")
+  print(head(df_samenstelling_land_max, 20))
+  cat("=============================================================\n\n")
 
-if(length(valide_land_ids_max) > 0) {
-  masker_land_valide_max <- cl_id_land_max %in% valide_land_ids_max
-  land_nabij_max <- terra::mask(r_land_zuiver_max, terra::ifel(masker_land_valide_max, 1, NA))
+  valide_land_ids_max <- df_samenstelling_land_max$Cluster_ID[df_samenstelling_land_max$Percentage_Bos >= 60]
+
+  if(length(valide_land_ids_max) > 0) {
+    m_match_max <- terra::match(cl_id_land_max, valide_land_ids_max)
+    land_nabij_max <- terra::ifel(!is.na(m_match_max), 1, NA)
+  } else {
+    land_nabij_max <- template_TV * NA
+  }
 } else {
   land_nabij_max <- template_TV * NA
+  valide_land_ids_max <- c()
 }
 
-# --- SPOOR B: OPP (Parallel & Autonoom) ---
+# --- SPOOR B: OPP ---
 r_land_zuiver_opp <- landbiotoop_clusters_opp$raster
 r_binair_land_opp <- terra::ifel(!is.na(r_land_zuiver_opp) & r_land_zuiver_opp > 0, 1, NA)
 
 cl_id_land_opp <- terra::patches(r_binair_land_opp, directions = 8, zeroAsNA = TRUE)
 
-stats_land_totaal_opp <- terra::zonal(r_land_zuiver_opp, cl_id_land_opp, fun = "sum", na.rm = TRUE)
-colnames(stats_land_totaal_opp) <- c("Cluster_ID", "Totaal_Land_sum")
-stats_land_totaal_opp$Totaal_Land_ha <- stats_land_totaal_opp$Totaal_Land_sum * 0.01
+if (!all(is.na(terra::values(cl_id_land_opp, mat=FALSE)))) {
+  totale_opp_per_patch_opp <- terra::zonal(landbiotoop_opp, cl_id_land_opp, fun = "sum", na.rm = TRUE)
+  colnames(totale_opp_per_patch_opp) <- c("Cluster_ID", "Totaal_Land_ha")
+  totale_opp_per_patch_opp$Totaal_Land_ha <- totale_opp_per_patch_opp$Totaal_Land_ha * 0.01
 
-bos_in_land_opp <- terra::mask(bos_opp, cl_id_land_opp)
-stats_bos_in_land_opp <- terra::zonal(bos_in_land_opp, cl_id_land_opp, fun = "sum", na.rm = TRUE)
-colnames(stats_bos_in_land_opp) <- c("Cluster_ID", "Bos_sum")
-stats_bos_in_land_opp$Bos_ha <- stats_bos_in_land_opp$Bos_sum * 0.01
+  bos_in_land_opp <- terra::mask(bos_opp, cl_id_land_opp)
+  stats_bos_in_land_opp <- terra::zonal(bos_in_land_opp, cl_id_land_opp, fun = "sum", na.rm = TRUE)
+  colnames(stats_bos_in_land_opp) <- c("Cluster_ID", "Bos_ha")
+  stats_bos_in_land_opp$Bos_ha <- stats_bos_in_land_opp$Bos_ha * 0.01
 
-df_samenstelling_land_opp <- merge(stats_land_totaal_opp, stats_bos_in_land_opp, by = "Cluster_ID", all.x = TRUE)
-df_samenstelling_land_opp$Bos_ha[is.na(df_samenstelling_land_opp$Bos_ha)] <- 0
-df_samenstelling_land_opp$Percentage_Bos <- (df_samenstelling_land_opp$Bos_ha / df_samenstelling_land_opp$Totaal_Land_ha) * 100
+  df_samenstelling_land_opp <- merge(totale_opp_per_patch_opp, stats_bos_in_land_opp, by = "Cluster_ID", all.x = TRUE)
+  df_samenstelling_land_opp$Bos_ha[is.na(df_samenstelling_land_opp$Bos_ha)] <- 0
+  df_samenstelling_land_opp$Percentage_Bos <- round((df_samenstelling_land_opp$Bos_ha / df_samenstelling_land_opp$Totaal_Land_ha) * 100, 2)
+  df_samenstelling_land_opp$Totaal_Land_ha <- round(df_samenstelling_land_opp$Totaal_Land_ha, 2)
+  df_samenstelling_land_opp$Bos_ha <- round(df_samenstelling_land_opp$Bos_ha, 2)
 
-valide_land_ids_opp <- df_samenstelling_land_opp$Cluster_ID[df_samenstelling_land_opp$Percentage_Bos >= 50]
+  cat("\n=== [SPOOR OPP - HOOGVEENGLANSLIBEL] BOSPATCHES PER CLUSTER ===\n")
+  print(head(df_samenstelling_land_opp, 20))
+  cat("=============================================================\n\n")
 
-if(length(valide_land_ids_opp) > 0) {
-  masker_land_valide_opp <- cl_id_land_opp %in% valide_land_ids_opp
-  land_nabij_opp <- terra::mask(r_land_zuiver_opp, terra::ifel(masker_land_valide_opp, 1, NA))
+  valide_land_ids_opp <- df_samenstelling_land_opp$Cluster_ID[df_samenstelling_land_opp$Percentage_Bos >= 60]
+
+  if(length(valide_land_ids_opp) > 0) {
+    m_match_opp <- terra::match(cl_id_land_opp, valide_land_ids_opp)
+    winnende_masker_land_opp <- terra::ifel(!is.na(m_match_opp), 1, NA)
+    land_nabij_opp <- terra::mask(landbiotoop_opp, winnende_masker_land_opp)
+  } else {
+    land_nabij_opp <- template_TV * NA
+  }
 } else {
   land_nabij_opp <- template_TV * NA
+  valide_land_ids_opp <- c()
 }
 
-rm(r_land_zuiver_max, r_bos_zuiver_max, cl_id_land_max, stats_land_totaal_max, bos_in_land_max, stats_bos_in_land_max, df_samenstelling_land_max,
-   r_land_zuiver_opp, r_binair_land_opp, cl_id_land_opp, stats_land_totaal_opp, bos_in_land_opp, stats_bos_in_land_opp, df_samenstelling_land_opp)
+# BEHOUD cl_id_land_max EN cl_id_land_opp VOOR VOLGENDE CHUNK!
+rm(r_land_zuiver_max, bos_binair_max, bos_in_land_max, stats_bos_in_land_max,
+   r_land_zuiver_opp, r_binair_land_opp, bos_in_land_opp, stats_bos_in_land_opp)
 gc()
 ```
 
 ```{r interactie water en nabij landbiotoop}
 # ==============================================================================
-# COMBINATIE 2: INTERACTIE WATER EN NABIJ LANDBIOTOOP (10 METER - PARALLEL)
+# COMBINATIE 2: INTERACTIE WATER EN NABIJ LANDBIOTOOP (GEHELE CLUSTERS BINNEN 10M)
 # ==============================================================================
-message("-> Water- en landbiotopen aan elkaar koppelen binnen een straal van 10m...")
+message("-> Water- en landbiotopen aan elkaar koppelen op basis van GEHELE CLUSTERS (10m)...")
 
 # --- SPOOR A: MAX ---
 r_water_src_max <- waterbiotoop_clusters_max$raster
-r_water_src_max[is.na(r_water_src_max) | r_water_src_max == 0] <- NA
+water_buf10_max_bin <- terra::buffer(!is.na(r_water_src_max) & r_water_src_max > 0, width = 10)
 
-r_land_src_max <- land_nabij_max
-r_land_src_max[is.na(r_land_src_max) | r_land_src_max == 0] <- NA
+# Bepaal welke LANDCLUSTERS (met min. 60% bos) binnen 10m van het water liggen
+if (exists("cl_id_land_max") && !all(is.na(terra::values(cl_id_land_max, mat=FALSE)))) {
+  r_land_in_water_buf_max     <- terra::mask(cl_id_land_max, water_buf10_max_bin)
+  winnende_land_patch_ids_max <- unique(na.omit(terra::values(r_land_in_water_buf_max, mat = FALSE)))
+  actieve_land_ids_max        <- intersect(winnende_land_patch_ids_max, valide_land_ids_max)
+} else {
+  actieve_land_ids_max <- c()
+}
 
-dist_to_water_max <- terra::distance(r_water_src_max)
-dist_to_land_max  <- terra::distance(r_land_src_max)
+# Behou de VOLLEDIGE landcluster (geen afknip meer op 10m!)
+if (length(actieve_land_ids_max) > 0) {
+  m_land_gekoppeld_max <- terra::match(cl_id_land_max, actieve_land_ids_max)
+  landbiotoop2_max     <- terra::ifel(!is.na(m_land_gekoppeld_max), 1, NA)
+} else {
+  landbiotoop2_max     <- template_TV * NA
+}
 
-waterbiotoop2_max <- r_water_src_max == 1 & dist_to_land_max <= 10
-waterbiotoop2_max <- terra::ifel(waterbiotoop2_max, 1, NA)
+# Water koppelen aan goedgekeurd land
+land_buf10_max_bin <- terra::buffer(!is.na(land_nabij_max) & land_nabij_max > 0, width = 10)
+waterbiotoop2_max  <- terra::mask(r_water_src_max, land_buf10_max_bin)
 
-landbiotoop2_max <- r_land_src_max == 1 & dist_to_water_max <= 10
-landbiotoop2_max <- terra::ifel(landbiotoop2_max, 1, NA)
-
-rm(r_water_src_max, r_land_src_max, dist_to_water_max, dist_to_land_max)
-
-# --- SPOOR B: OPP (Parallel & Autonoom) ---
+# --- SPOOR B: OPP ---
 r_water_src_opp <- waterbiotoop_clusters_opp$raster
 r_binair_water_opp <- terra::ifel(!is.na(r_water_src_opp) & r_water_src_opp > 0, 1, NA)
+water_buf10_opp_bin <- terra::buffer(r_binair_water_opp, width = 10)
 
-r_land_src_opp <- land_nabij_opp
-r_binair_land_opp <- terra::ifel(!is.na(r_land_src_opp) & r_land_src_opp > 0, 1, NA)
+if (exists("cl_id_land_opp") && !all(is.na(terra::values(cl_id_land_opp, mat=FALSE)))) {
+  r_land_in_water_buf_opp     <- terra::mask(cl_id_land_opp, water_buf10_opp_bin)
+  winnende_land_patch_ids_opp <- unique(na.omit(terra::values(r_land_in_water_buf_opp, mat = FALSE)))
+  actieve_land_ids_opp        <- intersect(winnende_land_patch_ids_opp, valide_land_ids_opp)
+} else {
+  actieve_land_ids_opp <- c()
+}
 
-dist_to_water_opp <- terra::distance(r_binair_water_opp)
-dist_to_land_opp  <- terra::distance(r_binair_land_opp)
+# Behou de VOLLEDIGE landcluster met werkelijke oppervlaktes
+if (length(actieve_land_ids_opp) > 0) {
+  m_land_gekoppeld_opp <- terra::match(cl_id_land_opp, actieve_land_ids_opp)
+  winnende_masker_land_gekoppeld <- terra::ifel(!is.na(m_land_gekoppeld_opp), 1, NA)
+  landbiotoop2_opp     <- terra::mask(landbiotoop_opp, winnende_masker_land_gekoppeld)
+} else {
+  landbiotoop2_opp     <- template_TV * NA
+}
 
-m_water2_opp      <- dist_to_land_opp <= 10
-waterbiotoop2_opp <- terra::mask(r_water_src_opp, terra::ifel(m_water2_opp, 1, NA))
+land_buf10_opp_bin <- terra::buffer(!is.na(land_nabij_opp) & land_nabij_opp > 0, width = 10)
+waterbiotoop2_opp  <- terra::mask(r_water_src_opp, land_buf10_opp_bin)
 
-m_land2_opp       <- dist_to_water_opp <= 10
-landbiotoop2_opp  <- terra::mask(r_land_src_opp, terra::ifel(m_land2_opp, 1, NA))
-
-rm(r_water_src_opp, r_binair_water_opp, r_land_src_opp, r_binair_land_opp, dist_to_water_opp, dist_to_land_opp)
+rm(r_water_src_max, water_buf10_max_bin, land_buf10_max_bin, r_water_src_opp, r_binair_water_opp, water_buf10_opp_bin, land_buf10_opp_bin, cl_id_land_max, cl_id_land_opp)
 gc()
 ```
 
@@ -491,13 +533,14 @@ hoogveenglanslibel_waterbiotoop_max <- waterbiotoop2_max == 1 & dist_to_ruim_lan
 hoogveenglanslibel_waterbiotoop_max <- terra::ifel(hoogveenglanslibel_waterbiotoop_max, 1, NA)
 hoogveenglanslibel_landbiotoop_max  <- landbiotoop2_max
 
-hoogveenglanslibel_leefgebied_max <- terra::ifel(!is.na(hoogveenglanslibel_waterbiotoop_max) | 
-                                                 !is.na(hoogveenglanslibel_landbiotoop_max), 1, NA)
+# Samenvoegen van gekoppeld water en GEHELE landclusters
+hoogveenglanslibel_leefgebied_max <- terra::cover(hoogveenglanslibel_waterbiotoop_max, hoogveenglanslibel_landbiotoop_max)
+hoogveenglanslibel_leefgebied_max <- terra::ifel(!is.na(hoogveenglanslibel_leefgebied_max), 1, NA)
 hoogveenglanslibel_leefgebied_max <- terra::crop(hoogveenglanslibel_leefgebied_max, area_shape_proj, mask = TRUE)
 
 rm(r_ruim_land_src_max, dist_to_ruim_land_max)
 
-# --- SPOOR B: OPP (Parallel & Autonoom) ---
+# --- SPOOR B: OPP ---
 r_ruim_land_src_opp <- ruim_land_clusters_opp$raster
 r_binair_ruim_opp   <- terra::ifel(!is.na(r_ruim_land_src_opp) & r_ruim_land_src_opp > 0, 1, NA)
 dist_to_ruim_land_opp <- terra::distance(r_binair_ruim_opp)

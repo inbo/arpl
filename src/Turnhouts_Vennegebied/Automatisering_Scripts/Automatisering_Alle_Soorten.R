@@ -15,7 +15,7 @@ library(callr)
 # ------------------------------------------------------------------------------
 # 0. INSTELLINGEN EN STRATEGISCHE MAPSTRUCTUUR
 # ------------------------------------------------------------------------------
-MAP_SCRIPTS_TV   <- here("src/Turnhouts_Vennegebied/Scripts_TV")
+MAP_SCRIPTS_TV   <- here("src/Turnhouts_Vennegebied/Scripts_TV/")
 OUTPUT_DIR       <- here("data/output/Turnhouts_Vennegebied/HTML_Rapporten_Soorten")
 
 if(!dir.exists(OUTPUT_DIR)) dir.create(OUTPUT_DIR, recursive = TRUE)
@@ -56,6 +56,7 @@ moet_knitten <- function(bestandsnaam, map) {
 # 1. DETECTEER EN KNIT DE UNIEKE TV-SCRIPTS
 # ------------------------------------------------------------------------------
 alle_tv_scripts <- list.files(path = MAP_SCRIPTS_TV, pattern = "\\.Rmd$", full.names = TRUE)
+# alle_tv_scripts <- c("C:/Users/bert_vanhecke/Documents/Soortenbehoud/arpl/src/Totale_Scripts/TV_ZwarteHeidelibel.Rmd","C:/Users/bert_vanhecke/Documents/Soortenbehoud/arpl/src/Totale_Scripts/TV_GevlekteWitsnuitlibel.Rmd","C:/Users/bert_vanhecke/Documents/Soortenbehoud/arpl/src/Totale_Scripts/TV_Hoogveenglanslibel.Rmd","C:/Users/bert_vanhecke/Documents/Soortenbehoud/arpl/src/Totale_Scripts/TV_NoordseWitsnuitlibel.Rmd","C:/Users/bert_vanhecke/Documents/Soortenbehoud/arpl/src/Totale_Scripts/TV_Venwitsnuitlibel.Rmd","C:/Users/bert_vanhecke/Documents/Soortenbehoud/arpl/src/Totale_Scripts/TV_Venglazenmaker.Rmd","C:/Users/bert_vanhecke/Documents/Soortenbehoud/arpl/src/Totale_Scripts/TV_Maanwaterjuffer.Rmd","C:/Users/bert_vanhecke/Documents/Soortenbehoud/arpl/src/Totale_Scripts/TV_Speerwaterjuffer.Rmd")
 soorten_script_tv_pad <- file.path(MAP_SCRIPTS_TV, "TV_Leefgebieden_Simpel.Rmd")
 unieke_tv_scripts <- setdiff(alle_tv_scripts, soorten_script_tv_pad)
 

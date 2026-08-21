@@ -278,7 +278,6 @@ gc()
 ```
 
 ```{r waterbiotoop zwarteheidelibel}
-```{r waterbiotoop zwarteheidelibel}
 # ==============================================================================
 # BEREIDING WATERBIOTOOP ZWARTEHEIDELIBEL (Minimaal 100 m² - PARALLEL)
 # ==============================================================================

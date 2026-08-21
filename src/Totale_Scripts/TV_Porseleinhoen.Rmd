@@ -342,63 +342,76 @@ gc()
 ```
 
 ```{r open zicht filter}
-message("=== STAP 4: Open zicht filter & re-evaluatie (20 are bosdrempel - PARALLEL) ===")
+message("=== STAP 4: Open zicht filter & re-evaluatie (20 are bosdrempel - VECTOR SPEEDUP) ===")
 
+# 1. Inlezen en croppen
 groenkaart <- terra::rast(here("data/input/ASCI Files/Groenkaart_2021.tif"))
 groenkaart_TV <- terra::crop(groenkaart, template_TV, snap = "near")
 hooggroen_aligned <- terra::resample(groenkaart_TV, template_TV, method = "near")
 
+# 2. Zet direct om naar polygonen (enkel celwaarden == 1)
+# Dit vervangt de trage focal() + patches() stap
 r_groen_bin <- terra::ifel(hooggroen_aligned == 1, 1, NA)
-
-w_matrix <- matrix(1, nrow = 3, ncol = 3)
-groen_buren <- terra::focal(r_groen_bin, w = w_matrix, fun = "sum", na.rm = TRUE)
-r_groen_clean <- terra::ifel(groen_buren >= 3 & r_groen_bin == 1, 1, NA)
-
-groen_patches <- terra::patches(r_groen_clean, directions = 8, zeroAsNA = TRUE)
-groen_freq    <- terra::freq(groen_patches)
-
-clusters_20are_ids <- groen_freq$value[groen_freq$count >= 20]
+bos_polys <- terra::as.polygons(r_groen_bin, dissolve = TRUE) %>% 
+  sf::st_as_sf()
 
 porseleinhoen_geschikt5_max <- template_TV * NA
 porseleinhoen_geschikt5_opp <- template_TV * NA
 
-if(length(clusters_20are_ids) > 0) {
-  bos_groot <- groen_patches %in% clusters_20are_ids
-  bos_groot <- terra::ifel(bos_groot == 1, 1, NA)
+if (nrow(bos_polys) > 0) {
+  # 3. Opsplitsen van multipolygonen naar losse polygonen & filter op >= 2000 m² (20 are)
+  bos_polys_single <- sf::st_cast(bos_polys, "POLYGON")
+  bos_polys_single$opp_m2 <- as.numeric(sf::st_area(bos_polys_single))
   
-  dist_groen_clusters <- terra::distance(bos_groot)
+  bos_groot_sf <- bos_polys_single %>% 
+    dplyr::filter(opp_m2 >= 2000)
   
-  masker_groen_100m_cluster <- dist_groen_clusters <= 100
-  masker_groen_100m_cluster <- terra::ifel(masker_groen_100m_cluster == 1, 1, NA)
-  
-  biotoop_fase5_kaal_bin  <- terra::mask(porseleinhoen_geschikt4_max, masker_groen_100m_cluster, inverse = TRUE)
-  biotoop_fase5_kaal_frac <- terra::mask(porseleinhoen_geschikt4_opp, masker_groen_100m_cluster, inverse = TRUE)
-  
-  ha_kaal_check_bin  <- calc_ha_exact(biotoop_fase5_kaal_bin)
-  ha_kaal_check_frac <- calc_ha_exact(biotoop_fase5_kaal_frac)
-  
-  message("   [Diagnose] Ruwe open ruimte buiten de bosranden MAX: ", round(ha_kaal_check_bin, 2), " ha")
-  message("   [Diagnose] Ruwe open ruimte buiten de bosranden OPP: ", round(ha_kaal_check_frac, 2), " ha")
-  
-  if (ha_kaal_check_bin > 0) {
-    porseleinhoen_geschikt5_max <- cluster_filter_compleet(biotoop_fase5_kaal_bin, NULL, 30000, 50, FALSE)$raster
+  if (nrow(bos_groot_sf) > 0) {
+    # 4. Maak een buffer van 100 meter rondom de grote boscomplexen
+    bos_buffer_100m <- sf::st_buffer(bos_groot_sf, dist = 100) %>% 
+      sf::st_union()
+    
+    # 5. Rasteriseer de buffer direct als maskeerafbeelding (1 binnen buffer, NA buiten)
+    bos_buffer_vect <- terra::vect(bos_buffer_100m)
+    masker_groen_100m_cluster <- terra::rasterize(bos_buffer_vect, template_TV, field = 1, background = NA)
+    
+    # Bewaar 'bos_groot' als SpatVector t.b.v. de latere Leaflet inspectiekaart
+    bos_groot <- terra::vect(bos_groot_sf)
+    
+    # 6. Maskeer de geschikte biotopen (inverse = TRUE verwijdert alles binnen 100m van bos)
+    biotoop_fase5_kaal_bin  <- terra::mask(porseleinhoen_geschikt4_max, masker_groen_100m_cluster, inverse = TRUE)
+    biotoop_fase5_kaal_frac <- terra::mask(porseleinhoen_geschikt4_opp, masker_groen_100m_cluster, inverse = TRUE)
+    
+    ha_kaal_check_bin  <- calc_ha_exact(biotoop_fase5_kaal_bin)
+    ha_kaal_check_frac <- calc_ha_exact(biotoop_fase5_kaal_frac)
+    
+    message("   [Diagnose] Ruwe open ruimte buiten de bosranden MAX: ", round(ha_kaal_check_bin, 2), " ha")
+    message("   [Diagnose] Ruwe open ruimte buiten de bosranden OPP: ", round(ha_kaal_check_frac, 2), " ha")
+    
+    if (ha_kaal_check_bin > 0) {
+      porseleinhoen_geschikt5_max <- cluster_filter_compleet(biotoop_fase5_kaal_bin, NULL, 30000, 50, FALSE)$raster
+    }
+    
+    if (ha_kaal_check_frac > 0) {
+      r_binair_kaal_frac <- terra::ifel(!is.na(biotoop_fase5_kaal_frac) & biotoop_fase5_kaal_frac > 0, 1, NA)
+      porseleinhoen_geschikt5_opp <- cluster_filter_compleet(r_binair_kaal_frac, opp_laag = biotoop_fase5_kaal_frac, 30000, 50, TRUE)$raster
+      rm(r_binair_kaal_frac)
+    }
+  } else {
+    message("Opmerking: Geen storende boscomplexen van >= 20 are gevonden. Volledig open zicht!")
+    porseleinhoen_geschikt5_max <- porseleinhoen_geschikt4_max
+    porseleinhoen_geschikt5_opp <- porseleinhoen_geschikt4_opp
   }
-  
-  if (ha_kaal_check_frac > 0) {
-    r_binair_kaal_frac <- terra::ifel(!is.na(biotoop_fase5_kaal_frac) & biotoop_fase5_kaal_frac > 0, 1, NA)
-    porseleinhoen_geschikt5_opp <- cluster_filter_compleet(r_binair_kaal_frac, opp_laag = biotoop_fase5_kaal_frac, 30000, 50, TRUE)$raster
-    rm(r_binair_kaal_frac)
-  }
-
 } else {
-  message("Opmerking: Geen storende boscomplexen van >= 20 are gevonden. Volledig open zicht!")
+  message("Opmerking: Geen bos op de groenkaart gevonden binnen de uitsnede.")
   porseleinhoen_geschikt5_max <- porseleinhoen_geschikt4_max
   porseleinhoen_geschikt5_opp <- porseleinhoen_geschikt4_opp
 }
 
-rm(r_groen_bin, w_matrix, groen_buren, r_groen_clean, groen_patches, groen_freq, clusters_20are_ids, 
-   dist_groen_clusters, masker_groen_100m_cluster, groenkaart, groenkaart_TV, hooggroen_aligned)
-if(exists("biotoop_fase5_kaal_bin")) rm(biotoop_fase5_kaal_bin, biotoop_fase5_kaal_frac)
+# Opruimen van tijdelijke objecten
+rm(r_groen_bin, bos_polys, groenkaart, groenkaart_TV, hooggroen_aligned)
+if (exists("bos_polys_single")) rm(bos_polys_single, bos_groot_sf, bos_buffer_100m, bos_buffer_vect, masker_groen_100m_cluster)
+if (exists("biotoop_fase5_kaal_bin")) rm(biotoop_fase5_kaal_bin, biotoop_fase5_kaal_frac)
 gc()
 ```
 
@@ -444,84 +457,6 @@ cat("==================================================\n")
 
 rm(finaal_10ha_max, finaal_10ha_opp, r_binair_geschikt5_opp)
 gc()
-```
-
-```{r}
-# ==============================================================================
-# VISUELE KRACHTPATSCHECK: STAP-VOOR-STAP INTERACTIEVE KAART
-# ==============================================================================
-message("-> Interactieve inspectiekaart voor het porseleinhoen opbouwen...")
-
-# 1. Projecteer alle tussentijdse model-rasters naar WGS84 voor Leaflet
-# We gebruiken 'near' om de binaire structuren (1/NA) loeischerp te houden
-r_web_stap1_biotoop <- terra::project(porseleinhoen_geschikt2_max, "EPSG:4326", method = "near")
-r_web_stap2_drain   <- terra::project(porseleinhoen_geschikt3_max, "EPSG:4326", method = "near")
-r_web_stap3_3ha     <- terra::project(porseleinhoen_geschikt4_max, "EPSG:4326", method = "near")
-
-# We laden de 'kaal' gemaakte biotooplaag (uit de if-structuur in stap 4) snel opnieuw in 
-# als deze niet in het geheugen zit, om te zien wat er overblijft VÓÓR de 3ha re-evaluatie.
-if (exists("biotoop_fase5_kaal_bin")) {
-  r_web_stap4_kaal  <- terra::project(biotoop_fase5_kaal_bin, "EPSG:4326", method = "near")
-} else {
-  r_web_stap4_kaal  <- template_TV * NA
-}
-
-# 2. Projecteer de stoorlaag (het storende bos van >= 20 are) zodat we de boosdoener zien
-if (exists("bos_groot")) {
-  r_web_stoor_bos   <- terra::project(bos_groot, "EPSG:4326", method = "near")
-} else {
-  r_web_stoor_bos   <- template_TV * NA
-}
-
-# 3. Grenzen en Bounding Box instellen
-grens_web <- sf::st_transform(sf::st_as_sf(area_shape_proj), 4326)
-bbox      <- sf::st_bbox(grens_web)
-
-# 4. Bouw de interactieve Leaflet inspectiekaart
-inspectie_map <- leaflet() %>%
-  addTiles(group = "OpenStreetMap (Standaard)") %>%
-  addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet (Luchtfoto)") %>%
-  fitBounds(bbox[['xmin']], bbox[['ymin']], bbox[['xmax']], bbox[['ymax']]) %>%
-  
-  # LAAG 1: De ruwe biotoopinstroom (na aftrek van directe bomen en terrils)
-  addRasterImage(terra::as.int(r_web_stap1_biotoop), colors = "#98df8a", opacity = 0.6, 
-                 group = "Stap 1: Basis Biotoop (Grasland + Moeras)") %>%
-  
-  # LAAG 2: Effect na drainagekoppeling
-  addRasterImage(terra::as.int(r_web_stap2_drain), colors = "#1f77b4", opacity = 0.6, 
-                 group = "Stap 2: Enkel Natte Drainageklassen (d t/m i)") %>%
-  
-  # LAAG 3: Effect na de eerste 3 ha drempel
-  addRasterImage(terra::as.int(r_web_stap3_3ha), colors = "#bcbd22", opacity = 0.7, 
-                 group = "Stap 3: Clusters van minimaal 3 ha") %>%
-  
-  # BOOSDOENER LAAG: De actieve storende boscomplexen (>= 20 are)
-  addRasterImage(terra::as.int(r_web_stoor_bos), colors = "#d62728", opacity = 0.8, 
-                 group = "⚠️ DE BOOSDOENER: Boscomplexen >= 20 are") %>%
-  
-  # LAAG 4: Wat overleeft de 100m krater van het bos (vóór de her-clustering)?
-  addRasterImage(terra::as.int(r_web_stap4_kaal), colors = "#e377c2", opacity = 0.8, 
-                 group = "Stap 4: Resterende snippers buiten 100m bosrand") %>%
-  
-  # Studiegebied contour
-  addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens Studiegebied") %>%
-  
-  # Layer controls (Zet standaard de meest kritieke lagen aan/uit)
-  addLayersControl(
-    baseGroups = c("OpenStreetMap (Standaard)", "Satelliet (Luchtfoto)"),
-    overlayGroups = c(
-      "Stap 1: Basis Biotoop (Grasland + Moeras)",
-      "Stap 2: Enkel Natte Drainageklassen (d t/m i)",
-      "Stap 3: Clusters van minimaal 3 ha",
-      "⚠️ DE BOOSDOENER: Boscomplexen >= 20 are",
-      "Stap 4: Resterende snippers buiten 100m bosrand",
-      "Grens Studiegebied"
-    ),
-    options = layersControlOptions(collapsed = FALSE)
-  )
-
-# Toon de kaart in RStudio of het RMarkdown document
-inspectie_map
 ```
 
 # Resultaten en Statistiek
@@ -658,100 +593,156 @@ tabel_totaal %>%
 
 # Interactieve kaart
 ```{r Interactieve kaart}
+# ==============================================================================
+# INTERACTIEVE KAART PORSELEINHOEN (GEFILTERD OP STRICTE 10 HA NETWERKDREMPEL)
+# ==============================================================================
+message("-> Geavanceerde netwerkkaart opbouwen voor het porseleinhoen...")
+
+# Drempel vastleggen uit je variabelen (of hard op 10 ha zetten)
+drempel_finaal_ha <- ifelse(exists("oppervlakte_ha"), oppervlakte_ha, 10)
+
+# 1. Transformeer waarnemings- en grenslagen vooraf naar WGS84
 if (has_observations && nrow(df_points_sf) > 0) {
-  waarneming_smear_web <- st_transform(waarneming_smear_sf, 4326)
-  points_web           <- st_transform(df_points_sf, 4326)
+  smear_web  <- sf::st_transform(waarneming_smear_sf, 4326)
+  points_web <- sf::st_transform(df_points_sf, 4326)
 } else {
-  waarneming_smear_web <- st_sf(st_sfc(crs = 4326))
-  points_web           <- st_sf(st_sfc(crs = 4326))
+  smear_web  <- sf::st_sf(sf::st_sfc(crs = 4326))
+  points_web <- sf::st_sf(sf::st_sfc(crs = 4326))
 }
 
-if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
-  cluster_info <- stats_gecombineerd %>%
-    left_join(zonal_zone, by = "ID") %>% 
-    mutate(
+grens_web <- sf::st_transform(sf::st_as_sf(area_shape_proj), 4326)
+bbox      <- sf::st_bbox(grens_web)
+
+# 2. Heropbouw van de cohesieve netwerkwolken
+if (!all(is.na(terra::values(final_max, mat = FALSE)))) {
+  
+  # A. Maak ruwe polygonen van het finale 'maximale potentie' raster
+  p_ruw_opp <- terra::as.polygons(final_max, aggregate = TRUE) %>% 
+               terra::disagg()
+  
+  # B. Gebruik 50m buffer om netwerkwolken te smeden
+  p_buf_opp        <- terra::buffer(p_ruw_opp, width = 50)
+  p_net_opp_wolken <- terra::aggregate(p_buf_opp) %>% 
+                      terra::disagg()
+  p_net_opp_wolken$Netwerk_ID <- 1:nrow(p_net_opp_wolken)
+  
+  # C. Wijs elk los fragment exact en uniek toe aan zijn overkoepelende netwerkwolk (1-op-1)
+  p_ruw_opp$Netwerk_ID <- terra::relate(p_ruw_opp, p_net_opp_wolken, "within") %>% 
+    apply(1, function(x) {
+      idx <- which(x)
+      if(length(idx) > 0) idx[1] else NA
+    })
+  
+  r_opp_net_ids <- terra::rasterize(p_ruw_opp, final_max, field = "Netwerk_ID")
+  
+  # D. Zonal Sums: Bereken Totaal Potentieel en Totaal Werkelijk Habitat per Netwerk_ID
+  stats_pot_ha <- terra::zonal(final_max * 0.01, r_opp_net_ids, fun = "sum", na.rm = TRUE)
+  colnames(stats_pot_ha) <- c("Netwerk_ID", "Netwerk_Pot_ha")
+  
+  if (!all(is.na(terra::values(final_opp, mat = FALSE)))) {
+    stats_werk_ha <- terra::zonal(final_opp * 0.01, r_opp_net_ids, fun = "sum", na.rm = TRUE)
+    colnames(stats_werk_ha) <- c("Netwerk_ID", "Netwerk_Werk_ha")
+  } else {
+    stats_werk_ha <- data.frame(Netwerk_ID = stats_pot_ha$Netwerk_ID, Netwerk_Werk_ha = 0)
+  }
+  
+  stats_netwerk <- merge(stats_pot_ha, stats_werk_ha, by = "Netwerk_ID", all.x = TRUE)
+  stats_netwerk$Netwerk_Werk_ha[is.na(stats_netwerk$Netwerk_Werk_ha)] <- 0
+  
+  # E. Zonal Max om te controleren of het netwerk de TV-grens raakt
+  zonal_zone <- terra::zonal(binnen_masker, r_opp_net_ids, fun = "max", na.rm = TRUE)
+  colnames(zonal_zone) <- c("Netwerk_ID", "In_TV")
+  stats_netwerk <- merge(stats_netwerk, zonal_zone, by = "Netwerk_ID", all.x = TRUE)
+  
+  # F. Polygonen omzetten & VEILIGE ATTRIBUTENKOPPELING (ZONDER ST_JOIN DUBBELS)
+  poly_finaal <- sf::st_as_sf(p_ruw_opp) %>% 
+    left_join(stats_netwerk, by = "Netwerk_ID") %>% 
+    dplyr::filter(Netwerk_Pot_ha >= drempel_finaal_ha) %>% 
+    sf::st_transform(4326)
+  
+  # G. Bepaal ARPL status en genereer de Popup
+  if (nrow(poly_finaal) > 0) {
+    poly_finaal <- poly_finaal %>% mutate(
       Zone = ifelse(!is.na(In_TV) & In_TV > 0, "Binnen TV", "Buiten TV (Buffer)"),
-      ARPL = ID %in% ids_actueel_relevant,
-      Type = ifelse(ID %in% ids_werkelijk_totaal, "Werkelijk Habitat", "Potentieel (Niet Werkelijk)"),
+      ARPL_Status = if(nrow(smear_web) > 0) sf::st_intersects(geometry, smear_web, sparse = FALSE)[,1] else FALSE,
+      
       Popup = paste0(
-        "<div style='font-family: Arial; min-width: 180px;'>",
-        "<strong>Cluster ID:</strong> ", ID, "<br>",
-        "<strong>Zone:</strong> ", Zone, "<br><hr>",
-        "<strong>Status:</strong> ", Type, "<br>",
+        "<div style='font-family: Arial; min-width: 210px;'>",
+        "<strong>Netwerk Complex:</strong> #", Netwerk_ID, "<br>",
+        "<strong>Ligging:</strong> ", Zone, "<br><hr>",
+        "<strong>Totaal Potentieel Netwerk:</strong> ", round(Netwerk_Pot_ha, 2), " ha<br>",
+        "<strong>Totaal Werkelijk Habitat Netwerk:</strong> ", round(Netwerk_Werk_ha, 2), " ha<br><br>",
         "<strong>Actueel Relevant (ARPL):</strong> ", 
-        ifelse(ARPL, "<span style='color:green; font-weight:bold;'>JA</span>", 
-                     "<span style='color:red;'>NEE (Geen waarneming of onder drempel)</span>"), "<br><br>",
-        "<strong>Potentieel Oppervlak:</strong> ", round(Pot_ha, 2), " ha<br>",
-        "<strong>Werkelijk Habitat:</strong> ", round(coalesce(Werk_ha, 0), 2), " ha",
+        ifelse(ARPL_Status, "<span style='color:green; font-weight:bold;'>JA (Raakt waarnemingszone)</span>", 
+                            "<span style='color:red;'>NEE (Geen actuele waarneming)</span>"), "<br>",
         "</div>"
       )
     )
-
-  cl_poly <- terra::as.polygons(cl_max, aggregate = TRUE) %>% 
-    st_as_sf() %>% 
-    st_transform(4326)
-
-  cl_poly_final <- cl_poly %>%
-    inner_join(cluster_info, by = setNames("ID", names(cl_poly)[1]))
+  } else {
+    poly_finaal <- NULL
+  }
 } else {
-  cl_poly_final <- st_sf(st_sfc(crs = 4326))
+  poly_finaal <- NULL
 }
 
+# 3. Statusraster opbouwen t.b.v. onderliggende diagnosepixels
 r_status <- terra::ifel(!is.na(final_opp), 1, terra::ifel(!is.na(final_max), 2, NA))
-r_web_status         <- terra::project(r_status, "EPSG:4326", method = "near")
-grens_web            <- st_transform(st_as_sf(area_shape_proj), 4326)
-bbox                 <- st_bbox(grens_web)
+r_web_status <- terra::project(terra::as.int(r_status), "EPSG:4326", method = "near")
 
-pal_status <- colorFactor(palette = c("#4daf4a", "#e41a1c"), levels = c("Werkelijk Habitat", "Potentieel (Niet Werkelijk)"))
-pal_4 <- colorFactor(palette = c("#4daf4a", "#e41a1c"), levels = 1:2, na.color = "transparent")
+# 4. Kleurenpaletten
+pal_pixels <- colorFactor(palette = c("#4daf4a", "#e41a1c"), levels = 1:2, na.color = "transparent")
 
+# 5. Opbouw van de Leaflet kaart
 map <- leaflet() %>%
   addTiles(group = "OSM (Kaart)") %>%
   addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet") %>%
   fitBounds(bbox[['xmin']], bbox[['ymin']], bbox[['xmax']], bbox[['ymax']])
 
-if(!all(is.na(terra::values(r_web_status, mat=FALSE)))) {
-  map <- map %>% addRasterImage(terra::as.int(r_web_status), colors = pal_4, opacity = 0.5, group = "Habitat Status (Pixels)")
+# Diagnose rasterlaag
+if (!all(is.na(terra::values(r_web_status, mat = FALSE)))) {
+  map <- map %>% addRasterImage(r_web_status, colors = pal_pixels, opacity = 0.4, group = "Habitat Status (Pixels)")
 }
 
-if(nrow(cl_poly_final) > 0) {
+# Vector polygonen van het finale netwerk
+if (!is.null(poly_finaal) && nrow(poly_finaal) > 0) {
   map <- map %>% addPolygons(
-    data = cl_poly_final,
-    fillColor = ~pal_status(Type),
-    fillOpacity = ~ifelse(ARPL, 0.6, 0.1), 
-    color = ~pal_status(Type), 
-    weight = ~ifelse(ARPL, 3, 0.5), 
-    opacity = 1,
+    data = poly_finaal,
+    fillColor = "#27AE60",
+    fillOpacity = 0.6,
+    color = ~ifelse(ARPL_Status, "#DFFF00", "white"),
+    weight = ~ifelse(ARPL_Status, 3, 1),
     popup = ~Popup,
-    group = "Leefgebieden"
+    label = ~paste0("Netwerk #", Netwerk_ID, " (Potentieel: ", round(Netwerk_Pot_ha, 2), " ha | Werkelijk: ", round(Netwerk_Werk_ha, 2), " ha)"),
+    group = "Finale Leefgebieden"
   )
 }
 
-if(has_observations && nrow(df_points_sf) > 0) {
-  map <- map %>%
-    addPolygons(
-      data = waarneming_smear_web,  
-      color = "#377eb8", 
-      weight = 2, 
-      fill = FALSE,       
-      dashArray = "10, 5", 
-      group = "Dispersiebereik (Smear)"
-    ) %>%
-    addCircles(
-      data = points_web,  
-      color = "black", weight = 1, fillColor = "yellow", fillOpacity = 1,
-      radius = 15, group = "Waarnemingen"
-    )
+# Waarnemingsbereik & Punten
+if (nrow(smear_web) > 0) {
+  map <- map %>% addPolygons(
+    data = smear_web,
+    color = "#3498DB", weight = 2, fill = FALSE, dashArray = "10, 5",
+    group = "Dispersiebereik (Smear)"
+  )
 }
 
+if (nrow(points_web) > 0) {
+  map <- map %>% addCircles(
+    data = points_web,
+    color = "black", weight = 1, fillColor = "yellow", fillOpacity = 1,
+    radius = 25, group = "Waarnemingen (Punten)"
+  )
+}
+
+# Grens Studiegebied & Layer controls
 map %>%
   addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens Studiegebied") %>%
   addLayersControl(
     baseGroups = c("OSM (Kaart)", "Satelliet"),
-    overlayGroups = c("Leefgebieden", "Habitat Status (Pixels)", 
-                      "Dispersiebereik (Smear)", "Waarnemingen", "Grens Studiegebied"),
+    overlayGroups = c("Finale Leefgebieden", "Habitat Status (Pixels)", "Dispersiebereik (Smear)", "Waarnemingen (Punten)", "Grens Studiegebied"),
     options = layersControlOptions(collapsed = FALSE)
-  )
+  ) %>%
+  hideGroup(c("Habitat Status (Pixels)"))
 ```
 
 ```{r export}
