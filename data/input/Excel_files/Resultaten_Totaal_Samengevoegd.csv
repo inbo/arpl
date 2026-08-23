@@ -1778,6 +1778,7 @@ kempenseheidelibel,landbiotoop_bwk,rbbsm,bevat,2.5,50.0,nan
 kempenseheidelibel,landbiotoop_bwk,so,bevat,2.5,50.0,nan
 kempenseheidelibel,landbiotoop_bwk,v,bevat,2.5,50.0,nan
 maanwaterjuffer,waterbiotoop_bwk1,ao+,exact,25.0,50.0,10000.0
+maanwaterjuffer,waterbiotoop_bwk1,aom+,exact,25.0,50.0,10000.0
 maanwaterjuffer,waterbiotoop_bwk1,3160,exact,25.0,50.0,10000.0
 maanwaterjuffer,waterbiotoop_bwk1,3110,exact,25.0,50.0,10000.0
 maanwaterjuffer,waterbiotoop_notbwk,ad,bevat,25.0,50.0,10000.0

@@ -144,7 +144,8 @@ filter(Soort == soort) %>%
 select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
 
 # Variabelen definiëren
-buffer_m <- resultaat$Dispersiecap_m[1]
+buffer_m       <- resultaat$Dispersiecap_m[1]
+straal_water_m <- 800  # Harde afsnij-afstand van land rond het water (800m)
 
 print(resultaat)
 rm(df, resultaat)
@@ -508,33 +509,59 @@ gc()
 ```
 
 ```{r Finaal Leefgebied en Einddrempel}
-message("=== STAP 5: Finaal leefgebied complex samenstellen en filteren op 35 hectare (PARALLEL) ===")
+message("=== STAP 5: Finaal leefgebied complex samenstellen (35 ha) + Water-First 800m afsnijding ===")
 
-drempel_35ha_m2 <- 35 * 10000
+straal_water_m <- 800
 
-# --- SPOOR A: MAX ---
+# ==============================================================================
+# SPOOR A: MAXIMALE POTENTIE
+# ==============================================================================
 witsnuit_leefgebied1_max <- witsnuit_water_relatie_max | witsnuit_foer_relatie_max
 witsnuit_leefgebied1_max <- terra::ifel(witsnuit_leefgebied1_max == 1, 1, NA)
 
-leefgebied_buffered_max <- terra::buffer(witsnuit_leefgebied1_max, width = 25)
+leefgebied_buffered_max   <- terra::buffer(witsnuit_leefgebied1_max, width = 25)
 r_leefgebied_clusters_max <- terra::patches(leefgebied_buffered_max, directions = 8)
-r_scherpe_clusters_max <- terra::mask(r_leefgebied_clusters_max, witsnuit_leefgebied1_max)
+r_scherpe_clusters_max    <- terra::mask(r_leefgebied_clusters_max, witsnuit_leefgebied1_max)
 
-cluster_freq_max <- terra::freq(r_scherpe_clusters_max)
+cluster_freq_max    <- terra::freq(r_scherpe_clusters_max)
 cluster_freq_max$area_ha <- cluster_freq_max$count * 0.01
 goedgekeurde_ids_max <- cluster_freq_max$value[cluster_freq_max$area_ha >= 35]
 
 if (length(goedgekeurde_ids_max) > 0) {
-  sierlijkewitsnuitlibel_leefgebied_max <- r_scherpe_clusters_max %in% goedgekeurde_ids_max
-  sierlijkewitsnuitlibel_leefgebied_max <- terra::ifel(sierlijkewitsnuitlibel_leefgebied_max == 1, 1, NA)
+  leefgebied_35ha_max <- r_scherpe_clusters_max %in% goedgekeurde_ids_max
+  leefgebied_35ha_max <- terra::ifel(leefgebied_35ha_max == 1, 1, NA)
+  
+  water_finaal_max <- terra::mask(witsnuit_water_relatie_max, leefgebied_35ha_max)
+  land_finaal_max_ruw <- terra::mask(witsnuit_foer_relatie_max, leefgebied_35ha_max)
 } else {
-  sierlijkewitsnuitlibel_leefgebied_max <- template_TV * NA
+  water_finaal_max    <- template_TV * NA
+  land_finaal_max_ruw <- template_TV * NA
 }
 
-# --- SPOOR B: OPP (Parallel & Autonoom) ---
+# --- WATER-FIRST VECTORIELE AFSNIJDING OP 800M ---
+if (!all(is.na(terra::values(water_finaal_max, mat = FALSE)))) {
+  poly_water_max  <- terra::as.polygons(water_finaal_max, aggregate = TRUE)
+  poly_buffer_max <- terra::buffer(poly_water_max, width = straal_water_m)
+  land_finaal_max <- terra::mask(land_finaal_max_ruw, poly_buffer_max)
+} else {
+  land_finaal_max <- land_finaal_max_ruw
+}
+
+waterbiotoop_finaal_max <- water_finaal_max
+landbiotoop_finaal_max  <- land_finaal_max
+
+sierlijkewitsnuitlibel_finaal_max <- terra::cover(waterbiotoop_finaal_max, landbiotoop_finaal_max)
+leefgebied_max    <- sierlijkewitsnuitlibel_finaal_max
+finaal_max_binair <- terra::ifel(!is.na(leefgebied_max) & leefgebied_max > 0, 1, NA)
+cl_id_max         <- terra::patches(finaal_max_binair, directions = 8, zeroAsNA = TRUE)
+
+
+# ==============================================================================
+# SPOOR B: WERKELIJKE OPPERVLAKTE (PARALLEL)
+# ==============================================================================
 w_clean <- terra::ifel(is.na(witsnuit_water_relatie_opp), 0, witsnuit_water_relatie_opp)
 f_clean <- terra::ifel(is.na(witsnuit_foer_relatie_opp), 0, witsnuit_foer_relatie_opp)
-som_fracties <- w_clean + f_clean
+som_fracties   <- w_clean + f_clean
 som_gemedieerd <- terra::clamp(som_fracties, upper = 1.0)
 
 witsnuit_leefgebied1_opp_raw <- terra::ifel(som_gemedieerd > 0, som_gemedieerd, NA)
@@ -543,9 +570,9 @@ witsnuit_leefgebied1_opp     <- terra::crop(witsnuit_leefgebied1_opp_raw, templa
 r_binair_leef1_opp <- terra::ifel(!is.na(witsnuit_leefgebied1_opp) & witsnuit_leefgebied1_opp > 0, 1, NA)
 
 if (!all(is.na(terra::values(r_binair_leef1_opp, mat=FALSE)))) {
-  leefgebied_buffered_opp <- terra::buffer(r_binair_leef1_opp, width = 25)
+  leefgebied_buffered_opp   <- terra::buffer(r_binair_leef1_opp, width = 25)
   r_leefgebied_clusters_opp <- terra::patches(leefgebied_buffered_opp, directions = 8)
-  r_scherpe_clusters_opp <- terra::mask(r_leefgebied_clusters_opp, r_binair_leef1_opp)
+  r_scherpe_clusters_opp    <- terra::mask(r_leefgebied_clusters_opp, r_binair_leef1_opp)
   
   cluster_stats_opp <- terra::zonal(witsnuit_leefgebied1_opp, r_scherpe_clusters_opp, fun = "sum", na.rm = TRUE)
   colnames(cluster_stats_opp) <- c("value", "ha_exact")
@@ -553,22 +580,42 @@ if (!all(is.na(terra::values(r_binair_leef1_opp, mat=FALSE)))) {
   
   if (length(goedgekeurde_ids_opp) > 0) {
     masker_opp_leef <- r_scherpe_clusters_opp %in% goedgekeurde_ids_opp
-    sierlijkewitsnuitlibel_leefgebied_opp <- terra::mask(witsnuit_leefgebied1_opp, terra::ifel(masker_opp_leef, 1, NA))
+    leef_35ha_mask <- terra::ifel(masker_opp_leef, 1, NA)
+    
+    water_finaal_opp    <- terra::mask(witsnuit_water_relatie_opp, leef_35ha_mask)
+    land_finaal_opp_ruw <- terra::mask(witsnuit_foer_relatie_opp, leef_35ha_mask)
   } else {
-    sierlijkewitsnuitlibel_leefgebied_opp <- template_TV * NA
+    water_finaal_opp    <- template_TV * NA
+    land_finaal_opp_ruw <- template_TV * NA
   }
 } else {
-  sierlijkewitsnuitlibel_leefgebied_opp <- template_TV * NA
+  water_finaal_opp    <- template_TV * NA
+  land_finaal_opp_ruw <- template_TV * NA
 }
 
-sierlijkewitsnuitlibel_finaal_max <- sierlijkewitsnuitlibel_leefgebied_max
-sierlijkewitsnuitlibel_finaal_opp <- sierlijkewitsnuitlibel_leefgebied_opp
+# --- WATER-FIRST VECTORIELE AFSNIJDING OP 800M ---
+if (!all(is.na(terra::values(water_finaal_opp, mat = FALSE)))) {
+  r_bin_water_opp <- terra::ifel(!is.na(water_finaal_opp) & water_finaal_opp > 0, 1, NA)
+  poly_water_opp  <- terra::as.polygons(r_bin_water_opp, aggregate = TRUE)
+  poly_buffer_opp <- terra::buffer(poly_water_opp, width = straal_water_m)
+  land_finaal_opp <- terra::mask(land_finaal_opp_ruw, poly_buffer_opp)
+} else {
+  land_finaal_opp <- land_finaal_opp_ruw
+}
+
+waterbiotoop_finaal_opp <- water_finaal_opp
+landbiotoop_finaal_opp  <- land_finaal_opp
+
+sierlijkewitsnuitlibel_finaal_opp <- terra::cover(waterbiotoop_finaal_opp, landbiotoop_finaal_opp)
+leefgebied_opp    <- sierlijkewitsnuitlibel_finaal_opp
+finaal_opp_binair <- terra::ifel(!is.na(leefgebied_opp) & leefgebied_opp > 0, 1, NA)
+cl_id_opp         <- terra::patches(finaal_opp_binair, directions = 8, zeroAsNA = TRUE)
 
 cat("\n==================================================\n")
 cat("    DEFINITIEVE RESULTATEN SIERLIJKE WITSNUITLIBEL \n")
 cat("==================================================\n")
-cat("Finaal Leefgebied Spoor 1 (Max Potentie):  ", calc_ha_exact(sierlijkewitsnuitlibel_leefgebied_max), "ha\n")
-cat("Finaal Leefgebied Spoor 2 (Werkelijke Opp): ", calc_ha_exact(sierlijkewitsnuitlibel_leefgebied_opp), "ha\n")
+cat("Finaal Leefgebied Spoor 1 (Max Potentie):  ", calc_ha_exact(sierlijkewitsnuitlibel_finaal_max), "ha\n")
+cat("Finaal Leefgebied Spoor 2 (Werkelijke Opp): ", calc_ha_exact(sierlijkewitsnuitlibel_finaal_opp), "ha\n")
 cat("==================================================\n")
 
 rm(witsnuit_water_relatie_max, witsnuit_foer_relatie_max, witsnuit_water_relatie_opp, witsnuit_foer_relatie_opp,
@@ -730,64 +777,83 @@ tabel_totaal %>%
 
 ```{r Interactieve kaart sierlijkewitsnuitlibel}
 # ==============================================================================
-# STAP 8: INTERACTIEVE KAART (LEAFLET) - MET APARTE BLAUWE WATERBIOTOOPLAAG
+# STAP 8: INTERACTIEVE KAART (LEAFLET - MET EXPLICIETE GRENSAANDUIDING)
 # ==============================================================================
-if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE)))) {
+
+# 1. HERSTEL STUDIEGEBIED GRENS (ONAFHANKELIJK VAN OVERIGE LAGEN)
+grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
+bbox      <- sf::st_bbox(grens_web)
+
+# 2. LAND- EN TOTAAL LEEFGEBIED VOORBEREIDEN
+if (exists("cl_id_opp") && !all(is.na(terra::values(cl_id_opp, mat=FALSE)))) {
   
-  message("-> Clusterstatistieken en polygonen genereren voor sierlijkewitsnuitlibel...")
+  message("-> Leaflet-kaart opbouwen voor Sierlijke witsnuitlibel...")
   
-  # 1. Netwerkwolken polygonen (Basis leefgebied)
-  cl_poly <- terra::as.polygons(r_net_ids_tv, aggregate = TRUE) %>% 
-    st_as_sf() %>% 
-    st_transform(4326)
+  r_leefgebied_tv <- terra::mask(leefgebied_opp, area_shape_proj)
+  r_cl_tv         <- terra::mask(cl_id_opp, area_shape_proj)
   
-  colnames(cl_poly)[1] <- "Netwerk_ID"
-  
-  cl_poly_final <- cl_poly %>%
-    mutate(
-      Type = ifelse(Netwerk_ID %in% ids_actueel_relevant, "Werkelijk Habitat (ARPL)", "Potentieel (Geen ARPL)"),
-      Popup = paste0(
-        "<div style='font-family: Arial; min-width: 220px;'>",
-        "<strong>Netwerk Complex ID:</strong> ", Netwerk_ID, "<br>",
-        "<strong>Soort:</strong> sierlijkewitsnuitlibel<br><hr>",
-        "<strong>Status:</strong> ", Type, "<br>",
-        "</div>"
-      )
-    )
+  if (!all(is.na(terra::values(r_leefgebied_tv, mat=FALSE)))) {
     
-# 2. DEFINITIEVE FIX: Vectoriseer de 580ha aan water rechtstreeks (gefilterd op de buffers)
-  if (exists("waterbiotoop1_opp") && exists("ruim_buffer500_opp") && exists("land_buffer100_opp")) {
+    r_ha_exact <- r_leefgebied_tv * terra::cellSize(r_leefgebied_tv, unit = "ha")
+    opp_per_cluster <- terra::zonal(r_ha_exact, r_cl_tv, fun = "sum", na.rm = TRUE)
+    colnames(opp_per_cluster) <- c("Cluster_ID", "Werkelijke_Ha")
     
-    # Filter het water analoog aan de ecologische regels: moet binnen 100m land én 500m ruim bos liggen
-    water_finaal_kaart <- terra::mask(waterbiotoop1_opp, land_buffer100_opp)
-    water_finaal_kaart <- terra::mask(water_finaal_kaart, ruim_buffer500_opp)
+    cl_poly_opp <- terra::as.polygons(r_cl_tv, aggregate = TRUE) %>% 
+      st_as_sf() %>% 
+      st_transform(4326)
     
-    # Maak er een zuivere, binaire integer mal van (verijdelt alle terra/sf pixel-crashes)
-    water_binair_int <- terra::as.int(terra::ifel(!is.na(water_finaal_kaart) & water_finaal_kaart > 0, 1, NA))
+    colnames(cl_poly_opp)[1] <- "Cluster_ID"
+    
+    arpl_ids <- if(exists("ids_actueel_relevant")) ids_actueel_relevant else if(exists("ids_arpl_finaal")) ids_arpl_finaal else c()
+    
+    cl_poly_final <- cl_poly_opp %>%
+      left_join(opp_per_cluster, by = "Cluster_ID") %>%
+      mutate(
+        Werkelijke_Ha = round(coalesce(Werkelijke_Ha, 0), 2),
+        Is_ARPL = Cluster_ID %in% arpl_ids,
+        Popup = paste0(
+          "<div style='font-family: Arial; min-width: 210px;'>",
+          "<strong>Leefgebied Cluster ID:</strong> ", Cluster_ID, "<br>",
+          "<strong>Soort:</strong> Sierlijke witsnuitlibel<br><hr>",
+          "<strong>Status:</strong> ", 
+          ifelse(Is_ARPL, "<span style='color:green; font-weight:bold;'>Actueel Relevant (ARPL)</span>", 
+                          "<span style='color:#555;'>Potentieel leefgebied</span>"), "<br>",
+          "<strong>Netto Biotoop binnen 800m:</strong> <b style='color:#008800;'>", Werkelijke_Ha, " ha</b><br>",
+          "</div>"
+        )
+      ) %>%
+      filter(Werkelijke_Ha > 0)
+      
+    has_land_layer <- TRUE
+  } else {
+    cl_poly_final  <- st_sf(st_sfc(crs = 4326))
+    has_land_layer <- FALSE
+  }
+
+  if (exists("waterbiotoop_finaal_opp") && !all(is.na(terra::values(waterbiotoop_finaal_opp, mat=FALSE)))) {
+    water_tv_rast <- terra::mask(waterbiotoop_finaal_opp, area_shape_proj)
+    water_binair_int <- terra::as.int(terra::ifel(!is.na(water_tv_rast) & water_tv_rast > 0, 1, NA))
     
     if (!all(is.na(terra::values(water_binair_int, mat=FALSE)))) {
-      # Vectoriseer en herstel eventuele corrupte raster-grids via sf
       water_poly <- terra::as.polygons(water_binair_int, aggregate = TRUE) %>% 
         st_as_sf() %>% 
-        st_transform(4326) %>% 
-        st_make_valid()
-      
+        st_transform(4326)
       has_water_layer <- TRUE
-      message(paste("-> [LEAFLET SUCCESS] Er worden nu", nrow(water_poly), "blauwe vennen getekend op de kaart!"))
     } else {
       has_water_layer <- FALSE
-      message("⚠️ [LEAFLET WARN] Geen van de waterpixels overleefde de combinatie met de land-buffers.")
     }
   } else {
     has_water_layer <- FALSE
-    message("⚠️ [LEAFLET WARN] Een van de vereiste biotooplasten of buffers ontbreekt in het geheugen.")
   }
-}  
-# Projecties naar WGS84 voor overige lagen
-r_web_status <- terra::project(r_status, "EPSG:4326", method = "near")
-bbox         <- st_bbox(grens_web)
 
-if(has_observations && nrow(df_points_sf) > 0) {
+} else {
+  cl_poly_final   <- st_sf(st_sfc(crs = 4326))
+  has_land_layer  <- FALSE
+  has_water_layer <- FALSE
+}  
+
+# 3. WAARNEMINGEN VOORBEREIDEN
+if(exists("has_observations") && has_observations && nrow(df_points_sf) > 0) {
   waarneming_smear_web <- st_transform(waarneming_smear_sf, 4326)
   points_web           <- st_transform(df_points_sf, 4326)
 } else {
@@ -795,69 +861,82 @@ if(has_observations && nrow(df_points_sf) > 0) {
   points_web           <- st_sf(st_sfc(crs = 4326))
 }
 
-# Kleurenpaletten
-pal_status <- colorFactor(palette = c("#4daf4a", "#984ea3"), levels = c("Werkelijk Habitat (ARPL)", "Potentieel (Geen ARPL)"))
-pal_4      = colorFactor(palette = c("#984ea3", "#FF8C00", "#4daf4a", "#377eb8"), levels = 1:4, na.color = "transparent")
-
-# Bouw de Leaflet Kaart
+# 4. LEAFLET KAART GENEREREN
 map <- leaflet() %>%
   addTiles(group = "OSM (Kaart)") %>%
   addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet") %>%
   fitBounds(bbox[['xmin']], bbox[['ymin']], bbox[['xmax']], bbox[['ymax']])
 
-# 1. Voeg status pixels toe
-if(!all(is.na(terra::values(r_web_status, mat=FALSE)))) {
-  map <- map %>% addRasterImage(terra::as.int(r_web_status), colors = pal_4, opacity = 0.4, group = "Habitat Status (Pixels)")
-}
-
-# 2. Voeg de algemene Leefgebied-netwerkwolken toe
-map <- map %>%
-  addPolygons(
-    data = cl_poly_final,
-    fillColor = ~pal_status(Type),
-    fillOpacity = 0.4, 
-    color = ~pal_status(Type), 
-    weight = 2, 
+# LAAG 1: GROEN LANDBIOTOOP
+if(has_land_layer && nrow(cl_poly_final) > 0) {
+  map <- map %>% addPolygons(
+    data = cl_poly_final, 
+    fillColor = "#2ecc71", 
+    fillOpacity = 0.50, 
+    color = "#27ae60", 
+    weight = 1.5,                                       
     popup = ~Popup,
-    group = "Leefgebieden (Clusters)"
+    label = ~paste0("Cluster #", Cluster_ID, ": ", Werkelijke_Ha, " ha biotoop"),
+    group = "Werkelijk Leefgebied (Max 800m)"
   )
-
-# 3. EXTRA: Voeg de geschikte waterbiotopen toe (wordt als LAATSTE getekend, dus ligt BOVENOP)
-if (has_water_layer && nrow(water_poly) > 0) {
-  map <- map %>%
-    addPolygons(
-      data = water_poly,
-      fillColor = "#007fff",  # Helder blauw (Azure/Water kleur)
-      fillOpacity = 0.8,       # Iets minder transparant zodat het goed opvalt
-      color = "#0056b3",       # Donkerblauwe rand
-      weight = 1.5, 
-      popup = "<strong>Biotoop type:</strong> Geschikt Waterbiotoop (Voortplanting)",
-      group = "Geschikte Waterbiotopen"
-    )
 }
 
-# 4. Voeg dispersiebereik en waarnemingen toe
-if(has_observations && nrow(df_points_sf) > 0) {
-  map <- map %>%
-    addPolygons(
-      data = waarneming_smear_web,  
-      color = "#377eb8", weight = 2, fill = FALSE,
-      dashArray = "10, 5", group = "Dispersiebereik (Smear)"
-    ) %>%
-    addCircles(
-      data = points_web, 
-      color = "black", weight = 1, fillColor = "orange", fillOpacity = 1,
-      radius = 15, group = "Waarnemingen"
-    )
+# LAAG 2: FELBLAUWE VENNEN / WATERBIOTOOP (Voorgrond)
+if(has_water_layer) {
+  map <- map %>% addPolygons(
+    data = water_poly,
+    color = "#0033aa",
+    weight = 1.2,
+    fillColor = "#0055ff", 
+    fillOpacity = 0.85,
+    popup = "<strong>Geschikt Voortplantingswater</strong>",
+    group = "Goedgekeurde Vennen/Poelen"
+  )
 }
 
-# 5. Grens en Controls toevoegen (Inclusief de nieuwe overlay groep)
+# LAAG 3: DISPERSIECAPACITEIT SMEAR
+if (nrow(waarneming_smear_web) > 0) {
+  map <- map %>% addPolygons(
+    data = waarneming_smear_web, 
+    color = "#2980b9", weight = 1.5, fill = FALSE, dashArray = "6, 4", 
+    group = "Dispersiebereik (Smear)"
+  )
+}
+
+# LAAG 4: WAARNEMINGEN
+if (nrow(points_web) > 0) {
+  map <- map %>% addCircles(
+    data = points_web, 
+    color = "black", weight = 1, fillColor = "yellow", fillOpacity = 1, radius = 20, 
+    group = "Waarnemingen"
+  )
+}
+
+# LAAG 5: STUDIEGEBIED GRENS (ZWARTE LIJN BOVENOP)
 map %>%
-  addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens Studiegebied") %>%
+  addPolygons(
+    data = grens_web, 
+    fill = FALSE, 
+    color = "black", 
+    weight = 3, 
+    opacity = 1,
+    group = "Grens Studiegebied"
+  ) %>%
+  addLegend(
+    colors = c("#2ecc71", "#0055ff", "yellow"),
+    labels = c("Landbiotoop (Max 800m)", "Geschikte Vennen/Poelen", "Waarnemingen"),
+    title = "Sierlijke witsnuitlibel",
+    position = "bottomright"
+  ) %>%
   addLayersControl(
-    baseGroups = c("OSM (Kaart)", "Satelliet"),
-    overlayGroups = c("Leefgebieden (Clusters)", "Geschikte Waterbiotopen", "Habitat Status (Pixels)", 
-                      "Dispersiebereik (Smear)", "Waarnemingen", "Grens Studiegebied"),
+    baseGroups = c("Satelliet", "OSM (Kaart)"),
+    overlayGroups = c(
+      "Werkelijk Leefgebied (Max 800m)", 
+      "Goedgekeurde Vennen/Poelen", 
+      "Dispersiebereik (Smear)", 
+      "Waarnemingen", 
+      "Grens Studiegebied"
+    ),
     options = layersControlOptions(collapsed = FALSE)
   )
 ```
