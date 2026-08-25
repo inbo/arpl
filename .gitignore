@@ -102,3 +102,6 @@ rsconnect/
 
 # HTML Files Voerstreek
 /data/output/Voerstreek/HTML_Rapporten_Soorten
+
+# Logboeken
+/data/output/Logboeken/
