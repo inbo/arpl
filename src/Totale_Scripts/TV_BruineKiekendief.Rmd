@@ -103,6 +103,12 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
   
   return(list(raster = r_finaal, clusters = cl_finaal))
 }
+
+terraOptions(
+  memfrac = 0.8,        # Dwing terra om tot max. 80% van het RAM-geheugen te gebruiken
+  tempdir = tempdir(),  # Geef toestemming voor automatische disk-swapping bij zware rasters
+  verbose = FALSE
+)
 ```
 
 # Soort informatie ophalen
@@ -262,81 +268,84 @@ rm(r_lgp_TV, bruinekiekendief_lgp)
 ```
 
 ```{r bosclustering en afstand}
-# ==============================================================================
-# STAP 1 & 2: BOSCLUSTERING (50M FUZZY, > 5 HA) EN DISTANTIEFILTER (1 KM)
-# ==============================================================================
-message("-> Bosmassa's (> 5 ha) identificeren voor storingsfilter...")
+# # ==============================================================================
+# # STAP 1 & 2: BOSCLUSTERING (50M FUZZY, > 5 HA) EN DISTANTIEFILTER (1 KM)
+# # ==============================================================================
+# message("-> Bosmassa's (> 5 ha) identificeren voor storingsfilter...")
+# 
+# # --- SPOOR A: MAX ---
+# if (!all(is.na(terra::values(bos_max, mat = FALSE)))) {
+#   bos_buffered_max <- terra::buffer(bos_max, width = 25)
+#   cl_bos_max <- terra::patches(bos_buffered_max, directions = 8, zeroAsNA = TRUE)
+#   cl_bos_scherp_max <- terra::mask(cl_bos_max, bos_max)
+#   
+#   stats_bos_max <- terra::freq(cl_bos_scherp_max)
+#   colnames(stats_bos_max) <- c("layer", "ID", "count")
+#   stats_bos_max$ha <- stats_bos_max$count * 0.01
+#   voldoet_bos_ids_max <- stats_bos_max$ID[stats_bos_max$ha >= 5]
+#   
+#   if (length(voldoet_bos_ids_max) > 0) {
+#     r_bos_5ha_max <- cl_bos_scherp_max %in% voldoet_bos_ids_max
+#     r_bos_5ha_max <- terra::ifel(r_bos_5ha_max == 1, 1, NA)
+#   } else {
+#     r_bos_5ha_max <- template_TV * NA
+#   }
+#   rm(bos_buffered_max, cl_bos_max, cl_bos_scherp_max, stats_bos_max)
+# } else {
+#   r_bos_5ha_max <- template_TV * NA
+# }
+# 
+# # --- SPOOR B: OPP (Parallel & Autonoom) ---
+# r_binair_bos_opp <- terra::ifel(!is.na(bos_opp) & bos_opp > 0, 1, NA)
+# 
+# if (!all(is.na(terra::values(r_binair_bos_opp, mat = FALSE)))) {
+#   bos_buffered_opp <- terra::buffer(r_binair_bos_opp, width = 25)
+#   cl_bos_opp <- terra::patches(bos_buffered_opp, directions = 8, zeroAsNA = TRUE)
+#   cl_bos_scherp_opp <- terra::mask(cl_bos_opp, r_binair_bos_opp)
+#   
+#   stats_bos_opp <- terra::zonal(bos_opp, cl_bos_scherp_opp, fun = "sum", na.rm = TRUE)
+#   colnames(stats_bos_opp) <- c("ID", "ha_sum")
+#   stats_bos_opp$ha <- stats_bos_opp$ha_sum * 0.01
+#   voldoet_bos_ids_opp <- stats_bos_opp$ID[stats_bos_opp$ha >= 5]
+#   
+#   if (length(voldoet_bos_ids_opp) > 0) {
+#     r_bos_5ha_opp <- cl_bos_scherp_opp %in% voldoet_bos_ids_opp
+#     r_bos_5ha_opp <- terra::ifel(r_bos_5ha_opp == 1, 1, NA)
+#   } else {
+#     r_bos_5ha_opp <- template_TV * NA
+#   }
+#   rm(bos_buffered_opp, cl_bos_opp, cl_bos_scherp_opp, stats_bos_opp)
+# } else {
+#   r_bos_5ha_opp <- template_TV * NA
+# }
+# 
+# message("-> Voortplantingsgebied binnen 1km van grote bossen uitsluiten...")
+# 
+# # Maskering Spoor A
+# if (!all(is.na(terra::values(r_bos_5ha_max, mat = FALSE)))) {
+#   dist_tot_bos_max <- terra::distance(r_bos_5ha_max, target = 1, maxdist = 1010)
+#   geschikt_zonder_bos_masker_max <- terra::ifel(dist_tot_bos_max > 1000 | is.na(dist_tot_bos_max), 1, NA)
+#   bruinekiekendief_vp_zonderbos_max <- terra::mask(bruinekiekendief_voortplanting_max, geschikt_zonder_bos_masker_max)
+#   rm(dist_tot_bos_max, geschikt_zonder_bos_masker_max)
+# } else {
+#   bruinekiekendief_vp_zonderbos_max <- bruinekiekendief_voortplanting_max
+# }
+# 
+# # Maskering Spoor B
+# if (!all(is.na(terra::values(r_bos_5ha_opp, mat = FALSE)))) {
+#   dist_tot_bos_opp <- terra::distance(r_bos_5ha_opp, target = 1, maxdist = 1010)
+#   geschikt_zonder_bos_masker_opp <- terra::ifel(dist_tot_bos_opp > 1000 | is.na(dist_tot_bos_opp), 1, NA)
+#   bruinekiekendief_vp_zonderbos_opp <- terra::mask(bruinekiekendief_voortplanting_opp, geschikt_zonder_bos_masker_opp)
+#   rm(dist_tot_bos_opp, geschikt_zonder_bos_masker_opp)
+# } else {
+#   bruinekiekendief_vp_zonderbos_opp <- bruinekiekendief_voortplanting_opp
+# }
+# 
+# rm(r_bos_5ha_max, r_bos_5ha_opp, r_binair_bos_opp)
+# gc()
 
-# --- SPOOR A: MAX ---
-if (!all(is.na(terra::values(bos_max, mat = FALSE)))) {
-  bos_buffered_max <- terra::buffer(bos_max, width = 25)
-  cl_bos_max <- terra::patches(bos_buffered_max, directions = 8, zeroAsNA = TRUE)
-  cl_bos_scherp_max <- terra::mask(cl_bos_max, bos_max)
-  
-  stats_bos_max <- terra::freq(cl_bos_scherp_max)
-  colnames(stats_bos_max) <- c("layer", "ID", "count")
-  stats_bos_max$ha <- stats_bos_max$count * 0.01
-  voldoet_bos_ids_max <- stats_bos_max$ID[stats_bos_max$ha >= 5]
-  
-  if (length(voldoet_bos_ids_max) > 0) {
-    r_bos_5ha_max <- cl_bos_scherp_max %in% voldoet_bos_ids_max
-    r_bos_5ha_max <- terra::ifel(r_bos_5ha_max == 1, 1, NA)
-  } else {
-    r_bos_5ha_max <- template_TV * NA
-  }
-  rm(bos_buffered_max, cl_bos_max, cl_bos_scherp_max, stats_bos_max)
-} else {
-  r_bos_5ha_max <- template_TV * NA
-}
-
-# --- SPOOR B: OPP (Parallel & Autonoom) ---
-r_binair_bos_opp <- terra::ifel(!is.na(bos_opp) & bos_opp > 0, 1, NA)
-
-if (!all(is.na(terra::values(r_binair_bos_opp, mat = FALSE)))) {
-  bos_buffered_opp <- terra::buffer(r_binair_bos_opp, width = 25)
-  cl_bos_opp <- terra::patches(bos_buffered_opp, directions = 8, zeroAsNA = TRUE)
-  cl_bos_scherp_opp <- terra::mask(cl_bos_opp, r_binair_bos_opp)
-  
-  stats_bos_opp <- terra::zonal(bos_opp, cl_bos_scherp_opp, fun = "sum", na.rm = TRUE)
-  colnames(stats_bos_opp) <- c("ID", "ha_sum")
-  stats_bos_opp$ha <- stats_bos_opp$ha_sum * 0.01
-  voldoet_bos_ids_opp <- stats_bos_opp$ID[stats_bos_opp$ha >= 5]
-  
-  if (length(voldoet_bos_ids_opp) > 0) {
-    r_bos_5ha_opp <- cl_bos_scherp_opp %in% voldoet_bos_ids_opp
-    r_bos_5ha_opp <- terra::ifel(r_bos_5ha_opp == 1, 1, NA)
-  } else {
-    r_bos_5ha_opp <- template_TV * NA
-  }
-  rm(bos_buffered_opp, cl_bos_opp, cl_bos_scherp_opp, stats_bos_opp)
-} else {
-  r_bos_5ha_opp <- template_TV * NA
-}
-
-message("-> Voortplantingsgebied binnen 1km van grote bossen uitsluiten...")
-
-# Maskering Spoor A
-if (!all(is.na(terra::values(r_bos_5ha_max, mat = FALSE)))) {
-  dist_tot_bos_max <- terra::distance(r_bos_5ha_max, target = 1, maxdist = 1010)
-  geschikt_zonder_bos_masker_max <- terra::ifel(dist_tot_bos_max > 1000 | is.na(dist_tot_bos_max), 1, NA)
-  bruinekiekendief_vp_zonderbos_max <- terra::mask(bruinekiekendief_voortplanting_max, geschikt_zonder_bos_masker_max)
-  rm(dist_tot_bos_max, geschikt_zonder_bos_masker_max)
-} else {
-  bruinekiekendief_vp_zonderbos_max <- bruinekiekendief_voortplanting_max
-}
-
-# Maskering Spoor B
-if (!all(is.na(terra::values(r_bos_5ha_opp, mat = FALSE)))) {
-  dist_tot_bos_opp <- terra::distance(r_bos_5ha_opp, target = 1, maxdist = 1010)
-  geschikt_zonder_bos_masker_opp <- terra::ifel(dist_tot_bos_opp > 1000 | is.na(dist_tot_bos_opp), 1, NA)
-  bruinekiekendief_vp_zonderbos_opp <- terra::mask(bruinekiekendief_voortplanting_opp, geschikt_zonder_bos_masker_opp)
-  rm(dist_tot_bos_opp, geschikt_zonder_bos_masker_opp)
-} else {
-  bruinekiekendief_vp_zonderbos_opp <- bruinekiekendief_voortplanting_opp
-}
-
-rm(r_bos_5ha_max, r_bos_5ha_opp, r_binair_bos_opp)
-gc()
+bruinekiekendief_vp_zonderbos_max <- bruinekiekendief_voortplanting_max
+bruinekiekendief_vp_zonderbos_opp <- bruinekiekendief_voortplanting_opp
 ```
 
 ```{r Clustering}
@@ -346,7 +355,7 @@ gc()
 message("-> Voortplantingsgebieden clusteren (100m fuzzy) en filteren op min. 10 ha...")
 
 # Vervanging van chunk 'Clustering'
-drempel_vp_m2 <- 10 * 10000 # 10 ha
+drempel_vp_m2 <- 2 * 10000 # 10 ha
 
 # Spoor A (Max)
 res_vp_max <- cluster_filter_compleet(

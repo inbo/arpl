@@ -138,6 +138,12 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
   
   return(list(raster = r_finaal, clusters = cl_finaal))
 }
+
+terraOptions(
+  memfrac = 0.8,        # Dwing terra om tot max. 80% van het RAM-geheugen te gebruiken
+  tempdir = tempdir(),  # Geef toestemming voor automatische disk-swapping bij zware rasters
+  verbose = FALSE
+)
 ```
 
 # Soort informatie ophalen

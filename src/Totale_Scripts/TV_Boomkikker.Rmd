@@ -114,24 +114,24 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
   
   return(list(raster = r_finaal, clusters = cl_finaal))
 }
+
+terraOptions(
+  memfrac = 0.8,        # Dwing terra om tot max. 80% van het RAM-geheugen te gebruiken
+  tempdir = tempdir(),  # Geef toestemming voor automatische disk-swapping bij zware rasters
+  verbose = FALSE
+)
 ```
 
 # Soort informatie ophalen
 ```{r Soort informatie}
-df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
-soort <- "boomkikker"
-
-resultaat <- df %>%
-filter(Soort == soort) %>%
-select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
-
-# Variabelen definiëren
-oppervlakte_ha <- resultaat$MinOpp_ha
-afstand_m <- resultaat$AfstandBiotopen_m
-buffer_m <- resultaat$Dispersiecap_m
-
-print(resultaat)
-rm(df, resultaat)
+# Soort informatie instellen (Boomkikker expert-parameters)
+soort          <- "boomkikker"
+opp_water_ha   <- 0.01   # MinOpp waterbiotoop (0,01 ha = 100 m2)
+opp_land_ha    <- 5.0    # MinOpp landbiotoop per eiland (5 ha)
+buffer_m       <- 4000   # Dispersiecapaciteit (4000 m)
+min_totale_ha  <- 160    # Minimale totale netwerkoppervlakte (160 ha)
+min_plassen    <- 10     # Minimaal aantal geschikte plassen in het netwerk
+afstand_m      <- 0      # Afstand land tot water (0 m)
 ```
 
 # Gebied voorbereiden (Turnhouts Vennegebied)
@@ -250,148 +250,59 @@ gc()
 ```
 
 ```{r Watervlakken en Kleine Waters}
-message("-> Watervlakken shapefile lokaal inlezen...")
+message("-> Watervlakken shapefile inlezen en verwerken...")
 
-watervlakken_v <- vect(here("data/input/ASCI Files/watervlakken2024.shp"))
+watervlakken_v    <- vect(here("data/input/ASCI Files/watervlakken2024.shp"))
 watervlakken_proj <- project(watervlakken_v, crs(template_TV))
 
-message("-> Geometrie van de studiegebied-buffer herstellen...")
-area_buffer_clean <- makeValid(area_buffer_fix)
-area_buffer_clean <- aggregate(area_buffer_clean) 
-
-message("-> Topologische fouten in de watervlakken herstellen...")
+area_buffer_clean  <- aggregate(makeValid(area_buffer_fix))
 watervlakken_clean <- makeValid(watervlakken_proj)
+watervlakken_TV    <- crop(watervlakken_clean, area_buffer_clean)
 
-message("-> Watervlakken uitsnijden op studiegebied...")
-watervlakken_TV <- crop(watervlakken_clean, area_buffer_clean)
-
-message("-> Fuzzy clustering uitvoeren via 10m vector-aggregatie...")
-watervlakken_buffered <- buffer(watervlakken_TV, width = 5)
+# Fuzzy clustering voor kleine waters
+watervlakken_buffered       <- buffer(watervlakken_TV, width = 5)
 watervlakken_fuzzy_clusters <- aggregate(watervlakken_buffered, by = NULL)
 watervlakken_fuzzy_clusters$fuzzy_area_m2 <- terra::expanse(watervlakken_fuzzy_clusters)
 
 kleine_clusters_v <- watervlakken_fuzzy_clusters[watervlakken_fuzzy_clusters$fuzzy_area_m2 <= 4000, ]
 
-message("-> Filterresultaat verrasteren en combineren met BWK voor boomkikker...")
-
-if (nrow(kleine_clusters_v) > 0) {
+if (!is.null(kleine_clusters_v) && nrow(kleine_clusters_v) > 0) {
   kleine_watervlakken_finaal <- crop(watervlakken_TV, kleine_clusters_v)
   
-  if (nrow(kleine_watervlakken_finaal) > 0) {
+  if (!is.null(kleine_watervlakken_finaal) && nrow(kleine_watervlakken_finaal) > 0) {
     r_boomkikker_kleinwater <- terra::rasterize(kleine_watervlakken_finaal, template_TV, field = 1, background = NA)
     
     r_boomkikker_waterbiotoop1     <- terra::cover(waterbiotoop_bwk_max, r_boomkikker_kleinwater)
     r_boomkikker_waterbiotoop1_opp <- terra::cover(waterbiotoop_bwk_opp, r_boomkikker_kleinwater)
   } else {
-    message("⚠️ Waarschuwing: Crop van kleine waters leverde 0 rijen op.")
     r_boomkikker_waterbiotoop1     <- waterbiotoop_bwk_max
     r_boomkikker_waterbiotoop1_opp <- waterbiotoop_bwk_opp
   }
 } else {
-  message("⚠️ Waarschuwing: Geen kleine waters gevonden in deze zone.")
   r_boomkikker_waterbiotoop1     <- waterbiotoop_bwk_max
   r_boomkikker_waterbiotoop1_opp <- waterbiotoop_bwk_opp
 }
 
 suppressWarnings(
-  rm(watervlakken_v, watervlakken_proj, area_buffer_clean, watervlakken_clean, watervlakken_TV, 
-     watervlakken_buffered, watervlakken_fuzzy_clusters, kleine_clusters_v, kleine_watervlakken_finaal, r_boomkikker_kleinwater)
+  rm(watervlakken_v, watervlakken_buffered, watervlakken_fuzzy_clusters, kleine_clusters_v, kleine_watervlakken_finaal, r_boomkikker_kleinwater)
 )
 gc()
 ```
 
-```{r 5 buren}
-# ==============================================================================
-# 1. CLUSTERS IDENTIFICEREN & CONNECTIVITEITSCHECK (5 buren binnen 500m)
-# ==============================================================================
-message("-> Unieke clusters identificeren voor het waterbiotoop van de boomkikker...")
-r_water_clusters <- terra::patches(r_boomkikker_waterbiotoop1, directions = 8, zeroAsNA = TRUE)
+```{r Landbiotoop opbouw & Akker uitsluiting}
+message("-> Landbiotoop opbouwen en akkers uitsluiten...")
 
-boomkikker_waterbiotoop1_finaal_max <- template_TV * NA
-boomkikker_waterbiotoop1_finaal_opp <- template_TV * NA
-watervlakken_poly <- NULL
-goedgekeurde_clusters_poly <- NULL
+r_hms_zuiver_max <- landbiotoop_hms_max
+r_hms_zuiver_max[is.na(r_hms_zuiver_max) | r_hms_zuiver_max == 0] <- NA
 
-if (!all(is.na(terra::values(r_water_clusters, mat=FALSE)))) {
-  
-  message("-> Unieke naburige clusters tellen via edge-to-edge vector buffers...")
-  watervlakken_poly <- terra::as.polygons(r_water_clusters, dissolve = FALSE)
-  
-  if (!is.null(watervlakken_poly) && nrow(watervlakken_poly) > 0) {
-    
-    watervlakken_poly <- makeValid(watervlakken_poly)
-    poly_buffer <- terra::buffer(watervlakken_poly, width = 500)
-    poly_buffer <- makeValid(poly_buffer)
-    
-    message("-> Relaties berekenen via terra::is.related...")
-    intersect_matrix <- terra::is.related(poly_buffer, watervlakken_poly, "intersects")
-    intersect_matrix <- matrix(intersect_matrix, nrow = nrow(poly_buffer), ncol = nrow(watervlakken_poly))
-    
-    cluster_counts <- rowSums(intersect_matrix)
-    watervlakken_poly$unieke_buren_count <- cluster_counts
-    
-    goedgekeurde_clusters_poly <- watervlakken_poly[watervlakken_poly$unieke_buren_count >= 6, ]
-    
-    if (nrow(goedgekeurde_clusters_poly) > 0) {
-      message("-> Goedgekeurde boomkikkerclusters terugzetten naar mastergrid...")
-      boomkikker_waterbiotoop1_finaal_max <- terra::rasterize(
-        goedgekeurde_clusters_poly, 
-        template_TV, 
-        field = 1, 
-        background = NA
-      )
-    } else {
-      message("⚠️ Waarschuwing: Geen enkel cluster voldoet aan de connectiviteitseis van 5 buren.")
-    }
-    
-    suppressWarnings(rm(poly_buffer, intersect_matrix, cluster_counts))
-  } else {
-    message("⚠️ Waarschuwing: Geen geometrieën gevonden na as.polygons().")
-  }
-} else {
-  message("⚠️ Waarschuwing: Geen initiële waterbiotopen gevonden om de connectiviteitscheck op uit te voeren.")
-}
+r_k_zuiver_max <- landbiotoop_k_max
+r_k_zuiver_max[is.na(r_k_zuiver_max) | r_k_zuiver_max == 0] <- NA
 
-# --- PARALLEL: WERKELIJKE OPPERVLAKTE BEREKENEN (_opp) ---
-message("-> Werkelijke oppervlakte filteren op basis van de connectiviteitscheck...")
-boomkikker_waterbiotoop1_finaal_opp <- terra::mask(
-  r_boomkikker_waterbiotoop1_opp, 
-  boomkikker_waterbiotoop1_finaal_max
-)
+dist_k   <- terra::distance(r_k_zuiver_max)
+dist_hms <- terra::distance(r_hms_zuiver_max)
 
-cl_id_max <- terra::mask(r_water_clusters, boomkikker_waterbiotoop1_finaal_max)
-
-ha_potentie  <- calc_ha_exact(boomkikker_waterbiotoop1_finaal_max)
-ha_werkelijk <- calc_ha_exact(boomkikker_waterbiotoop1_finaal_opp)
-
-cat("\n=========================================================\n")
-cat("          RESULTATEN WATERBIOTOOP boomkikker               \n")
-cat("=========================================================\n")
-cat(paste("Geschikt gebied (Maximale Potentie):   ", round(ha_potentie, 2), "ha\n"))
-cat(paste("Geschikt gebied (Werkelijke Fractie): ", round(ha_werkelijk, 2), "ha\n"))
-cat("=========================================================\n\n")
-
-suppressWarnings(rm(r_water_clusters, watervlakken_poly, goedgekeurde_clusters_poly))
-gc()
-```
-
-```{r landbiotoop opbouw}
-# ==============================================================================
-# 4. LANDBIOTOOP INTERACTIE & VARIATIE (HMS vs K) - GEZUIVERD
-# ==============================================================================
-message("-> Ruimtelijke variatie tussen HMS en K landbiotopen berekenen...")
-
-r_hms_zuiver <- landbiotoop_hms_max
-r_hms_zuiver[is.na(r_hms_zuiver) | r_hms_zuiver == 0] <- NA
-
-r_k_zuiver <- landbiotoop_k_max
-r_k_zuiver[is.na(r_k_zuiver) | r_k_zuiver == 0] <- NA
-
-dist_k   <- terra::distance(r_k_zuiver)
-dist_hms <- terra::distance(r_hms_zuiver)
-
-landbiotoop_bwk1_max <- r_hms_zuiver == 1 & dist_k <= 500
-landbiotoop_bwk2_max <- r_k_zuiver == 1   & dist_hms <= 500
+landbiotoop_bwk1_max <- r_hms_zuiver_max == 1 & dist_k <= 500
+landbiotoop_bwk2_max <- r_k_zuiver_max == 1   & dist_hms <= 500
 
 landbiotoop_bwk3_max <- landbiotoop_bwk1_max | landbiotoop_bwk2_max
 landbiotoop_bwk3_max <- terra::ifel(landbiotoop_bwk3_max == 1, 1, NA)
@@ -400,182 +311,196 @@ landbiotoop_bwk1_opp <- terra::mask(landbiotoop_hms_opp, landbiotoop_bwk1_max)
 landbiotoop_bwk2_opp <- terra::mask(landbiotoop_k_opp, landbiotoop_bwk2_max)
 landbiotoop_bwk3_opp <- terra::cover(landbiotoop_bwk1_opp, landbiotoop_bwk2_opp)
 
-ha_voor_akkers <- calc_ha_exact(landbiotoop_bwk3_max)
-message("   - Landbiotoop VOOR akker-uitsluiting: ", round(ha_voor_akkers, 2), " ha")
-
 r_akkers_zuiver <- akkers_max
 r_akkers_zuiver[is.na(r_akkers_zuiver) | r_akkers_zuiver == 0] <- NA
 
 landbiotoop_na_max <- terra::mask(landbiotoop_bwk3_max, r_akkers_zuiver, inverse = TRUE)
 landbiotoop_na_opp <- terra::mask(landbiotoop_bwk3_opp, r_akkers_zuiver, inverse = TRUE)
 
-ha_na_akkers <- calc_ha_exact(landbiotoop_na_max)
-message("   - Landbiotoop NA akker-uitsluiting:    ", round(ha_na_akkers, 2), " ha")
-
-rm(
-  dist_k, dist_hms, r_hms_zuiver, r_k_zuiver, r_akkers_zuiver,
-  landbiotoop_bwk1_max, landbiotoop_bwk2_max, landbiotoop_bwk3_max,
-  landbiotoop_bwk1_opp, landbiotoop_bwk2_opp, landbiotoop_bwk3_opp
-)
-gc()
-```
-
-```{r landbiotoop koppeling 1}
-# ==============================================================================
-# 5. RUIMTELIJKE RELATIE WATER- EN LANDBIOTOOP (Robuuste Vector-Overlapping)
-# ==============================================================================
-message("-> Connectiviteit tussen water- en landbiotoop controleren op VOLLEDIG CLUSTERNIVEAU (500m)...")
-
-r_land_zuiver <- landbiotoop_na_max
-r_land_zuiver[is.na(r_land_zuiver) | r_land_zuiver == 0] <- NA
-r_land_clusters_bk <- terra::patches(r_land_zuiver, directions = 8, zeroAsNA = TRUE)
-
-message("   - Clusters omzetten naar vectoren voor nauwkeurige overlapping...")
-water_poly <- terra::as.polygons(cl_id_max, dissolve = TRUE)
-land_poly  <- terra::as.polygons(r_land_clusters_bk, dissolve = TRUE)
-
-goedgekeurde_land_cluster_ids_bk  <- c()
-goedgekeurde_water_cluster_ids_bk <- c()
-
-if (!is.null(water_poly) && nrow(water_poly) > 0 && !is.null(land_poly) && nrow(land_poly) > 0) {
-  
-  water_poly_clean <- terra::makeValid(water_poly)
-  land_poly_clean  <- terra::makeValid(land_poly)
-  
-  message("   - 500m vector-buffers berekenen...")
-  water_buffer_500m <- terra::buffer(water_poly_clean, width = 500)
-  water_buffer_500m <- terra::makeValid(water_buffer_500m)
-  
-  intersect_matrix <- terra::is.related(land_poly_clean, water_buffer_500m, "intersects")
-  intersect_matrix <- matrix(intersect_matrix, nrow = nrow(land_poly_clean), ncol = nrow(water_buffer_500m))
-  
-  id_col_land  <- names(land_poly_clean)[1]
-  id_col_water <- names(water_poly_clean)[1]
-  
-  land_indices  <- which(rowSums(intersect_matrix) > 0)
-  water_indices <- which(colSums(intersect_matrix) > 0)
-  
-  if (length(land_indices) > 0) {
-    goedgekeurde_land_cluster_ids_bk <- as.numeric(land_poly_clean[[id_col_land]][land_indices, 1])
-  }
-  if (length(water_indices) > 0) {
-    goedgekeurde_water_cluster_ids_bk <- as.numeric(water_poly_clean[[id_col_water]][water_indices, 1])
-  }
-}
-
-goedgekeurde_land_cluster_ids_bk  <- goedgekeurde_land_cluster_ids_bk[!is.na(goedgekeurde_land_cluster_ids_bk)]
-goedgekeurde_water_cluster_ids_bk <- goedgekeurde_water_cluster_ids_bk[!is.na(goedgekeurde_water_cluster_ids_bk)]
-
-message("   - Aantal gekoppelde landclusters: ", length(goedgekeurde_land_cluster_ids_bk))
-message("   - Aantal gekoppelde waterclusters: ", length(goedgekeurde_water_cluster_ids_bk))
-
-if (length(goedgekeurde_land_cluster_ids_bk) > 0) {
-  boomkikker_landbiotoop1_max <- r_land_clusters_bk %in% goedgekeurde_land_cluster_ids_bk
-  boomkikker_landbiotoop1_max <- terra::ifel(boomkikker_landbiotoop1_max == 1, 1, NA)
-  boomkikker_landbiotoop1_opp <- terra::mask(landbiotoop_na_opp, boomkikker_landbiotoop1_max)
-} else {
-  message("⚠️ Waarschuwing: Geen enkel landbiotoop-cluster ligt binnen 500m van een waterbiotoop.")
-  boomkikker_landbiotoop1_max <- template_TV * NA
-  boomkikker_landbiotoop1_opp <- template_TV * NA
-}
-
-if (length(goedgekeurde_water_cluster_ids_bk) > 0) {
-  boomkikker_waterbiotoop3_max <- cl_id_max %in% goedgekeurde_water_cluster_ids_bk
-  boomkikker_waterbiotoop3_max <- terra::ifel(boomkikker_waterbiotoop3_max == 1, 1, NA)
-  boomkikker_waterbiotoop3_opp <- terra::mask(boomkikker_waterbiotoop1_finaal_opp, boomkikker_waterbiotoop3_max)
-} else {
-  message("⚠️ Waarschuwing: Geen enkel waterbiotoop-cluster ligt binnen 500m van een landbiotoop.")
-  boomkikker_waterbiotoop3_max <- template_TV * NA
-  boomkikker_waterbiotoop3_opp <- template_TV * NA
-}
-
-cl_id_max_boomkikker <- terra::mask(cl_id_max, boomkikker_waterbiotoop3_max)
-
 suppressWarnings(
-  rm(r_land_clusters_bk, water_poly, land_poly, water_poly_clean, land_poly_clean, 
-     water_buffer_500m, intersect_matrix, r_land_zuiver)
+  rm(dist_k, dist_hms, r_hms_zuiver_max, r_k_zuiver_max, r_akkers_zuiver,
+     landbiotoop_bwk1_max, landbiotoop_bwk2_max, landbiotoop_bwk3_max,
+     landbiotoop_bwk1_opp, landbiotoop_bwk2_opp, landbiotoop_bwk3_opp)
 )
 gc()
 ```
 
+```{r Filter Landbiotoop eilandjes}
+message("-> Landbiotoop filteren op minimale eiland-oppervlakte (>= 5 ha) voor MAX en OPP parallel...")
 
-```{r landbiotoop koppeling 2}
-# ==============================================================================
-# 6. FINALE COMBINATIE: LEEFGEBIED BOOMKIKKER
-# ==============================================================================
-message("-> Finaal leefgebied boomkikker samenstellen...")
+drempel_land_m2 <- opp_land_ha * 10000 # 5 ha = 50.000 m²
 
-boomkikker_leefgebied1_max <- boomkikker_waterbiotoop3_max | boomkikker_landbiotoop1_max
-boomkikker_leefgebied1_max <- terra::ifel(boomkikker_leefgebied1_max == 1, 1, NA)
+# --- SPOOR MAX ---
+if (!all(is.na(terra::values(landbiotoop_na_max, mat = FALSE)))) {
+  land_patches_max <- terra::patches(landbiotoop_na_max, directions = 8, zeroAsNA = TRUE)
+  land_freq_max    <- as.data.frame(terra::freq(land_patches_max))
+  ids_land_ok_max  <- land_freq_max$value[(land_freq_max$count * 100) >= drempel_land_m2]
+  
+  if (length(ids_land_ok_max) > 0) {
+    boomkikker_land_gefilterd_max <- terra::mask(landbiotoop_na_max, land_patches_max %in% ids_land_ok_max)
+  } else {
+    boomkikker_land_gefilterd_max <- template_TV * NA
+  }
+} else {
+  boomkikker_land_gefilterd_max <- template_TV * NA
+}
 
-water_fractie_clean <- terra::ifel(is.na(boomkikker_waterbiotoop3_opp), 0, boomkikker_waterbiotoop3_opp)
-land_fractie_clean  <- terra::ifel(is.na(boomkikker_landbiotoop1_opp), 0, boomkikker_landbiotoop1_opp)
-
-som_fracties <- water_fractie_clean + land_fractie_clean
-som_gemedieerd <- terra::clamp(som_fracties, upper = 1.0)
-
-boomkikker_leefgebied1_opp <- terra::mask(som_gemedieerd, boomkikker_leefgebied1_max)
-
-ha_leefgebied_pot  <- calc_ha_exact(boomkikker_leefgebied1_max)
-ha_leefgebied_werk <- calc_ha_exact(boomkikker_leefgebied1_opp)
-
-cat("\n=========================================================\n")
-cat("              EINDPOTENTIE LEEFGEBIED BOOMKIKKER           \n")
-cat("=========================================================\n")
-cat(paste("Totale Leefgebied (Maximale Potentie):   ", round(ha_leefgebied_pot, 2), "ha\n"))
-cat(paste("Totale Leefgebied (Werkelijke Fractie): ", round(ha_leefgebied_werk, 2), "ha\n"))
-cat("=========================================================\n\n")
-
-suppressWarnings(
-  rm(
-    boomkikker_waterbiotoop3_max, boomkikker_landbiotoop1_max,
-    boomkikker_waterbiotoop3_opp, boomkikker_landbiotoop1_opp,
-    water_fractie_clean, land_fractie_clean, som_fracties
-  )
-)
-gc()
+# --- SPOOR OPP (Autonoom op basis van werkelijke bedekking) ---
+if (!all(is.na(terra::values(landbiotoop_na_opp, mat = FALSE)))) {
+  r_binair_land_opp <- terra::ifel(!is.na(landbiotoop_na_opp) & landbiotoop_na_opp > 0, 1, NA)
+  land_patches_opp  <- terra::patches(r_binair_land_opp, directions = 8, zeroAsNA = TRUE)
+  
+  zonal_land_opp <- terra::zonal(landbiotoop_na_opp, land_patches_opp, fun = "sum", na.rm = TRUE)
+  colnames(zonal_land_opp) <- c("ID", "Werk_ha")
+  ids_land_ok_opp <- zonal_land_opp$ID[(zonal_land_opp$Werk_ha * 100) >= drempel_land_m2]
+  
+  if (length(ids_land_ok_opp) > 0) {
+    boomkikker_land_gefilterd_opp <- terra::mask(landbiotoop_na_opp, land_patches_opp %in% ids_land_ok_opp)
+  } else {
+    boomkikker_land_gefilterd_opp <- template_TV * NA
+  }
+} else {
+  boomkikker_land_gefilterd_opp <- template_TV * NA
+}
 ```
 
-```{r clusters}
-# Vervanging van chunk 8 met de universele functie:
-drempel_m2 <- oppervlakte_ha * 10000
 
-res_final_max <- cluster_filter_compleet(
+```{r Ruimtelijke Koppeling Land & Water}
+message("-> Ruimtelijke koppeling land- en waterbiotoop (AfstandBiotopen = 0 m) voor MAX en OPP parallel...")
+
+# --- SPOOR MAX ---
+if (!all(is.na(terra::values(boomkikker_land_gefilterd_max, mat = FALSE))) && 
+    !all(is.na(terra::values(r_boomkikker_waterbiotoop1, mat = FALSE)))) {
+  
+  r_land_mask_max  <- boomkikker_land_gefilterd_max
+  r_water_mask_max <- r_boomkikker_waterbiotoop1
+  
+  bk_land_gekoppeld_max  <- terra::mask(boomkikker_land_gefilterd_max, r_water_mask_max)
+  bk_water_gekoppeld_max <- terra::mask(r_boomkikker_waterbiotoop1, r_land_mask_max)
+  
+  boomkikker_leefgebied1_max <- bk_land_gekoppeld_max | bk_water_gekoppeld_max
+  boomkikker_leefgebied1_max <- terra::ifel(boomkikker_leefgebied1_max == 1, 1, NA)
+} else {
+  boomkikker_leefgebied1_max <- template_TV * NA
+}
+
+# --- SPOOR OPP (Volledig autonoom) ---
+if (!all(is.na(terra::values(boomkikker_land_gefilterd_opp, mat = FALSE))) && 
+    !all(is.na(terra::values(r_boomkikker_waterbiotoop1_opp, mat = FALSE)))) {
+  
+  r_land_mask_opp  <- terra::ifel(!is.na(boomkikker_land_gefilterd_opp) & boomkikker_land_gefilterd_opp > 0, 1, NA)
+  r_water_mask_opp <- terra::ifel(!is.na(r_boomkikker_waterbiotoop1_opp) & r_boomkikker_waterbiotoop1_opp > 0, 1, NA)
+  
+  bk_land_gekoppeld_opp  <- terra::mask(boomkikker_land_gefilterd_opp, r_water_mask_opp)
+  bk_water_gekoppeld_opp <- terra::mask(r_boomkikker_waterbiotoop1_opp, r_land_mask_opp)
+  
+  water_opp_clean <- terra::ifel(is.na(bk_water_gekoppeld_opp), 0, bk_water_gekoppeld_opp)
+  land_opp_clean  <- terra::ifel(is.na(bk_land_gekoppeld_opp), 0, bk_land_gekoppeld_opp)
+
+  som_opp <- terra::clamp(water_opp_clean + land_opp_clean, upper = 1.0)
+  boomkikker_leefgebied1_opp <- terra::ifel(som_opp > 0, som_opp, NA)
+} else {
+  boomkikker_leefgebied1_opp <- template_TV * NA
+}
+```
+
+```{r Netwerkvorming}
+message("-> Netwerkvorming binnen 4000m en controle op >= 160 ha EN >= 10 plassen voor MAX en OPP parallel...")
+
+drempel_netwerk_m2 <- min_totale_ha * 10000 # 160 ha = 1.600.000 m²
+
+# ==============================================================================
+# SPOOR MAX (AUTONOOM)
+# ==============================================================================
+res_netwerk_max <- cluster_filter_compleet(
   masker     = boomkikker_leefgebied1_max,
   opp_laag   = boomkikker_leefgebied1_max,
-  drempel_m2 = drempel_m2,
-  dist_m     = 500, # 250m aan beide kanten = 500m netwerkoverbrugging
+  drempel_m2 = drempel_netwerk_m2,
+  dist_m     = buffer_m,
   werkelijk  = FALSE
 )
 
-res_final_opp <- cluster_filter_compleet(
-  masker     = terra::ifel(!is.na(boomkikker_leefgebied1_opp) & boomkikker_leefgebied1_opp > 0, 1, NA),
+cl_netwerk_max <- res_netwerk_max$clusters
+r_netwerk_max  <- res_netwerk_max$raster
+
+if (!all(is.na(terra::values(cl_netwerk_max, mat = FALSE)))) {
+  netwerk_poly_max <- terra::as.polygons(cl_netwerk_max, dissolve = TRUE) %>% terra::makeValid()
+  watervlakken_in_netwerk_max <- terra::crop(watervlakken_clean, netwerk_poly_max)
+  
+  if (!is.null(watervlakken_in_netwerk_max) && nrow(watervlakken_in_netwerk_max) > 0) {
+    rel_max <- matrix(terra::is.related(netwerk_poly_max, watervlakken_in_netwerk_max, "intersects"), 
+                      nrow = nrow(netwerk_poly_max), ncol = nrow(watervlakken_in_netwerk_max))
+    netwerk_poly_max$Aantal_Plassen <- rowSums(rel_max)
+    id_col_max <- names(netwerk_poly_max)[1]
+    valid_ids_max <- as.numeric(netwerk_poly_max[[id_col_max]][netwerk_poly_max$Aantal_Plassen >= min_plassen, 1])
+  } else {
+    valid_ids_max <- c()
+  }
+  
+  if (length(na.omit(valid_ids_max)) > 0) {
+    boomkikker_leefgebied_max <- terra::mask(r_netwerk_max, cl_netwerk_max %in% valid_ids_max)
+    cl_max                    <- terra::mask(cl_netwerk_max, cl_netwerk_max %in% valid_ids_max)
+  } else {
+    boomkikker_leefgebied_max <- template_TV * NA
+    cl_max                    <- template_TV * NA
+  }
+} else {
+  boomkikker_leefgebied_max <- template_TV * NA
+  cl_max                    <- template_TV * NA
+}
+
+# ==============================================================================
+# SPOOR OPP (AUTONOOM OP BASIS VAN WERKELIJKE HECTARES)
+# ==============================================================================
+r_binair_leef1_opp <- terra::ifel(!is.na(boomkikker_leefgebied1_opp) & boomkikker_leefgebied1_opp > 0, 1, NA)
+
+res_netwerk_opp <- cluster_filter_compleet(
+  masker     = r_binair_leef1_opp,
   opp_laag   = boomkikker_leefgebied1_opp,
-  drempel_m2 = drempel_m2,
-  dist_m     = 500,
+  drempel_m2 = drempel_netwerk_m2,
+  dist_m     = buffer_m,
   werkelijk  = TRUE
 )
 
-boomkikker_leefgebied_max <- res_final_max$raster
-boomkikker_leefgebied_opp <- res_final_opp$raster
+cl_netwerk_opp <- res_netwerk_opp$clusters
+r_netwerk_opp  <- res_netwerk_opp$raster
 
-rm(leefgebied_buffered_max, r_leefgebied_clusters_max, r_scherpe_clusters_max, cluster_freq_max,
-   r_binair_leef_opp, leefgebied_buffered_opp, r_leefgebied_clusters_opp, r_scherpe_clusters_opp)
-gc()
+if (!all(is.na(terra::values(cl_netwerk_opp, mat = FALSE)))) {
+  netwerk_poly_opp <- terra::as.polygons(cl_netwerk_opp, dissolve = TRUE) %>% terra::makeValid()
+  watervlakken_in_netwerk_opp <- terra::crop(watervlakken_clean, netwerk_poly_opp)
+  
+  if (!is.null(watervlakken_in_netwerk_opp) && nrow(watervlakken_in_netwerk_opp) > 0) {
+    rel_opp <- matrix(terra::is.related(netwerk_poly_opp, watervlakken_in_netwerk_opp, "intersects"), 
+                      nrow = nrow(netwerk_poly_opp), ncol = nrow(watervlakken_in_netwerk_opp))
+    netwerk_poly_opp$Aantal_Plassen <- rowSums(rel_opp)
+    id_col_opp <- names(netwerk_poly_opp)[1]
+    valid_ids_opp <- as.numeric(netwerk_poly_opp[[id_col_opp]][netwerk_poly_opp$Aantal_Plassen >= min_plassen, 1])
+  } else {
+    valid_ids_opp <- c()
+  }
+  
+  if (length(na.omit(valid_ids_opp)) > 0) {
+    boomkikker_leefgebied_opp <- terra::mask(boomkikker_leefgebied1_opp, cl_netwerk_opp %in% valid_ids_opp)
+    cl_opp                    <- terra::mask(cl_netwerk_opp, cl_netwerk_opp %in% valid_ids_opp)
+  } else {
+    boomkikker_leefgebied_opp <- template_TV * NA
+    cl_opp                    <- template_TV * NA
+  }
+} else {
+  boomkikker_leefgebied_opp <- template_TV * NA
+  cl_opp                    <- template_TV * NA
+}
 
-ha_finaal_pot  <- calc_ha_exact(boomkikker_leefgebied_max)
-ha_finaal_werk <- calc_ha_exact(boomkikker_leefgebied_opp)
-
-cat("\n=========================================================\n")
-cat("          DEFINITIEF LEEFGEBIED BOOMKIKKER (>= 5 ha)     \n")
-cat("=========================================================\n")
-cat(paste("Finaal Leefgebied (Maximale Potentie):   ", round(ha_finaal_pot, 2), "ha\n"))
-cat(paste("Finaal Leefgebied (Werkelijke Fractie): ", round(ha_finaal_werk, 2), "ha\n"))
-cat("=========================================================\n\n")
+final_max <- boomkikker_leefgebied_max
+final_opp <- boomkikker_leefgebied_opp
 ```
 
 ```{r waarnemingen inlezen en ARPL}
 message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor boomkikker...")
+
+# Zorg dat binnen_masker altijd aanwezig is voor de zonal berekening
+grens_merged  <- terra::aggregate(area_shape_proj)
+binnen_masker <- terra::rasterize(grens_merged, template_TV, field = 1)
 
 waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Boomkikker.csv")
 
@@ -600,97 +525,83 @@ boomkikker_arpl_opp         <- terra::rast(template_TV, vals = NA)
 boomkikker_verspreiding_bin <- terra::rast(template_TV, vals = NA) 
 arpl_netwerk_count          <- 0
 verspreiding_netwerk_count  <- 0
-ha_verspreiding_bin        <- 0
+ha_verspreiding_bin         <- 0
 
 ha_pot_bin <- ha_pot_buit <- ha_werk_bin <- ha_werk_buit <- ha_arpl <- 0
 ids_pot_bin <- ids_pot_buit <- ids_werk_bin <- ids_werk_buit <- ids_actueel_relevant <- c()
 
 if (!all(is.na(terra::values(boomkikker_leefgebied_max, mat=FALSE)))) {
   
-  message("-> Metapopulatie-netwerkwolken bouwen (500m fuzzy koppeling)...")
-  p_ruw_max <- terra::as.polygons(boomkikker_leefgebied_max, aggregate = TRUE) %>% terra::disagg()
+  # Gebruik direct het reeds berekende netwerk-raster (cl_max)
+  r_opp_net_ids <- cl_max
   
-  p_buf_max        <- terra::buffer(p_ruw_max, width = 250)
-  p_net_max_wolken <- terra::aggregate(p_buf_max) %>% terra::disagg()
-  p_net_max_wolken$Netwerk_ID <- 1:nrow(p_net_max_wolken)
+  # Bepaal welke netwerk-IDs binnen de studiegrens liggen
+  relatie_matrix <- terra::relate(r_opp_net_ids, area_shape_proj, "intersects")
   
-  p_ruw_max$Netwerk_ID <- terra::relate(p_ruw_max, p_net_max_wolken, "within") %>% 
-    apply(1, function(x) { if(any(x)) which(x)[1] else NA })
+  # Zonal check om te kijken welke IDs het studiegebied raken
+  zonal_in_tv <- as.data.frame(terra::zonal(binnen_masker, r_opp_net_ids, fun = "max", na.rm = TRUE))
+  colnames(zonal_in_tv) <- c("ID", "In_TV")
   
-  if (nrow(p_ruw_max) > 0) {
-    r_opp_net_ids <- boomkikker_leefgebied_max * NA
-    r_opp_net_ids <- terra::rasterize(p_ruw_max, r_opp_net_ids, field = "Netwerk_ID", touches = FALSE)
-    
-    missende_cellen <- !is.na(boomkikker_leefgebied_max) & is.na(r_opp_net_ids)
-    if (terra::global(missende_cellen, "sum", na.rm = TRUE)[[1]] > 0) {
-      cellen_indices <- which(terra::values(missende_cellen, mat = FALSE))
-      extracted_ids <- terra::extract(p_ruw_max, terra::xyFromCell(r_opp_net_ids, cellen_indices))
-      if (nrow(extracted_ids) > 0 && "Netwerk_ID" %in% colnames(extracted_ids)) {
-        r_opp_net_ids[cellen_indices] <- extracted_ids$Netwerk_ID
-      }
-    }
-    
-    relatie_matrix <- terra::relate(p_net_max_wolken, area_shape_proj, "intersects")
-    ids_binnen <- p_net_max_wolken$Netwerk_ID[apply(relatie_matrix, 1, any)]
-    ids_buiten <- setdiff(p_net_max_wolken$Netwerk_ID, ids_binnen)
-    
-    if (has_observations && nrow(df_points_sf) > 0) {
-      extract_ids_arpl <- terra::extract(r_opp_net_ids, waarneming_blobs_vect)
-      ids_netwerken_raken_arpl <- unique(na.omit(extract_ids_arpl[[2]]))
-    } else {
-      ids_netwerken_raken_arpl <- c()
-    }
-    ids_actueel_relevant <- intersect(ids_binnen, ids_netwerken_raken_arpl)
-    
-    if(length(ids_actueel_relevant) > 0) {
-      m_arpl <- r_opp_net_ids %in% ids_actueel_relevant
-      m_arpl_tv <- terra::crop(terra::ifel(m_arpl == 1, 1, NA), template_TV)
-      boomkikker_arpl_opp <- terra::mask(terra::crop(boomkikker_leefgebied_opp, template_TV), m_arpl_tv)
-      arpl_netwerk_count <- length(ids_actueel_relevant)
-      ha_arpl <- calc_ha_exact(boomkikker_arpl_opp)
-    }
-    
-    if (has_observations && nrow(df_points_sf) > 0) {
-      extract_ids_verspr <- terra::extract(r_opp_net_ids, waarneming_punten_vect)
-      ids_netwerken_raken_punten <- unique(na.omit(extract_ids_verspr[[2]]))
-    } else {
-      ids_netwerken_raken_punten <- c()
-    }
-    ids_verspreiding_clusters <- intersect(ids_binnen, ids_netwerken_raken_punten)
-    
-    if(length(ids_verspreiding_clusters) > 0) {
-      m_verspr <- r_opp_net_ids %in% ids_verspreiding_clusters
-      clusters_actueel <- terra::mask(boomkikker_leefgebied_opp, terra::ifel(m_verspr == 1, 1, NA))
-      
-      clusters_actueel_tv <- terra::crop(clusters_actueel, template_TV)
-      boomkikker_verspreiding_bin <- terra::ifel(!is.na(clusters_actueel_tv) & clusters_actueel_tv > 0, 1, NA)
-      verspreiding_netwerk_count <- length(ids_verspreiding_clusters)
-      ha_verspreiding_bin <- calc_ha_exact(clusters_actueel_tv)
-    }
-    
-    r_max_tv <- terra::crop(boomkikker_leefgebied_max, template_TV)
-    r_opp_tv <- terra::crop(boomkikker_leefgebied_opp, template_TV)
-    r_net_ids_tv <- terra::crop(r_opp_net_ids, template_TV)
-    
-    calc_ha_grutto_style <- function(ids, target_raster) {
-      if(length(ids) == 0) return(0)
-      masker <- r_net_ids_tv %in% ids
-      r_gefilterd <- terra::mask(target_raster, terra::ifel(masker == 1, 1, NA))
-      return(round(calc_ha_exact(r_gefilterd), 2))
-    }
-    
-    ids_pot_bin   <- ids_binnen
-    ids_pot_buit  <- ids_buiten
-    ids_werk_bin  <- ids_binnen
-    ids_werk_buit <- ids_buiten
-    
-    ha_pot_bin   <- calc_ha_grutto_style(ids_pot_bin, r_max_tv)
-    ha_pot_buit  <- calc_ha_grutto_style(ids_pot_buit, r_max_tv)
-    ha_werk_bin  <- calc_ha_grutto_style(ids_werk_bin, r_opp_tv)
-    ha_werk_buit <- calc_ha_grutto_style(ids_werk_buit, r_opp_tv)
-    
-    rm(p_ruw_max, p_buf_max, p_net_max_wolken, relatie_matrix)
+  ids_binnen <- zonal_in_tv$ID[!is.na(zonal_in_tv$In_TV) & zonal_in_tv$In_TV > 0]
+  ids_alle   <- unique(na.omit(terra::values(r_opp_net_ids, mat = FALSE)))
+  ids_buiten <- setdiff(ids_alle, ids_binnen)
+  
+  # ARPL extractie (waarnemingswolken binnen buffer_m)
+  if (has_observations && nrow(df_points_sf) > 0) {
+    extract_ids_arpl <- terra::extract(r_opp_net_ids, waarneming_blobs_vect)
+    ids_netwerken_raken_arpl <- unique(na.omit(extract_ids_arpl[[2]]))
+  } else {
+    ids_netwerken_raken_arpl <- c()
   }
+  ids_actueel_relevant <- intersect(ids_binnen, ids_netwerken_raken_arpl)
+  
+  if(length(ids_actueel_relevant) > 0) {
+    m_arpl <- r_opp_net_ids %in% ids_actueel_relevant
+    m_arpl_tv <- terra::crop(terra::ifel(m_arpl == 1, 1, NA), template_TV)
+    boomkikker_arpl_opp <- terra::mask(terra::crop(boomkikker_leefgebied_opp, template_TV), m_arpl_tv)
+    arpl_netwerk_count <- length(ids_actueel_relevant)
+    ha_arpl <- calc_ha_exact(boomkikker_arpl_opp)
+  }
+  
+  # Verspreiding extractie (exacte punten)
+  if (has_observations && nrow(df_points_sf) > 0) {
+    extract_ids_verspr <- terra::extract(r_opp_net_ids, waarneming_punten_vect)
+    ids_netwerken_raken_punten <- unique(na.omit(extract_ids_verspr[[2]]))
+  } else {
+    ids_netwerken_raken_punten <- c()
+  }
+  ids_verspreiding_clusters <- intersect(ids_binnen, ids_netwerken_raken_punten)
+  
+  if(length(ids_verspreiding_clusters) > 0) {
+    m_verspr <- r_opp_net_ids %in% ids_verspreiding_clusters
+    clusters_actueel <- terra::mask(boomkikker_leefgebied_opp, terra::ifel(m_verspr == 1, 1, NA))
+    
+    clusters_actueel_tv <- terra::crop(clusters_actueel, template_TV)
+    boomkikker_verspreiding_bin <- terra::ifel(!is.na(clusters_actueel_tv) & clusters_actueel_tv > 0, 1, NA)
+    verspreiding_netwerk_count <- length(ids_verspreiding_clusters)
+    ha_verspreiding_bin <- calc_ha_exact(clusters_actueel_tv)
+  }
+  
+  r_max_tv     <- terra::crop(boomkikker_leefgebied_max, template_TV)
+  r_opp_tv     <- terra::crop(boomkikker_leefgebied_opp, template_TV)
+  r_net_ids_tv <- terra::crop(r_opp_net_ids, template_TV)
+  
+  calc_ha_grutto_style <- function(ids, target_raster) {
+    if(length(ids) == 0) return(0)
+    masker <- r_net_ids_tv %in% ids
+    r_gefilterd <- terra::mask(target_raster, terra::ifel(masker == 1, 1, NA))
+    return(round(calc_ha_exact(r_gefilterd), 2))
+  }
+  
+  ids_pot_bin   <- ids_binnen
+  ids_pot_buit  <- ids_buiten
+  ids_werk_bin  <- ids_binnen
+  ids_werk_buit <- ids_buiten
+  
+  ha_pot_bin   <- calc_ha_grutto_style(ids_pot_bin, r_max_tv)
+  ha_pot_buit  <- calc_ha_grutto_style(ids_pot_buit, r_max_tv)
+  ha_werk_bin  <- calc_ha_grutto_style(ids_werk_bin, r_opp_tv)
+  ha_werk_buit <- calc_ha_grutto_style(ids_werk_buit, r_opp_tv)
 }
 
 r_status <- terra::rast(template_TV, vals = NA)
@@ -726,81 +637,10 @@ tabel_totaal %>%
   kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
-```{r, export}
-# --- EXPORT MET KOGELVRIJE NUL-OPVULLING & CONTRACT FIX (BOOMKIKKER) ---
-message("-> Start geformatteerde export met nul-opvulling voor boomkikker...")
-
-base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
-folders <- list(
-  potentie     = file.path(base_dir, "01_Maximale_Potentie"),
-  werkelijk    = file.path(base_dir, "02_Werkelijke_Oppervlakte"),
-  arpl         = file.path(base_dir, "03_ARPL"),
-  verspreiding = file.path(base_dir, "04_Actuele_Verspreiding")
-)
-purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
-
-if(!all(is.na(terra::values(boomkikker_leefgebied_opp, mat=FALSE)))) {
-  werkelijk_export_rast <- terra::ifel(!is.na(boomkikker_leefgebied_opp) & boomkikker_leefgebied_opp > 0, 1, NA)
-} else {
-  werkelijk_export_rast <- terra::rast(template_TV, vals = NA)
-}
-
-if(exists("boomkikker_arpl_opp") && !all(is.na(terra::values(boomkikker_arpl_opp, mat=FALSE)))) {
-  arpl_export_rast <- terra::ifel(boomkikker_arpl_opp > 0, 1, NA)
-} else {
-  arpl_export_rast <- terra::rast(template_TV, vals = NA)
-}
-
-if(!all(is.na(terra::values(boomkikker_verspreiding_bin, mat=FALSE)))) {
-  verspreiding_export_rast <- terra::ifel(boomkikker_verspreiding_bin > 0, 1, NA)
-} else {
-  verspreiding_export_rast <- terra::rast(template_TV, vals = NA)
-}
-
-export_config <- list(
-  list(rast = boomkikker_leefgebied_max,   naam = "Maximale_Potentie",       folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast,       naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,            naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
-  list(rast = verspreiding_export_rast,    naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
-)
-
-for(item in export_config) {
-  file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
-  
-  export_rast <- terra::deepcopy(item$rast)
-  export_rast <- terra::mask(export_rast, area_buffer_fix)
-  
-  if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
-    export_rast <- terra::ifel(is.na(export_rast), 0, 0)
-    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
-  } else {
-    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
-  }
-  
-  writeRaster(export_rast, 
-              filename = file_path, 
-              overwrite = TRUE, 
-              gdal = c("COMPRESS=LZW"), 
-              datatype = item$type)
-              
-  message(paste("   [OK] Geëxporteerd:", basename(file_path)))
-}
-
-suppressWarnings(
-  rm(
-    werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast,
-    export_config, export_rast
-  )
-)
-gc()
-
-message("🏁 SCRIPT EN EXPORT VOLLEDIG EN SUCCESVOL AFGEROND VOOR BOOMKIKKER!")
-```
-
 ```{r Interactieve kaart}
 if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE)))) {
   
-  message("-> Clusterstatistieken berekenen op basis van het TOTALE, gedeelde netwerk voor boomkikker...")
+  message("-> Clusterstatistieken berekenen op basis van het TOTALE netwerk...")
   
   stats_global_freq <- terra::freq(r_opp_net_ids)
   colnames(stats_global_freq) <- c("layer", "ID", "count")
@@ -853,9 +693,9 @@ if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE))
 r_web_status <- terra::project(r_status, "EPSG:4326", method = "near")
 bbox         <- st_bbox(grens_web)
 
-if(exists("boomkikker_waterbiotoop1_finaal_max") && 
-   !all(is.na(terra::values(boomkikker_waterbiotoop1_finaal_max, mat=FALSE)))) {
-  r_web_vpt <- terra::project(boomkikker_waterbiotoop1_finaal_max, "EPSG:4326", method = "near")
+if(exists("r_boomkikker_waterbiotoop1") && 
+   !all(is.na(terra::values(r_boomkikker_waterbiotoop1, mat=FALSE)))) {
+  r_web_vpt <- terra::project(r_boomkikker_waterbiotoop1, "EPSG:4326", method = "near")
 } else {
   r_web_vpt <- NULL
 }
@@ -921,4 +761,71 @@ map %>%
                       "Waarnemingen", "Grens Studiegebied"),
     options = layersControlOptions(collapsed = FALSE)
   )
+```
+
+```{r, export}
+message("-> Start geformatteerde export met nul-opvulling voor boomkikker...")
+
+base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
+folders <- list(
+  potentie     = file.path(base_dir, "01_Maximale_Potentie"),
+  werkelijk    = file.path(base_dir, "02_Werkelijke_Oppervlakte"),
+  arpl         = file.path(base_dir, "03_ARPL"),
+  verspreiding = file.path(base_dir, "04_Actuele_Verspreiding")
+)
+purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
+
+if(!all(is.na(terra::values(boomkikker_leefgebied_opp, mat=FALSE)))) {
+  werkelijk_export_rast <- terra::ifel(!is.na(boomkikker_leefgebied_opp) & boomkikker_leefgebied_opp > 0, 1, NA)
+} else {
+  werkelijk_export_rast <- terra::rast(template_TV, vals = NA)
+}
+
+if(exists("boomkikker_arpl_opp") && !all(is.na(terra::values(boomkikker_arpl_opp, mat=FALSE)))) {
+  arpl_export_rast <- terra::ifel(boomkikker_arpl_opp > 0, 1, NA)
+} else {
+  arpl_export_rast <- terra::rast(template_TV, vals = NA)
+}
+
+if(!all(is.na(terra::values(boomkikker_verspreiding_bin, mat=FALSE)))) {
+  verspreiding_export_rast <- terra::ifel(boomkikker_verspreiding_bin > 0, 1, NA)
+} else {
+  verspreiding_export_rast <- terra::rast(template_TV, vals = NA)
+}
+
+export_config <- list(
+  list(rast = boomkikker_leefgebied_max,   naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
+  list(rast = werkelijk_export_rast,       naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
+  list(rast = arpl_export_rast,            naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
+  list(rast = verspreiding_export_rast,    naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
+)
+
+for(item in export_config) {
+  file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
+  
+  export_rast <- terra::deepcopy(item$rast)
+  export_rast <- terra::mask(export_rast, area_buffer_fix)
+  
+  if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
+    export_rast <- terra::ifel(is.na(export_rast), 0, 0)
+    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+  } else {
+    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+  }
+  
+  writeRaster(export_rast, 
+              filename = file_path, 
+              overwrite = TRUE, 
+              gdal = c("COMPRESS=LZW"), 
+              datatype = item$type)
+              
+  message(paste("   [OK] Geëxporteerd:", basename(file_path)))
+}
+
+suppressWarnings(
+  rm(werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
+)
+gc()
+
+message("🏁 SCRIPT EN EXPORT VOLLEDIG EN SUCCESVOL AFGEROND VOOR BOOMKIKKER!")
 ```

@@ -131,6 +131,12 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
   
   return(list(raster = r_finaal, clusters = cl_finaal))
 }
+
+terraOptions(
+  memfrac = 0.8,        # Dwing terra om tot max. 80% van het RAM-geheugen te gebruiken
+  tempdir = tempdir(),  # Geef toestemming voor automatische disk-swapping bij zware rasters
+  verbose = FALSE
+)
 ```
 
 # Soort informatie ophalen
@@ -281,7 +287,7 @@ message("-> Drainage- en ecoregiorasters inlezen en synchroniseren...")
 r_drainage_raw <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_drainage_10m.tif"))
 r_drainage     <- terra::resample(r_drainage_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
 
-gewenste_drainage_letters <- c("d", "e", "f", "g", "h", "i", "e-f", "h-i", "e-i")
+gewenste_drainage_letters <- c("a", "b", "c", "a-b") 
 
 drain_cats       <- terra::cats(r_drainage)[[1]]
 ids_drainage_nat <- drain_cats$value[drain_cats$Label %in% gewenste_drainage_letters]
