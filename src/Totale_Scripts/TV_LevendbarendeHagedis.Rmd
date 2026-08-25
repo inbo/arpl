@@ -574,7 +574,7 @@ export_config <- list(
 )
 
 for(item in export_config) {
-  file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_Levendbarende_hagedis.tif"))
+  file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_levendbarendehagedis.tif"))
   
   export_rast <- terra::deepcopy(item$rast)
   export_rast <- terra::mask(export_rast, area_buffer_fix)

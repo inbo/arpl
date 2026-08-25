@@ -15,18 +15,23 @@ if (!dir.exists(output_dir)) {
 path_soortenlijst <- here("data/input/Excel_files/Soortenlijst_Maatwerkgebieden.xlsx")
 df_soorten <- read_excel(path_soortenlijst)
 
-# Filteren op soorten waar 'Turnhouts_Vennegebied' gelijk is aan 1
 soorten_tv <- df_soorten %>%
   filter(Turnhouts_Vennegebied == 1) %>%
-  pull(Soort) %>%
+  pull('Nederlandse naam') %>%
   tolower() %>%
   trimws() %>%
   unique()
 
+# Als 'wulp' in de lijst staat, splitsen we deze op in broedvogel en wintervogel
+if ("wulp" %in% soorten_tv) {
+  soorten_tv <- soorten_tv[soorten_tv != "wulp"] # Verwijder generieke 'wulp'
+  soorten_tv <- c(soorten_tv, "wulp (broedvogel)", "wulp (wintervogel)")
+}
+
 cat("Aantal te verwerken soorten voor Turnhouts Vennegebied:", length(soorten_tv), "\n\n")
 
 # 3. Lus uitvoeren over alle soorten
-path_rmd <- here("Visualisatie_Habitatkaart.Rmd")
+path_rmd <- here("src/Turnhouts_Vennegebied/Automatisering_Scripts/Visualisatie_Habitatkaart.Rmd")
 
 for (s in soorten_tv) {
   message(paste0("🚀 Genereren HTML voor: ", str_to_title(s), "..."))

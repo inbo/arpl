@@ -15,17 +15,37 @@ library(callr)
 # ------------------------------------------------------------------------------
 # 0. INSTELLINGEN EN STRATEGISCHE MAPSTRUCTUUR
 # ------------------------------------------------------------------------------
-MAP_SCRIPTS_MH   <- here("src/Mechelse_Heide/Scripts_MH")
-OUTPUT_DIR       <- here("data/output/Mechelse_Heide/HTML_Rapporten_Soorten")
+MAP_SCRIPTS_MH     <- here("src/Mechelse_Heide/Scripts_MH/")
+OUTPUT_DIR         <- here("data/output/Mechelse_Heide/HTML_Rapporten_Soorten")
+MAP_WAARNEMINGEN   <- here("data/input/Waarnemingen_Soorten/Mechelse_Heide")
 
 if(!dir.exists(OUTPUT_DIR)) dir.create(OUTPUT_DIR, recursive = TRUE)
 
-# Initialiseer de loglijst
-algemeen_logboek <- list()
-
-message("==================================================")
-message(" START MASTER RUN: NORMALE MH SCRIPTS KNITTEN     ")
-message("==================================================")
+# Hulpfunctie: Controleert of er een waarnemingenbestand bestaat voor de soort
+heeft_waarnemingen_bestand <- function(soort_naam, map_waarnemingen) {
+  # Logica voor de bestandsnaam:
+  # Als de soort eindigt op '_wv', checken we of het om de Wulp gaat
+  if (grepl("_wv$", soort_naam)) {
+    if (tolower(soort_naam) == "wulp_wv") {
+      zoek_naam <- "Waarnemingen_Wulp_wv"
+    } else {
+      # Andere _wv soorten (bijv. Regenwulp_wv -> Waarnemingen_Regenwulp)
+      schoon_ras <- sub("_wv$", "", soort_naam)
+      zoek_naam <- paste0("Waarnemingen_", schoon_ras)
+    }
+  } else {
+    zoek_naam <- paste0("Waarnemingen_", soort_naam)
+  }
+  
+  # Zoek naar bestanden die beginnen met zoek_naam (gevoelig voor extensies zoals .rds, .csv, .RData)
+  gevonden_bestanden <- list.files(
+    path = map_waarnemingen, 
+    pattern = paste0("^", zoek_naam, "\\."), 
+    full.names = TRUE
+  )
+  
+  return(length(gevonden_bestanden) > 0)
+}
 
 
 # ------------------------------------------------------------------------------
@@ -55,15 +75,15 @@ moet_knitten <- function(bestandsnaam, map) {
 # ------------------------------------------------------------------------------
 # 1. DETECTEER EN KNIT DE UNIEKE MH-SCRIPTS
 # ------------------------------------------------------------------------------
-alle_mh_scripts <- list.files(path = MAP_SCRIPTS_MH, pattern = "\\.Rmd$", full.names = TRUE)
-soorten_script_mh_pad <- file.path(MAP_SCRIPTS_MH, "MH_Leefgebieden_Simpel.Rmd")
-unieke_mh_scripts <- setdiff(alle_mh_scripts, soorten_script_mh_pad)
+alle_tv_scripts <- list.files(path = MAP_SCRIPTS_MH, pattern = "\\.Rmd$", full.names = TRUE)
+soorten_script_tv_pad <- file.path(MAP_SCRIPTS_MH, "MH_Leefgebieden_Simpel.Rmd")
+unieke_tv_scripts <- setdiff(alle_tv_scripts, soorten_script_tv_pad)
 
-message("=> Gedetecteerde unieke MH-scripts om te knitten (Aantal: ", length(unieke_mh_scripts), "):")
-print(basename(unieke_mh_scripts))
+message("=> Gedetecteerde unieke MH-scripts om te knitten (Aantal: ", length(unieke_tv_scripts), "):")
+print(basename(unieke_tv_scripts))
 message("--------------------------------------------------")
 
-for(script in unieke_mh_scripts) {
+for(script in unieke_tv_scripts) {
   bestandsnaam <- basename(script)
   output_html  <- sub(".Rmd$", ".html", bestandsnaam)
   
@@ -99,7 +119,7 @@ for(script in unieke_mh_scripts) {
 
 
 # ------------------------------------------------------------------------------
-# 2. TREK DE SOORTENLIJST DYNAMISCH UIT DE EXCEL
+# 2. TREK DE SOORTENLIJST DYNAMISCH UIT DE EXCEL & CHECK WAARNEMINGEN
 # ------------------------------------------------------------------------------
 excel_data <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
 
@@ -108,9 +128,11 @@ soorten_lijst <- excel_data %>%
   filter(Mechelse_Heide == 1) %>% 
   pull(Soort) %>% 
   unique() %>% 
-  na.omit()
+  na.omit() %>%
+  # NIEUW: Filter enkel de soorten die een waarnemingenbestand hebben
+  keep(~ heeft_waarnemingen_bestand(.x, MAP_WAARNEMINGEN))
 
-message("\n=> Aantal geselecteerde simpele soorten voor MH-run: ", length(soorten_lijst))
+message("\n=> Aantal geselecteerde simpele soorten voor MH-run (met waarnemingenfile): ", length(soorten_lijst))
 
 
 # ------------------------------------------------------------------------------
@@ -171,7 +193,7 @@ draai_leefgebied_model <- function(huidige_soort, script_pad) {
 if (length(soorten_lijst) > 0) {
   soorten_logboek <- purrr::map_dfr(
     soorten_lijst, 
-    ~draai_leefgebied_model(huidige_soort = .x, script_pad = soorten_script_mh_pad)
+    ~draai_leefgebied_model(huidige_soort = .x, script_pad = soorten_script_tv_pad)
   )
   eind_logboek    <- bind_rows(bind_rows(algemeen_logboek), soorten_logboek)
 } else {

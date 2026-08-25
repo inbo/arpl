@@ -15,17 +15,37 @@ library(callr)
 # ------------------------------------------------------------------------------
 # 0. INSTELLINGEN EN STRATEGISCHE MAPSTRUCTUUR
 # ------------------------------------------------------------------------------
-MAP_SCRIPTS_TV   <- here("src/Turnhouts_Vennegebied/Scripts_TV/")
-OUTPUT_DIR       <- here("data/output/Turnhouts_Vennegebied/HTML_Rapporten_Soorten")
+MAP_SCRIPTS_TV     <- here("src/Turnhouts_Vennegebied/Scripts_TV/")
+OUTPUT_DIR         <- here("data/output/Turnhouts_Vennegebied/HTML_Rapporten_Soorten")
+MAP_WAARNEMINGEN   <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied")
 
 if(!dir.exists(OUTPUT_DIR)) dir.create(OUTPUT_DIR, recursive = TRUE)
 
-# Initialiseer de loglijst
-algemeen_logboek <- list()
-
-message("==================================================")
-message(" START MASTER RUN: NORMALE TV SCRIPTS KNITTEN     ")
-message("==================================================")
+# Hulpfunctie: Controleert of er een waarnemingenbestand bestaat voor de soort
+heeft_waarnemingen_bestand <- function(soort_naam, map_waarnemingen) {
+  # Logica voor de bestandsnaam:
+  # Als de soort eindigt op '_wv', checken we of het om de Wulp gaat
+  if (grepl("_wv$", soort_naam)) {
+    if (tolower(soort_naam) == "wulp_wv") {
+      zoek_naam <- "Waarnemingen_Wulp_wv"
+    } else {
+      # Andere _wv soorten (bijv. Regenwulp_wv -> Waarnemingen_Regenwulp)
+      schoon_ras <- sub("_wv$", "", soort_naam)
+      zoek_naam <- paste0("Waarnemingen_", schoon_ras)
+    }
+  } else {
+    zoek_naam <- paste0("Waarnemingen_", soort_naam)
+  }
+  
+  # Zoek naar bestanden die beginnen met zoek_naam (gevoelig voor extensies zoals .rds, .csv, .RData)
+  gevonden_bestanden <- list.files(
+    path = map_waarnemingen, 
+    pattern = paste0("^", zoek_naam, "\\."), 
+    full.names = TRUE
+  )
+  
+  return(length(gevonden_bestanden) > 0)
+}
 
 
 # ------------------------------------------------------------------------------
@@ -56,7 +76,6 @@ moet_knitten <- function(bestandsnaam, map) {
 # 1. DETECTEER EN KNIT DE UNIEKE TV-SCRIPTS
 # ------------------------------------------------------------------------------
 alle_tv_scripts <- list.files(path = MAP_SCRIPTS_TV, pattern = "\\.Rmd$", full.names = TRUE)
-# alle_tv_scripts <- c("C:/Users/bert_vanhecke/Documents/Soortenbehoud/arpl/src/Totale_Scripts/TV_ZwarteHeidelibel.Rmd","C:/Users/bert_vanhecke/Documents/Soortenbehoud/arpl/src/Totale_Scripts/TV_GevlekteWitsnuitlibel.Rmd","C:/Users/bert_vanhecke/Documents/Soortenbehoud/arpl/src/Totale_Scripts/TV_Hoogveenglanslibel.Rmd","C:/Users/bert_vanhecke/Documents/Soortenbehoud/arpl/src/Totale_Scripts/TV_NoordseWitsnuitlibel.Rmd","C:/Users/bert_vanhecke/Documents/Soortenbehoud/arpl/src/Totale_Scripts/TV_Venwitsnuitlibel.Rmd","C:/Users/bert_vanhecke/Documents/Soortenbehoud/arpl/src/Totale_Scripts/TV_Venglazenmaker.Rmd","C:/Users/bert_vanhecke/Documents/Soortenbehoud/arpl/src/Totale_Scripts/TV_Maanwaterjuffer.Rmd","C:/Users/bert_vanhecke/Documents/Soortenbehoud/arpl/src/Totale_Scripts/TV_Speerwaterjuffer.Rmd")
 soorten_script_tv_pad <- file.path(MAP_SCRIPTS_TV, "TV_Leefgebieden_Simpel.Rmd")
 unieke_tv_scripts <- setdiff(alle_tv_scripts, soorten_script_tv_pad)
 
@@ -100,7 +119,7 @@ for(script in unieke_tv_scripts) {
 
 
 # ------------------------------------------------------------------------------
-# 2. TREK DE SOORTENLIJST DYNAMISCH UIT DE EXCEL
+# 2. TREK DE SOORTENLIJST DYNAMISCH UIT DE EXCEL & CHECK WAARNEMINGEN
 # ------------------------------------------------------------------------------
 excel_data <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
 
@@ -109,9 +128,11 @@ soorten_lijst <- excel_data %>%
   filter(Turnhouts_Vennegebied == 1) %>% 
   pull(Soort) %>% 
   unique() %>% 
-  na.omit()
+  na.omit() %>%
+  # NIEUW: Filter enkel de soorten die een waarnemingenbestand hebben
+  keep(~ heeft_waarnemingen_bestand(.x, MAP_WAARNEMINGEN))
 
-message("\n=> Aantal geselecteerde simpele soorten voor TV-run: ", length(soorten_lijst))
+message("\n=> Aantal geselecteerde simpele soorten voor TV-run (met waarnemingenfile): ", length(soorten_lijst))
 
 
 # ------------------------------------------------------------------------------
