@@ -84,3 +84,21 @@ rsconnect/
 
 # Waarnemingen files (toestemming nodig)
 /data/input/Waarnemingen_Soorten
+
+# HTML Files De Maten
+/data/output/De_Maten/HTML_Rapporten_Soorten
+
+# HTML Files Heesbossen
+/data/output/Heesbossen/HTML_Rapporten_Soorten
+
+# HTML Files Kalmthoutse Heide
+/data/output/Kalmthoutse_Heide/HTML_Rapporten_Soorten
+
+# HTML Files Mechelse Heide
+/data/output/Mechelse_Heide/HTML_Rapporten_Soorten
+
+# HTML Files Turnhouts Vennegebied
+/data/output/Turnhouts_Vennegebied/HTML_Rapporten_Soorten
+
+# HTML Files Voerstreek
+/data/output/Voerstreek/HTML_Rapporten_Soorten
