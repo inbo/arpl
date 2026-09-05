@@ -14,14 +14,23 @@ library(callr)
 
 # Directe paden naar de bron-scripts voor zoogdieren
 alle_tv_scripts <- c(
-  here("src/Totale_Scripts/TV_EuropeseOtter.Rmd"),
-  here("src/Totale_Scripts/TV_Kwak.Rmd"),
+  here("src/Totale_Scripts/TV_Blauwborst.Rmd"),
+  here("src/Totale_Scripts/TV_Boompieper.Rmd"),
+  here("src/Totale_Scripts/TV_BruineKiekendief.Rmd"),
+  here("src/Totale_Scripts/TV_Grutto.Rmd"),
+  here("src/Totale_Scripts/TV_Kwartelkonging.Rmd"),
+  here("src/Totale_Scripts/TV_MiddelsteBonteSpecht.Rmd"),
+  here("src/Totale_Scripts/TV_Nachtzwaluw.Rmd"),
+  here("src/Totale_Scripts/TV_Paapje.Rmd"),
+  here("src/Totale_Scripts/TV_Porseleinhoen.Rmd"),
   here("src/Totale_Scripts/TV_Roerdomp.Rmd"),
-  here("src/Totale_Scripts/TV_ZwarteHeidelibel.Rmd"),
-  here("src/Totale_Scripts/TV_NoordseWitsnuitlibel.Rmd"),
-  here("src/Totale_Scripts/TV_Venwitsnuitlibel.Rmd"),
-  here("src/Totale_Scripts/TV_Zadelsprinkhaan.Rmd"),
-  here("src/Totale_Scripts/TV_Woudaap.Rmd")
+  here("src/Totale_Scripts/TV_Watersnip.Rmd"),
+  here("src/Totale_Scripts/TV_Wespendief.Rmd"),
+  here("src/Totale_Scripts/TV_Wulp.Rmd"),
+  here("src/Totale_Scripts/TV_ZwarteSpecht.Rmd"),
+  here("src/Totale_Scripts/TV_Zwartkopmeeuw.Rmd"),
+  here("src/Totale_Scripts/TV_Zomertortel.Rmd"),
+  here("src/Totale_Scripts/TV_Leefgebieden_Simpel.Rmd")
 )
 
 # Sjabloongegevens
@@ -32,19 +41,19 @@ bron_acroniem <- "TV"
 # Alle 6 de maatwerkgebieden
 gebieden_config <- tibble::tribble(
   ~naam,                  ~snake,                 ~acroniem,
-  "De Maten",             "De_Maten",             "DM",
-  "Heesbossen",           "Heesbossen",           "HB",
-  "Kalmthoutse Heide",    "Kalmthoutse_Heide",    "KH",
-  "Mechelse Heide",       "Mechelse_Heide",       "MH",
-  "Turnhouts Vennegebied","Turnhouts_Vennegebied","TV",
-  "Voerstreek",           "Voerstreek",           "VS"
+   #"De Maten",             "De_Maten",             "DM",
+  # "Heesbossen",           "Heesbossen",           "HB",
+  # "Kalmthoutse Heide",    "Kalmthoutse_Heide",    "KH",
+  # "Mechelse Heide",       "Mechelse_Heide",       "MH",
+  "Turnhouts Vennegebied","Turnhouts_Vennegebied","TV"
+  # "Voerstreek",           "Voerstreek",           "VS"
 )
 
 # Logboek initialiseren
 gecombineerd_logboek <- list()
 
 message("==================================================")
-message(" START PIPELINE FOR ZOOGDIEREN                    ")
+message(" START PIPELINE FOR SOORTEN                       ")
 message("==================================================")
 
 # ------------------------------------------------------------------------------
@@ -96,22 +105,34 @@ for (i in 1:nrow(gebieden_config)) {
     }
     
     bron_bestandsnaam <- basename(bron_script_pad)
-    soort_deel        <- str_remove(str_remove(bron_bestandsnaam, "^TV_"), "\\.Rmd$")
+    
+    # 1. Definieer soort_deel_volledig DIRECT aan het begin van de lus
+    soort_deel_volledig <- str_remove(str_remove(bron_bestandsnaam, "^TV_"), "\\.Rmd$")
     
     # --------------------------------------------------------------------------
-    # UNIVERSELE HOOFDLETTERONGEVOELIGE CSV CHECK (VOOR ELK GEBIED, OOK TV)
+    # UNIVERSELE HOOFDLETTERONGEVOELIGE CSV CHECK (MET EXPLICITE FALLBACK)
     # --------------------------------------------------------------------------
     bestanden_in_map <- list.files(waarnemingen_map, pattern = "\\.csv$", full.names = FALSE)
+    bestanden_lc     <- tolower(bestanden_in_map)
     
+    # Stap A: Check op exacte match met volledige naam (bijv. "wulp_wv")
+    zoek_volledig <- tolower(soort_deel_volledig)
     waarneming_aanwezig <- any(
-      str_detect(tolower(bestanden_in_map), "waarnemingen") & 
-        str_detect(tolower(bestanden_in_map), tolower(soort_deel))
+      str_detect(bestanden_lc, "waarnemingen") & str_detect(bestanden_lc, zoek_volledig)
     )
     
+    # Stap B: Indien niet gevonden en er staat "_wv" in de naam, val terug op naam zonder "_wv" (bijv. "bergeend")
+    if (!waarneming_aanwezig && str_detect(soort_deel_volledig, "_wv$")) {
+      zoek_opgeschoond <- tolower(str_remove(soort_deel_volledig, "_wv$"))
+      waarneming_aanwezig <- any(
+        str_detect(bestanden_lc, "waarnemingen") & str_detect(bestanden_lc, zoek_opgeschoond)
+      )
+    }
+    
     if (!waarneming_aanwezig) {
-      cat("  ⏭️ OVERSLAAN (geen waarnemingen-CSV in map):", soort_deel, "\n")
-      gecombineerd_logboek[[paste0(doel_acroniem, "_", soort_deel)]] <- data.frame(
-        Gebied = doel_naam, Soort = soort_deel, Type = "Knit HTML",
+      cat("  ⏭️ OVERSLAAN (geen waarnemingen-CSV gevonden voor):", soort_deel_volledig, "\n")
+      gecombineerd_logboek[[paste0(doel_acroniem, "_", soort_deel_volledig)]] <- data.frame(
+        Gebied = doel_naam, Soort = soort_deel_volledig, Type = "Knit HTML",
         Status = "OVERSLAAN_GEEN_WAARNEMINGEN", Fout = "Geen CSV waarnemingenbestand gevonden",
         stringsAsFactors = FALSE
       )
@@ -121,7 +142,7 @@ for (i in 1:nrow(gebieden_config)) {
     # --------------------------------------------------------------------------
     # RMD SCRIPT OMZETTEN EN TEKST VERVANGEN
     # --------------------------------------------------------------------------
-    doel_rmd_naam <- paste0(doel_acroniem, "_", soort_deel, ".Rmd")
+    doel_rmd_naam <- paste0(doel_acroniem, "_", soort_deel_volledig, ".Rmd")
     doel_rmd_pad  <- file.path(scripts_output_map, doel_rmd_naam)
     
     if (doel_acroniem == bron_acroniem) {
@@ -140,12 +161,12 @@ for (i in 1:nrow(gebieden_config)) {
     # --------------------------------------------------------------------------
     # HTML RENDEREN
     # --------------------------------------------------------------------------
-    doel_html_naam <- paste0(doel_acroniem, "_", soort_deel, ".html")
+    doel_html_naam <- paste0(doel_acroniem, "_", soort_deel_volledig, ".html")
     
     if (!moet_knitten(doel_html_naam, html_output_map)) {
       cat("  ⏭️ HTML al up-to-date (vandaag geknit):", doel_html_naam, "\n")
-      gecombineerd_logboek[[paste0(doel_acroniem, "_", soort_deel)]] <- data.frame(
-        Gebied = doel_naam, Soort = soort_deel, Type = "Knit HTML",
+      gecombineerd_logboek[[paste0(doel_acroniem, "_", soort_deel_volledig)]] <- data.frame(
+        Gebied = doel_naam, Soort = soort_deel_volledig, Type = "Knit HTML",
         Status = "GEKOZEN_OVERSLAAN", Fout = "Reeds vandaag geknit",
         stringsAsFactors = FALSE
       )
@@ -164,16 +185,16 @@ for (i in 1:nrow(gebieden_config)) {
       )
       
       cat("     🎉 SUCCESVOL GEKNIT!\n")
-      gecombineerd_logboek[[paste0(doel_acroniem, "_", soort_deel)]] <- data.frame(
-        Gebied = doel_naam, Soort = soort_deel, Type = "Knit HTML",
+      gecombineerd_logboek[[paste0(doel_acroniem, "_", soort_deel_volledig)]] <- data.frame(
+        Gebied = doel_naam, Soort = soort_deel_volledig, Type = "Knit HTML",
         Status = "SUCCES", Fout = "Geen",
         stringsAsFactors = FALSE
       )
     }, error = function(e) {
       cat("     ❌ CRASH BIJ RENDEREN VAN:", doel_rmd_naam, "\n")
       cat("     Foutmelding details:\n", e$message, "\n")
-      gecombineerd_logboek[[paste0(doel_acroniem, "_", soort_deel)]] <- data.frame(
-        Gebied = doel_naam, Soort = soort_deel, Type = "Knit HTML",
+      gecombineerd_logboek[[paste0(doel_acroniem, "_", soort_deel_volledig)]] <- data.frame(
+        Gebied = doel_naam, Soort = soort_deel_volledig, Type = "Knit HTML",
         Status = "CRASH", Fout = e$message,
         stringsAsFactors = FALSE
       )
@@ -189,5 +210,5 @@ log_pad <- file.path(log_dir, paste0("Logboek_Zoogdieren_Run_", format(Sys.time(
 readr::write_excel_csv(eind_logboek, log_pad)
 
 message("\n==================================================")
-message(" RUN ZOOGDIEREN AFGEROND!                        ")
+message(" RUN SOORTEN AFGEROND!                        ")
 message("==================================================")

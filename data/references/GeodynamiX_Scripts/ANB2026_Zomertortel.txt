@@ -1,0 +1,111 @@
+================================================================================
+ECOLOGISCH VERHAAL & RUIMTELIJK MODEL: ZOMERTORTEL (Streptopelia turtur)
+Studiegebied: Turnhouts Vennegebied
+================================================================================
+
+1. ALGEMENE ECOLOGIE & FUNCTIONELE MODELSTRUCTUUR
+--------------------------------------------------------------------------------
+De Zomertortel is een typische broedvogel van het kleinschalige, halfopen agrarische 
+cultuurlandschap. Het ruimtelijke habitatmodel is opgebouwd volgens een 
+'NEST-CENTRISCHE' logica:
+
+- Het FYSIEKE LEEFGEBIED op de kaart bestaat uitsluitend uit het broedbiotoop 
+  (geschikte struwelen, hagen en bosranden).
+- VOEDSEL en DRINKWATER fungeren als omgevingsrandvoorwaarden (sleutels). Een akker 
+  of poel is op zichzelf geen broedgebied, maar vormt een noodzakelijke conditie 
+  in de directe omgeving om het broedstruweel als functioneel leefgebied goed te keuren.
+
+
+2. FYSIEK LEEFGEBIED: BROEDBIOTOOP ('voortplanting')
+--------------------------------------------------------------------------------
+Het broedbiotoop bestaat uit kleinschalige, structuurrijke en doornige 
+struweel- en bosrandelementen waar de Zomertortel beschutting en nestgelegenheid vindt.
+
+Minimale Broeddrempel: 300 m² (0,03 ha) met een netwerk-overbrugging van 50 m. 
+Hierdoor worden smalle heggenstelsels, meidoornhagen en oeverwilgen eerlijk 
+opgevangen zonder dat ze een massale hectaregrens hoeven te halen.
+
+Toegepaste BWK-codes in het model (alles gevolgd door %: wilt dus zeggen dat alles wat met deze code begint word geselecteerd, vb. sp% neemt sp-, sp+, spr, etc. mee):
+- sp     : Meidoorn- en sleedoornstruweel (exact)
+- sp-    : Struweel onderstroom (exact)
+- sp+    : Struweel bovenstroom (exact)
+- spb    : Bosrank/Struweel (bevat)
+- sd     : Duinstruweel (bevat)
+- sf     : Moeraswilgenstruweel (bevat)
+- sk     : Kalkstruweel (bevat)
+- so     : Oeverstruweel (bevat)
+- spr    : RBB Struweel (bevat)
+- sz     : Zaadstruweel (bevat)
+- kh(sp  : Hakhout met meidoorn (bevat)
+- khcr   : Hakhout met kruidlaag (bevat)
+- kbcr   : Eikenhakhout met kruidlaag (bevat)
+- kt(sp  : Hakhout variant (bevat)
+- mr     : Moerassen / Moerasruigte (bevat)
+- hf     : Moerassig grasland (bevat)
+- 6430   : Natura 2000 Vochtige ruigten (exact)
+- rbbsp  : RBB Meidoornstruweel (bevat)
+- rbbso  : RBB Oeverstruweel (bevat)
+- rbbmr  : RBB Moerasruigte (bevat)
+- rbbsf  : RBB Moeraswilgenstruweel (bevat)
+- sprb   : RBB Struweelcombinatie (bevat)
+- kbq    : Eiken-hakhoutkant (bevat)
+- kbqr   : Eiken-hakhoutkant met ruigte (bevat)
+- ppmb   : Populierenbeplanting met struiklaag (bevat)
+
+
+3. OMGEVINGSRANDVOORWAARDE A: VOEDSELGEBIED ('foerageer')
+--------------------------------------------------------------------------------
+Zomertortels zijn strikte zaadeters (vooral zaden van eenjarigen, kruiden en wilde gewassen).
+
+Toegepaste BWK-codes, LGP-codes & Beheerovereenkomsten:
+- BWK-codes : 4030, 4010, cg, ni, bs, hmo, ku, hu, hk, ha, hn, hm, hp, hrb, hj
+  (Droge/vochtige heide, stoppelvelden, braakland, schrale graslanden, ruigten)
+- LGP-codes : Zomerteelten en zadenrijke gewassen (gewascodes 201, 202, 311, 321, 601, 800)
+- VLM/ALV   : Bloemenakkers, fauna-akkers, faunamengsels en kruidenrijke marges
+- Erven     : Open graanopslag en rommelige erven op boerderijen
+
+Minimale Foerageerdrempel: 1,0 ha (10.000 m²) met een netwerk-overbrugging van 50 m. 
+Dit voorkomt dat minuscule fragmenten als voederplek tellen, maar koppelt 
+nabijgelegen akkerranden, faunastroken en perceeltjes netjes samen tot één 
+functioneel foerageercomplex.
+
+Afstandseis: Het goedgekeurde foerageercomplex van minstens 1 ha moet binnen 
+een straal van MAXIMAAL 300 METER van de nestplek liggen.
+
+4. OMGEVINGSRANDVOORWAARDE B: OPEN DRINKWATER ('water')
+--------------------------------------------------------------------------------
+Vanwege het zeer droge zaaddieet hebben Zomertortels dagelijks toegang nodig 
+tot zuiver, ondiep en toegankelijk drinkwater.
+
+Afstandseis: Open drinkwater moet binnen een straal van MAXIMAAL 500 METER 
+van de nestplek liggen.
+
+Toegepaste BWK-codes & Externe waterbronnen:
+- BWK-codes : ap, ae, ao, am, ah (Permanente poelen, plassen, eutroof/oligotroof water)
+- Externe GIS: Watervlakken Vlaanderen en Huet-zones (wadi's, poelen, veedrinkbakken)
+
+
+5. RUIMTELIJKE RESTRICTIES & UITSLUITINGSMASKERS
+--------------------------------------------------------------------------------
+Om 'false positives' in ongeschikte biotopen te voorkomen, past het model twee 
+strikte uitsluitingsmaskers toe op het broedstruweel:
+
+1. Dichte boskernen (Groenkaart / Morfologische density check):
+   Zomertortels broeden weliswaar in zonnige bosranden en houtkanten, maar mijden 
+   het donkere binnenste van gesloten bossen. Gesloten boscomplexen (> 20 are) 
+   worden uitgesloten als broedbiotoop.
+
+2. Dorpskern-verstoring vs. Buitengebied-erven:
+   Grote dorpskernen en stadsbebouwing (>= 10 ha aaneengesloten verharding) 
+   krijgen een verstoringsbuffer van 100 meter waarin broeden wordt uitgesloten.
+   Geïsoleerde boerderijen en agrarische erven in het buitengebied worden NÍET 
+   uitgesloten, omdat daar juist de waardevolle graansilo's en rommelhoekjes liggen.
+
+
+6. SUMMARY MODELSTROOM IN R
+--------------------------------------------------------------------------------
+[Ruwe BWK Broedmatches] ──> [Uitsluiting Bos & Dorpskernen] ──> [Filter >= 300 m²]
+                                                                        │
+                                                                        ▼
+[FINAAL LEEFGEBIED] <── [Masker: Voedsel <300m EN Water <500m] <────────┘
+================================================================================

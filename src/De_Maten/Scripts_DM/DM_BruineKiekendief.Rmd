@@ -1,5 +1,5 @@
 ---
-title: "Leefgebiedenscript in R: De Maten"
+title: "Leefgebiedenscript in R: De Maten (Bruine Kiekendief)"
 author: "Bert Van Hecke"
 date: "`r Sys.Date()`"
 output: 
@@ -17,8 +17,7 @@ knitr::opts_chunk$set(
 )
 
 library(here)
-# CRUCIALE FIX: Dwing R Markdown om te werken vanaf de hoofdmap (arpl/)
-# Hierdoor werken relatieve paden met hier() overal hetzelfde.
+# CRUCIALE FIX: Dwing R Markdown om te werken vanaf de hoofdmap
 knitr::opts_knit$set(root.dir = here())
 
 library(knitr)
@@ -45,35 +44,52 @@ calc_ha_exact <- function(r) {
   return(as.numeric(val))
 }
 
-cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
+# ==============================================================================
+# HOOFDFUNCTIE: CLUSTEREN + OPTIONELE LINIE-ZUIVERING (MORFOLOGISCHE OPENING)
+# ==============================================================================
+cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE, straal_m = 0) {
   # 1. Controleer of het raster leeg is
   if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
     return(list(raster = masker * NA, clusters = masker * NA))
   }
   
   # ----------------------------------------------------------------------------
-  # STAP 1: VEILIGE & SNELLER NETWERKVORMING ZONDER RAM-CRASH
+  # STAP 1: OPTIONELE LINIE-ZUIVERING (Morfologische opening op ruwe pixels)
   # ----------------------------------------------------------------------------
-  if (dist_m > 0) {
-    # Maak binaire kaart (1 = biotoop, NA = rest)
+  if (straal_m > 0) {
     r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
     
-    # Buffer de BINAIR kaart (dit kost vrijwel geen geheugen!)
-    # Volle afstand dist_m zorgt dat plukjes binnen dist_m gegarandeerd samensmelten
-    r_buffered <- terra::buffer(r_binair, width = dist_m)
+    w <- terra::focalMat(r_binair, d = straal_m, type = "circle")
+    w[w > 0] <- 1
     
-    # Maak unieke Netwerk-ID's op de gebufferde zones
-    cl_network <- terra::patches(r_buffered, directions = 8, zeroAsNA = TRUE)
-    
-    # Snijd de Netwerk-ID's direct terug naar waar de originele biotooppixels liggen
-    cl_biotoop_only <- terra::mask(cl_network, masker)
+    # Erosie (wis alles zonder voldoende brede kern) & Dilation (herstel overgebleven randen)
+    r_eroded <- terra::focal(r_binair, w = w, fun = "min", na.rm = FALSE)
+    r_zuiver <- terra::focal(r_eroded, w = w, fun = "max", na.rm = TRUE)
+    r_masker_werkelijk <- terra::mask(r_zuiver, masker)
   } else {
-    cl_network <- terra::patches(masker, directions = 8, zeroAsNA = TRUE)
+    r_masker_werkelijk <- masker
+  }
+  
+  # Check of er na zuivering nog biotoop over is
+  if (terra::global(is.na(r_masker_werkelijk), "sum")[[1]] == terra::ncell(r_masker_werkelijk)) {
+    return(list(raster = masker * NA, clusters = masker * NA))
+  }
+  
+  # ----------------------------------------------------------------------------
+  # STAP 2: NETWERKVORMING / CLUSTERING
+  # ----------------------------------------------------------------------------
+  if (dist_m > 0) {
+    r_binair_z <- terra::ifel(!is.na(r_masker_werkelijk) & r_masker_werkelijk > 0, 1, NA)
+    r_buffered <- terra::buffer(r_binair_z, width = dist_m / 2)
+    cl_network <- terra::patches(r_buffered, directions = 4, zeroAsNA = TRUE)
+    cl_biotoop_only <- terra::mask(cl_network, r_masker_werkelijk)
+  } else {
+    cl_network <- terra::patches(r_masker_werkelijk, directions = 8, zeroAsNA = TRUE)
     cl_biotoop_only <- cl_network
   }
   
   # ----------------------------------------------------------------------------
-  # STAP 2: OPPERVLAKTE-OPTELSOM PER GEKOPPELD NETWERK
+  # STAP 3: OPPERVLAKTE-OPTELSOM PER GEKOPPELD NETWERK
   # ----------------------------------------------------------------------------
   if(werkelijk) {
     stats_df <- terra::zonal(opp_laag, cl_biotoop_only, fun = "sum", na.rm = TRUE)
@@ -89,20 +105,28 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
   if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
   # ----------------------------------------------------------------------------
-  # STAP 3: FILTEREN OP TOTALE NETWERK-OPPERVLAKTE >= DREMPEL
+  # STAP 4: FILTEREN OP TOTALE NETWERK-OPPERVLAKTE >= DREMPEL
   # ----------------------------------------------------------------------------
   voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
   if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
-  # Behaal alleen de winnende netwerk-ID's
+  # ----------------------------------------------------------------------------
+  # STAP 5: FINALE RASTER OPBOUW (ZONDER ACHTERGROND RUIS)
+  # ----------------------------------------------------------------------------
   masker_binair <- cl_biotoop_only %in% voldoet_ids
   final_network_mask <- terra::ifel(masker_binair == 1, 1, NA)
   
-  r_finaal  <- terra::mask(masker, final_network_mask)
+  r_finaal  <- terra::mask(r_masker_werkelijk, final_network_mask)
   cl_finaal <- terra::mask(cl_biotoop_only, r_finaal) 
   
   return(list(raster = r_finaal, clusters = cl_finaal))
 }
+
+terraOptions(
+  memfrac = 0.8,         # Dwing terra om tot max. 80% van het RAM-geheugen te gebruiken
+  tempdir = tempdir(),   # Geef toestemming voor automatische disk-swapping bij zware rasters
+  verbose = FALSE
+)
 ```
 
 # Soort informatie ophalen
@@ -111,8 +135,8 @@ df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
 soort <- "bruinekiekendief"
 
 resultaat <- df %>%
-filter(Soort == soort) %>%
-select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
+  filter(Soort == soort) %>%
+  select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
 
 # Variabelen definiëren
 oppervlakte_ha <- resultaat$MinOpp_ha
@@ -203,8 +227,8 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   tabel_DM <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
   tabel_DM_unique <- unique(tabel_DM, by = c("cel_id", "CODE"))
 
-  # 2. Bereken de som per cel_id en cap de maximale waarde hard op 1.0 (100%)
-  tabel_cel_som <- tabel_DM_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)),by = .(cel_id)]
+  # Bereken de som per cel_id en cap de maximale waarde op 1.0 (100%)
+  tabel_cel_som <- tabel_DM_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)), by = .(cel_id)]
   
   r_match_type <- id_raster_DM * NA
   r_opp_type   <- id_raster_DM * NA
@@ -230,7 +254,7 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   }
 }
 
-# Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
+# Uitpakken naar de exacte losse variabelen
 voortplanting_bwk_max <- lijst_matches[["voortplanting_bwk"]]
 voortplanting_bwk_opp <- lijst_oppervlaktes[["voortplanting_bwk"]]
 bos_max <- lijst_matches[["bos"]]
@@ -247,11 +271,10 @@ gc()
 # 1. Laad het gecropte coderaster in
 r_lgp_DM <- crop(rast(here("data/input/Raster_Vlaanderen/vlaanderen_lgp_gwscod_2025_10m.tif")), id_raster_DM, snap = "near")
 
-# 2. Definieer de EXACTE gewascodes die er toe doen (bijv. specifieke granen/braak)
-# Dit is veel nauwkeuriger dan de hele groep!
+# 2. Definieer de EXACTE gewascodes
 kiekendief_codes <- c(311, 321, 331)
 
-# 3. Filter het raster: alleen deze codes krijgen een 1, de rest NA
+# 3. Filter het raster
 bruinekiekendief_lgp <- terra::ifel(r_lgp_DM %in% kiekendief_codes, 1, NA)
 
 # 4. Combineer met BWK
@@ -262,126 +285,52 @@ rm(r_lgp_DM, bruinekiekendief_lgp)
 ```
 
 ```{r bosclustering en afstand}
-# # ==============================================================================
-# # STAP 1 & 2: BOSCLUSTERING (50M FUZZY, > 5 HA) EN DISTANTIEFILTER (1 KM)
-# # ==============================================================================
-# message("-> Bosmassa's (> 5 ha) identificeren voor storingsfilter...")
-# 
-# # --- SPOOR A: MAX ---
-# if (!all(is.na(terra::values(bos_max, mat = FALSE)))) {
-#   bos_buffered_max <- terra::buffer(bos_max, width = 25)
-#   cl_bos_max <- terra::patches(bos_buffered_max, directions = 8, zeroAsNA = TRUE)
-#   cl_bos_scherp_max <- terra::mask(cl_bos_max, bos_max)
-#   
-#   stats_bos_max <- terra::freq(cl_bos_scherp_max)
-#   colnames(stats_bos_max) <- c("layer", "ID", "count")
-#   stats_bos_max$ha <- stats_bos_max$count * 0.01
-#   voldoet_bos_ids_max <- stats_bos_max$ID[stats_bos_max$ha >= 5]
-#   
-#   if (length(voldoet_bos_ids_max) > 0) {
-#     r_bos_5ha_max <- cl_bos_scherp_max %in% voldoet_bos_ids_max
-#     r_bos_5ha_max <- terra::ifel(r_bos_5ha_max == 1, 1, NA)
-#   } else {
-#     r_bos_5ha_max <- template_DM * NA
-#   }
-#   rm(bos_buffered_max, cl_bos_max, cl_bos_scherp_max)
-# } else {
-#   r_bos_5ha_max <- template_DM * NA
-# }
-# 
-# # --- SPOOR B: OPP (Parallel & Autonoom) ---
-# r_binair_bos_opp <- terra::ifel(!is.na(bos_opp) & bos_opp > 0, 1, NA)
-# 
-# if (!all(is.na(terra::values(r_binair_bos_opp, mat = FALSE)))) {
-#   bos_buffered_opp <- terra::buffer(r_binair_bos_opp, width = 25)
-#   cl_bos_opp <- terra::patches(bos_buffered_opp, directions = 8, zeroAsNA = TRUE)
-#   cl_bos_scherp_opp <- terra::mask(cl_bos_opp, r_binair_bos_opp)
-#   
-#   stats_bos_opp <- terra::zonal(bos_opp, cl_bos_scherp_opp, fun = "sum", na.rm = TRUE)
-#   colnames(stats_bos_opp) <- c("ID", "ha_sum")
-#   stats_bos_opp$ha <- stats_bos_opp$ha_sum * 0.01
-#   voldoet_bos_ids_opp <- stats_bos_opp$ID[stats_bos_opp$ha >= 5]
-#   
-#   if (length(voldoet_bos_ids_opp) > 0) {
-#     r_bos_5ha_opp <- cl_bos_scherp_opp %in% voldoet_bos_ids_opp
-#     r_bos_5ha_opp <- terra::ifel(r_bos_5ha_opp == 1, 1, NA)
-#   } else {
-#     r_bos_5ha_opp <- template_DM * NA
-#   }
-#   rm(bos_buffered_opp, cl_bos_opp, cl_bos_scherp_opp, stats_bos_opp)
-# } else {
-#   r_bos_5ha_opp <- template_DM * NA
-# }
-# 
-# message("-> Voortplantingsgebied binnen 1km van grote bossen uitsluiten...")
-# 
-# # Maskering Spoor A
-# if (!all(is.na(terra::values(r_bos_5ha_max, mat = FALSE)))) {
-#   dist_tot_bos_max <- terra::distance(r_bos_5ha_max, target = 1, maxdist = 1010)
-#   geschikt_zonder_bos_masker_max <- terra::ifel(dist_tot_bos_max > 1000 | is.na(dist_tot_bos_max), 1, NA)
-#   bruinekiekendief_vp_zonderbos_max <- terra::mask(bruinekiekendief_voortplanting_max, geschikt_zonder_bos_masker_max)
-#   rm(dist_tot_bos_max, geschikt_zonder_bos_masker_max)
-# } else {
-#   bruinekiekendief_vp_zonderbos_max <- bruinekiekendief_voortplanting_max
-# }
-# 
-# # Maskering Spoor B
-# if (!all(is.na(terra::values(r_bos_5ha_opp, mat = FALSE)))) {
-#   dist_tot_bos_opp <- terra::distance(r_bos_5ha_opp, target = 1, maxdist = 1010)
-#   geschikt_zonder_bos_masker_opp <- terra::ifel(dist_tot_bos_opp > 1000 | is.na(dist_tot_bos_opp), 1, NA)
-#   bruinekiekendief_vp_zonderbos_opp <- terra::mask(bruinekiekendief_voortplanting_opp, geschikt_zonder_bos_masker_opp)
-#   rm(dist_tot_bos_opp, geschikt_zonder_bos_masker_opp)
-# } else {
-#   bruinekiekendief_vp_zonderbos_opp <- bruinekiekendief_voortplanting_opp
-# }
-# 
-# rm(r_bos_5ha_opp, r_binair_bos_opp)
-# gc()
-
+# Bosmaskering overgeslagen conform instellingen
 bruinekiekendief_vp_zonderbos_max <- bruinekiekendief_voortplanting_max
 bruinekiekendief_vp_zonderbos_opp <- bruinekiekendief_voortplanting_opp
 ```
 
 ```{r Clustering}
 # ==============================================================================
-# STAP 3: VOORTPLANTINGSCLUSTERS (100M FUZZY, MIN. 2 HA)
+# STAP 3: VOORTPLANTINGSCLUSTERS (LINIE-ZUIVERING 40M + 100M FUZZY + MIN. 10 HA)
 # ==============================================================================
-message("-> Voortplantingsgebieden clusteren (100m fuzzy) en filteren op min. 2 ha...")
+message("-> Voortplantingsgebieden zuiveren (min. 40m breed), clusteren (100m) en filteren op min. 10 ha...")
 
-# Vervanging van chunk 'Clustering'
-drempel_vp_m2 <- 2 * 10000 # 10 ha
+drempel_vp_m2 <- 10 * 10000 # 10 ha
 
-# Spoor A (Max)
+# Spoor A (Max) - Met linie-zuivering (straal_m = 20 -> minstens 40m fysieke breedte)
 res_vp_max <- cluster_filter_compleet(
   masker     = bruinekiekendief_vp_zonderbos_max,
   opp_laag   = bruinekiekendief_vp_zonderbos_max,
   drempel_m2 = drempel_vp_m2,
-  dist_m     = 100, # 100m fuzzy overbrugging
-  werkelijk  = FALSE
+  dist_m     = 100,
+  werkelijk  = FALSE,
+  straal_m   = 20
 )
 bruinekiekendief_voortplanting_final_max <- res_vp_max$raster
 
-# Spoor B (Opp)
+# Spoor B (Opp) - Met linie-zuivering op de ruimtelijke structuur
 r_binair_vp_opp <- terra::ifel(!is.na(bruinekiekendief_vp_zonderbos_opp) & bruinekiekendief_vp_zonderbos_opp > 0, 1, NA)
 res_vp_opp <- cluster_filter_compleet(
   masker     = r_binair_vp_opp,
   opp_laag   = bruinekiekendief_vp_zonderbos_opp,
   drempel_m2 = drempel_vp_m2,
   dist_m     = 100,
-  werkelijk  = TRUE
+  werkelijk  = TRUE,
+  straal_m   = 20
 )
 bruinekiekendief_voortplanting_final_opp <- res_vp_opp$raster
-rm(bruinekiekendief_vp_zonderbos_opp, r_binair_vp_opp)
+
+rm(bruinekiekendief_vp_zonderbos_max, bruinekiekendief_vp_zonderbos_opp, r_binair_vp_opp)
 gc()
 ```
 
 ```{r Foerageergebied}
 # ==============================================================================
-# STAP 4: FOERAGEERGEBIED CLUSTEREN (100M FUZZY, MIN. 100 HA)
+# STAP 4: FOERAGEERGEBIED CLUSTEREN (100M FUZZY, MIN. 100 HA - ZONDER LINIE-ZUIVERING)
 # ==============================================================================
 message("-> Foerageergebieden clusteren (100m fuzzy) en filteren op min. 100 ha...")
 
-# Vervanging van chunk 'Foerageergebied'
 drempel_foer_m2 <- 100 * 10000 # 100 ha
 
 # Spoor A (Max)
@@ -390,7 +339,8 @@ res_foer_max <- cluster_filter_compleet(
   opp_laag   = foerageer_max,
   drempel_m2 = drempel_foer_m2,
   dist_m     = 100,
-  werkelijk  = FALSE
+  werkelijk  = FALSE,
+  straal_m   = 0 # Geen linie-zuivering voor foerageergebied
 )
 bruinekiekendief_foerageer_final_max <- res_foer_max$raster
 
@@ -401,11 +351,12 @@ res_foer_opp <- cluster_filter_compleet(
   opp_laag   = foerageer_opp,
   drempel_m2 = drempel_foer_m2,
   dist_m     = 100,
-  werkelijk  = TRUE
+  werkelijk  = TRUE,
+  straal_m   = 0
 )
 bruinekiekendief_foerageer_final_opp <- res_foer_opp$raster
 
-rm(foerageer_opp, r_binair_foer_opp)
+rm(foerageer_max, foerageer_opp, r_binair_foer_opp)
 gc()
 ```
 
@@ -434,7 +385,7 @@ if (!all(is.na(terra::values(r_patches_vp_max, mat = FALSE))) && !all(is.na(terr
   bruinekiekendief_leefgebied1_max <- template_DM * NA
 }
 
-# --- 5.2: REALISTISCHE OPPERVLAKTE (OPP-SPOOR - PARALLEL) ---
+# --- 5.2: REALISTISCHE OPPERVLAKTE (OPP-SPOOR) ---
 r_binair_vp_opp   <- terra::ifel(!is.na(bruinekiekendief_voortplanting_final_opp) & bruinekiekendief_voortplanting_final_opp > 0, 1, NA)
 r_binair_foer_opp <- terra::ifel(!is.na(bruinekiekendief_foerageer_final_opp) & bruinekiekendief_foerageer_final_opp > 0, 1, NA)
 
@@ -476,7 +427,6 @@ message("=======================================================================
 # ==============================================================================
 message(paste("-> Start netwerkanalyse voor:", soort))
 
-# 1. Pad naar het waarnemingsbestand van de bruine kiekendief
 waarnemingen_path <- here("data/input/Waarnemingen_Soorten/De_Maten/Waarnemingen_BruineKiekendief.csv")
 
 if (file.exists(waarnemingen_path)) {
@@ -494,7 +444,6 @@ if (file.exists(waarnemingen_path)) {
   has_observations    <- FALSE
 }
 
-# Genereer unieke netwerk-ID's over de HELE kaart (De invoer uit Stap 5 is al onverknipt!)
 r_scherpe_clusters <- terra::patches(bruinekiekendief_leefgebied1_max, directions = 8, zeroAsNA = TRUE)
 
 if (!all(is.na(terra::values(r_scherpe_clusters, mat=FALSE)))) {
@@ -504,26 +453,22 @@ if (!all(is.na(terra::values(r_scherpe_clusters, mat=FALSE)))) {
     st_as_sf()
   colnames(cl_poly_all)[1] <- "ID"
   
-  # Smeed losse flarden met hetzelfde ID overal op de kaart netjes samen
   cl_poly_union <- cl_poly_all %>%
     group_by(ID) %>%
     summarise(geometry = st_union(geometry)) %>%
     ungroup()
   
-  # Bepaal de ruimtelijke relatie met de projectgrens
   area_sf_proj <- st_as_sf(area_shape_proj)
   intersects_grens <- st_intersects(cl_poly_union, area_sf_proj, sparse = FALSE)[,1]
   
-  # Splits de netwerk-IDs zuiver op
   ids_binnen <- cl_poly_union$ID[intersects_grens]
   ids_buiten <- cl_poly_union$ID[!intersects_grens]
   
-  # Crop rasters naar de template voor de lokale pixelkaarten
   r_net_ids_tv <- terra::crop(r_scherpe_clusters, template_DM)
   r_max_tv     <- terra::crop(bruinekiekendief_leefgebied1_max, template_DM)
   r_opp_tv     <- terra::crop(bruinekiekendief_leefgebied1_opp, template_DM)
   
-  # --- EXTRACTION A: ARPL (Dispersie) ---
+  # --- ARPL (Dispersie) ---
   if (has_observations && nrow(df_points_sf) > 0) {
     extract_ids_arpl <- terra::extract(r_net_ids_tv, waarneming_blobs_vect)
     ids_netwerken_raken_arpl <- unique(na.omit(extract_ids_arpl[[2]]))
@@ -543,7 +488,7 @@ if (!all(is.na(terra::values(r_scherpe_clusters, mat=FALSE)))) {
     ha_arpl <- 0
   }
   
-  # --- EXTRACTION B: ACTUELE VERSPREIDING (Punten) ---
+  # --- ACTUELE VERSPREIDING (Punten) ---
   if (has_observations && nrow(df_points_sf) > 0) {
     extract_ids_verspr <- terra::extract(r_net_ids_tv, waarneming_punten_vect)
     ids_netwerken_raken_punten <- unique(na.omit(extract_ids_verspr[[2]]))
@@ -553,7 +498,6 @@ if (!all(is.na(terra::values(r_scherpe_clusters, mat=FALSE)))) {
   ids_verspreiding_clusters <- intersect(ids_binnen, ids_netwerken_raken_punten)
   
   if(length(ids_verspreiding_clusters) > 0) {
-    # --- GEFIXT: %= veranderd naar %in% ---
     m_verspr <- terra::ifel(r_net_ids_tv %in% ids_verspreiding_clusters, 1, NA)
     bruinekiekendief_verspreiding_bin <- terra::mask(r_opp_tv, m_verspr)
     verspreiding_netwerk_count <- length(ids_verspreiding_clusters)
@@ -564,17 +508,15 @@ if (!all(is.na(terra::values(r_scherpe_clusters, mat=FALSE)))) {
     ha_verspreiding_bin <- 0
   }
   
-  # --- OPPERVLAKTES BEREKENEN PER SUBSET (Met harde NA-maskering) ---
+  # --- OPPERVLAKTES BEREKENEN PER SUBSET ---
   m_binnen <- terra::ifel(r_net_ids_tv %in% ids_binnen, 1, NA)
   m_buiten <- terra::ifel(r_net_ids_tv %in% ids_buiten, 1, NA)
   
-  # Maximaal Potentieel (Binnen vs Buiten)
   r_max_binnen <- terra::mask(r_max_tv, m_binnen)
   r_max_buiten <- terra::mask(r_max_tv, m_buiten)
   ha_pot_bin   <- round(calc_ha_exact(r_max_binnen), 2)
   ha_pot_buit  <- round(calc_ha_exact(r_max_buiten), 2)
   
-  # Werkelijk Habitat (Binnen vs Buiten)
   r_opp_binnen <- terra::mask(r_opp_tv, m_binnen)
   r_opp_buiten <- terra::mask(r_opp_tv, m_buiten)
   ha_werk_bin  <- round(terra::global(r_opp_binnen, "sum", na.rm = TRUE)[[1]] * 0.01, 2)
@@ -583,7 +525,6 @@ if (!all(is.na(terra::values(r_scherpe_clusters, mat=FALSE)))) {
   rm(m_binnen, m_buiten, r_max_binnen, r_max_buiten, r_opp_binnen, r_opp_buiten)
   
 } else {
-  # --- KOGELVRIJE FALLBACK INITIALISATIE ---
   r_net_ids_tv <- r_max_tv <- r_opp_tv <- terra::rast(template_DM, vals = NA)
   bruinekiekendief_arpl_opp <- bruinekiekendief_verspreiding_bin <- terra::rast(template_DM, vals = NA)
   ids_binnen <- ids_buiten <- ids_arpl_relevant <- c()
@@ -591,9 +532,7 @@ if (!all(is.na(terra::values(r_scherpe_clusters, mat=FALSE)))) {
   arpl_netwerk_count <- verspreiding_netwerk_count <- 0
 }
 
-# ==============================================================================
-# PIXEL STATUSKAART BINDEN
-# ==============================================================================
+# PIXEL STATUSKAART
 r_status <- terra::rast(template_DM, vals = NA)
 if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE)))) {
   m_pot_bin  <- !is.na(terra::match(r_net_ids_tv, ids_binnen))
@@ -605,9 +544,7 @@ if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE))
   r_status <- terra::ifel(m_pot_bin & r_opp_tv > 0, 3, r_status)
 }
 
-# ==============================================================================
 # TABEL RENDERING
-# ==============================================================================
 tabel_totaal <- data.frame(
   Type = c("Maximaal Potentieel Leefgebied (Binnen)", "Maximaal Potentieel Leefgebied (Buiten)", 
            "Werkelijk Effectief Habitat (Binnen)", "Werkelijk Effectief Habitat (Buiten)",
@@ -625,13 +562,11 @@ tabel_totaal %>%
 
 ```{r Interactieve kaart}
 # ==============================================================================
-# STAP 7: INTERACTIEVE FINALE LEAFLET KAART (Aangepast aan Broedlocaties)
+# STAP 7: INTERACTIEVE FINALE LEAFLET KAART
 # ==============================================================================
-
 has_local_clusters <- exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE)))
 
 if (has_local_clusters) {
-  
   message("-> Clusterkenmerken berekenen voor de kaart-popups...")
   
   stats_globaal_totaal <- terra::freq(r_scherpe_clusters)
@@ -660,7 +595,7 @@ if (has_local_clusters) {
         "<strong>Actueel Relevant (ARPL):</strong> ", 
           ifelse(ARPL, "<span style='color:green; font-weight:bold;'>JA (Waarneming aanwezig)</span>", 
                        "<span style='color:red;'>NEE</span>"), "<br><hr>",
-        "<span style='font-size:10px; color:#666;'>Gevalideerd: Minstens 10 ha broedbiotoop, > 1 km van bos > 5 ha én met >= 100 ha foerageergebied binnen 5 km.</span>",
+        "<span style='font-size:10px; color:#666;'>Gevalideerd: Minstens 10 ha broedbiotoop, zuiver >= 40m breed én met >= 100 ha foerageergebied binnen 5 km.</span>",
         "</div>"
       )
     )
@@ -693,8 +628,6 @@ if(has_observations && nrow(df_points_sf) > 0) {
   points_web           <- st_sf(st_sfc(crs = 4326))
 }
 
-# Palet voor broedclusters
-pal_clusters <- colorNumeric(palette = "Purples", domain = cl_poly_final$Totale_Bruto_Cluster_ha)
 pal_4 <- colorFactor(palette = c("#abd9e9", "#2c7bb6", "#fdae61", "#d7191c"), levels = 1:4, na.color = "transparent")
 
 map <- leaflet() %>%
@@ -726,7 +659,7 @@ if(has_observations && nrow(df_points_sf) > 0) {
     addPolygons(
       data = waarneming_smear_web,  
       color = "#2b8cbe", weight = 2, fill = FALSE,
-      dashArray = "8, 4", group = "Dispersiebereik (20km Buffer)"
+      dashArray = "8, 4", group = "Dispersiebereik"
     ) %>%
     addCircles(
       data = points_web, 
@@ -740,7 +673,7 @@ map <- map %>%
   addLayersControl(
     baseGroups = c("OSM (Kaart)", "Satelliet"),
     overlayGroups = c("Gevalideerde Broedlocaties", "Habitat Status (Pixels)", 
-                      "Dispersiebereik (20km Buffer)", "Waarnemingen", "Grens Studiegebied"),
+                      "Dispersiebereik", "Waarnemingen", "Grens Studiegebied"),
     options = layersControlOptions(collapsed = FALSE)
   )
 
@@ -749,7 +682,7 @@ map
 
 ```{r export}
 # ==============================================================================
-# EXPORT MET KOGELVRIJE NUL-OPVULLING & CONTRACT FIX (BRUINE KIEKENDIEF)
+# EXPORT MET GEFORMATTEERDE RASTERS (BRUINE KIEKENDIEF)
 # ==============================================================================
 message(paste("-> Start geformatteerde export met nul-opvulling voor:", soort))
 
@@ -762,28 +695,28 @@ folders <- list(
 )
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-# 1. Spoor A: Maximale Potentie formatteren naar 1/NA
+# 1. Spoor A: Maximale Potentie
 if(!all(is.na(terra::values(bruinekiekendief_leefgebied1_max, mat=FALSE)))) {
   potentie_export_rast <- terra::ifel(!is.na(bruinekiekendief_leefgebied1_max) & bruinekiekendief_leefgebied1_max > 0, 1, NA)
 } else {
   potentie_export_rast <- terra::rast(template_DM, vals = NA)
 }
 
-# 2. Spoor B: Werkelijke Oppervlakte formatteren naar 1/NA over de actieve cellen
+# 2. Spoor B: Werkelijke Oppervlakte
 if(!all(is.na(terra::values(bruinekiekendief_leefgebied1_opp, mat=FALSE)))) {
   werkelijk_export_rast <- terra::ifel(!is.na(bruinekiekendief_leefgebied1_opp) & bruinekiekendief_leefgebied1_opp > 0, 1, NA)
 } else {
   werkelijk_export_rast <- terra::rast(template_DM, vals = NA)
 }
 
-# 3. ARPL formatteren naar 1/NA
+# 3. ARPL
 if(exists("bruinekiekendief_arpl_opp") && !all(is.na(terra::values(bruinekiekendief_arpl_opp, mat=FALSE)))) {
   arpl_export_rast <- terra::ifel(bruinekiekendief_arpl_opp > 0, 1, NA)
 } else {
   arpl_export_rast <- terra::rast(template_DM, vals = NA)
 }
 
-# 4. Actuele Verspreiding formatteren naar 1/NA
+# 4. Actuele Verspreiding
 if(exists("bruinekiekendief_verspreiding_bin") && !all(is.na(terra::values(bruinekiekendief_verspreiding_bin, mat=FALSE)))) {
   verspreiding_export_rast <- terra::ifel(bruinekiekendief_verspreiding_bin > 0, 1, NA)
 } else {
@@ -791,9 +724,9 @@ if(exists("bruinekiekendief_verspreiding_bin") && !all(is.na(terra::values(bruin
 }
 
 export_config <- list(
-  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
+  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",       folder = folders$potentie,     type = "INT1U"),
   list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,         naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
+  list(rast = arpl_export_rast,         naam = "ARPL",                    folder = folders$arpl,         type = "INT1U"),
   list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 

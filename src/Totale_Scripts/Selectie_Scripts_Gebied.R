@@ -13,8 +13,8 @@ input_map <- here("src/Totale_Scripts")
 excel_pad <- here("data/Input/Excel_files/Soortenlijst_Maatwerkgebieden.xlsx")
 
 # Sjabloon / Brongegevens
-bron_naam <- "Turnhouts Vennegebied"
-bron_snake <- "Turnhouts_Vennegebied"
+bron_naam     <- "Turnhouts Vennegebied"
+bron_snake    <- "Turnhouts_Vennegebied"
 bron_acroniem <- "TV"
 
 # Configuratie-tabel voor alle 6 de gebieden
@@ -27,6 +27,34 @@ gebieden_config <- tibble::tribble(
   "Turnhouts Vennegebied","Turnhouts_Vennegebied","TV",
   "Voerstreek",           "Voerstreek",           "VS"
 )
+
+# ------------------------------------------------------------------------------
+# HULPFUNCTIE: Check op aanwezigheid van waarnemingen-CSV in een specifieke map
+# ------------------------------------------------------------------------------
+heeft_waarnemingen_bestand <- function(soort_naam, map_waarnemingen) {
+  if (!dir.exists(map_waarnemingen)) return(FALSE)
+  
+  # 1. Haal alle CSV-bestanden op in de waarnemingenmap van het gebied
+  alle_csvs <- list.files(path = map_waarnemingen, pattern = "\\.csv$", full.names = FALSE)
+  if (length(alle_csvs) == 0) return(FALSE)
+  
+  # 2. Opschonen van de soortnaam (verwijder _wv als die aanwezig is)
+  schoon_ras <- sub("_wv$", "", soort_naam)
+  
+  # 3. Verwachte zoeknaam opbouwen (bijv. Waarnemingen_MiddelsteBonteSpecht)
+  zoek_naam <- paste0("Waarnemingen_", schoon_ras)
+  
+  # 4. Normaliseer (negeer hoofdletters, spaties en underscores)
+  normaliseer <- function(tekst) {
+    tolower(gsub("[ _]", "", tekst))
+  }
+  
+  zoek_naam_norm <- normaliseer(zoek_naam)
+  csvs_norm      <- normaliseer(tools::file_path_sans_ext(alle_csvs))
+  
+  # 5. Controleer of de genormaliseerde naam bestaat
+  return(zoek_naam_norm %in% csvs_norm)
+}
 
 # ------------------------------------------------------------------------------
 # 2. EXCEL INLEZEN
@@ -51,13 +79,18 @@ verwerk_gebied <- function(doel_naam, doel_snake, doel_acroniem) {
     return(NULL)
   }
   
-  # A. Filter handmatige maatwerkscripts & genereer de TV_...Rmd bestandsnaam
+  # Bepaal het specifieke waarnemingen-pad voor dit gebied
+  map_waarnemingen_gebied <- here("data/input/Waarnemingen_Soorten", doel_snake)
+  
+  # A. Filter handmatige maatwerkscripts & CHECK OF CSV BESTAAT
   maatwerk_scripts <- df_excel %>%
     filter(
       tolower(coalesce(Model, "")) == "ja",
       tolower(coalesce(Automatisch, "")) == "nee",
       coalesce(.data[[excel_kolom]], 0) == 1
     ) %>%
+    # ENKEL soorten behouden met een bestaand waarnemingen-CSV bestand in de gebiedsmap
+    filter(map_lgl(`Nederlandse naam`, ~ heeft_waarnemingen_bestand(.x, map_waarnemingen_gebied))) %>%
     mutate(
       Script_Naam = paste0(
         bron_acroniem, "_", 
@@ -69,12 +102,13 @@ verwerk_gebied <- function(doel_naam, doel_snake, doel_acroniem) {
     na.omit() %>%
     unique()
   
-  # B. Controleer op automatische soorten in dit gebied
+  # B. Controleer op automatische soorten in dit gebied MET een CSV-bestand
   heeft_automatische_soorten <- df_excel %>%
     filter(
       tolower(coalesce(Automatisch, "")) == "ja",
       coalesce(.data[[excel_kolom]], 0) == 1
     ) %>%
+    filter(map_lgl(`Nederlandse naam`, ~ heeft_waarnemingen_bestand(.x, map_waarnemingen_gebied))) %>%
     nrow() > 0
   
   # C. Algemeen automatisch script (correcte naam: TV_Leefgebieden_Simpel.Rmd)
@@ -87,7 +121,7 @@ verwerk_gebied <- function(doel_naam, doel_snake, doel_acroniem) {
     cat("Inclusief automatisch script:", automatisch_script_naam, "\n")
   }
   
-  cat("Aantal te verwerken scripts uit Excel:", length(alle_te_verwerken_scripts), "\n\n")
+  cat("Aantal te verwerken scripts uit Excel (met CSV-check):", length(alle_te_verwerken_scripts), "\n\n")
   
   # D. Bepaal en maak de outputmap aan (bijv. src/De_Maten/Scripts_DM)
   output_map <- here("src", doel_snake, paste0("Scripts_", doel_acroniem))
@@ -111,9 +145,9 @@ verwerk_gebied <- function(doel_naam, doel_snake, doel_acroniem) {
       }
     }
     
-    # Als het bestand écht niet bestaat (zoals bij Zomertortel of Blauwe Kiekendief)
+    # Als het Rmd-bestand zelf niet op schijf staat
     if (!file_exists(bron_bestand)) {
-      cat("  ⚠️ Overgeslagen (nog geen scriptbestand op schijf):", script_naam, "\n")
+      cat("  ⚠️ Overgeslagen (nog geen Rmd-scriptbestand op schijf):", script_naam, "\n")
       return(NULL)
     }
     

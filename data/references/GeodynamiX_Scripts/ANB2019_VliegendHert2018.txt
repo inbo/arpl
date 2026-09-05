@@ -24,17 +24,17 @@ assign(vliegendhert_bossen2, and(vliegendhert_bossen1, cellDistanceLe(vliegendhe
 deleteVariable(vliegendhert_bosleeftijd12)
 deleteVariable(vliegendhert_bossen1)
 
-// zuidhellingen mogen tot op 500m van bossen liggen
+// hellingen mogen tot op 500m van bossen liggen
 
-assign(zuidhelling, 'vliegend_hert_hellingen_zozw_4gr.asc')
-assign(vliegendhert_zuidhelling, clusterId(eq(zuidhelling, 1)))
+assign(zuidhelling, 'vliegend_hert_hellingen_4gr.asc')
+assign(vliegendhert_helling, clusterId(eq(helling, 1)))
 
-deleteVariable(zuidhelling)
+deleteVariable(helling)
 
-assign(vliegendhert_leefgebied1, and(vliegendhert_bossen2, cellDistanceLe(vliegendhert_zuidhelling, 1000, meter)))
+assign(vliegendhert_leefgebied1, and(vliegendhert_bossen2, cellDistanceLe(vliegendhert_helling, 1000, meter)))
 
 deleteVariable(vliegendhert_bossen2)
-deleteVariable(vliegendhert_zuidhelling)
+deleteVariable(vliegendhert_helling)
 
 // clustering: indien geschikte cel binnen 50 meter, dan hoort die cel bij het voortplantingscluster
 

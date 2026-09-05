@@ -103,8 +103,8 @@ cluster_filter_twee_drempels <- function(masker, opp_laag, min_opp_ha, min_total
   # 2. Netwerkvorming op basis van Dispersiecap (dist_m)
   if (dist_m > 0) {
     r_binair <- terra::ifel(!is.na(masker_gefilterd) & masker_gefilterd > 0, 1, NA)
-    r_buffered <- terra::buffer(r_binair, width = dist_m)
-    cl_network <- terra::patches(r_buffered, directions = 8, zeroAsNA = TRUE)
+    r_buffered <- terra::buffer(r_binair, width = dist_m / 2)
+    cl_network <- terra::patches(r_buffered, directions = 4, zeroAsNA = TRUE)
     cl_biotoop_only <- terra::mask(cl_network, masker_gefilterd)
   } else {
     cl_network <- terra::patches(masker_gefilterd, directions = 8, zeroAsNA = TRUE)
@@ -136,6 +136,12 @@ cluster_filter_twee_drempels <- function(masker, opp_laag, min_opp_ha, min_total
   
   return(list(raster = r_finaal, clusters = cl_finaal))
 }
+
+terraOptions(
+  memfrac = 0.8,        # Dwing terra om tot max. 80% van het RAM-geheugen te gebruiken
+  tempdir = tempdir(),  # Geef toestemming voor automatische disk-swapping bij zware rasters
+  verbose = FALSE
+)
 ```
 
 # Soort informatie ophalen
@@ -669,13 +675,13 @@ for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
   export_rast <- terra::deepcopy(item$rast)
-  export_rast <- terra::mask(export_rast, area_buffer_fix)
+  export_rast <- terra::extend(export_rast, master_grid, fill = NA)
   
   if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
     export_rast <- terra::ifel(is.na(export_rast), 0, 0)
-    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
   } else {
-    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
   }
   
   writeRaster(export_rast, 

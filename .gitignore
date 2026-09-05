@@ -105,3 +105,6 @@ rsconnect/
 
 # Logboeken
 /data/output/Logboeken/
+
+#
+/data/input/Raster_Vlaanderen

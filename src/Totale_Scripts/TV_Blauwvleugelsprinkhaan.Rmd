@@ -80,8 +80,8 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
   # 1. Binaire netwerkvorming via volle buffer (snel & RAM-veilig)
   if (dist_m > 0) {
     r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
-    r_buffered <- terra::buffer(r_binair, width = dist_m)
-    cl_network <- terra::patches(r_buffered, directions = 8, zeroAsNA = TRUE)
+    r_buffered <- terra::buffer(r_binair, width = dist_m / 2)
+    cl_network <- terra::patches(r_buffered, directions = 4, zeroAsNA = TRUE)
     cl_biotoop_only <- terra::mask(cl_network, masker)
   } else {
     cl_network <- terra::patches(masker, directions = 8, zeroAsNA = TRUE)
@@ -610,13 +610,13 @@ for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
   export_rast <- terra::deepcopy(item$rast)
-  export_rast <- terra::mask(export_rast, area_buffer_fix)
+  export_rast <- terra::extend(export_rast, master_grid, fill = NA)
   
   if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
     export_rast <- terra::ifel(is.na(export_rast), 0, 0)
-    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
   } else {
-    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
     export_rast <- terra::ifel(is.na(export_rast), 0, export_rast)
   }
   

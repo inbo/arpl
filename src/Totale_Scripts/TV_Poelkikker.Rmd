@@ -88,10 +88,10 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
     
     # Buffer de BINAIR kaart (dit kost vrijwel geen geheugen!)
     # Volle afstand dist_m zorgt dat plukjes binnen dist_m gegarandeerd samensmelten
-    r_buffered <- terra::buffer(r_binair, width = dist_m)
+    r_buffered <- terra::buffer(r_binair, width = dist_m / 2)
     
     # Maak unieke Netwerk-ID's op de gebufferde zones
-    cl_network <- terra::patches(r_buffered, directions = 8, zeroAsNA = TRUE)
+    cl_network <- terra::patches(r_buffered, directions = 4, zeroAsNA = TRUE)
     
     # Snijd de Netwerk-ID's direct terug naar waar de originele biotooppixels liggen
     cl_biotoop_only <- terra::mask(cl_network, masker)
@@ -348,36 +348,43 @@ if (!all(is.na(terra::values(landbiotoop_bwk_opp, mat = FALSE)))) {
 ```
 
 ```{r landbiotoop koppeling 2}
-message("-> Ruimtelijke koppeling land- en waterbiotoop (AfstandBiotopen = 0 m) voor MAX en OPP parallel...")
+message("-> Ruimtelijke koppeling land- en waterbiotoop (AfstandBiotopen = 0 m + 10m oeverkoppling) voor MAX en OPP parallel...")
 
-# --- SPOOR MAX ---
+# ==============================================================================
+# SPOOR MAX (Volledige waterplassen behouden die aan land grenzen)
+# ==============================================================================
 if (!all(is.na(terra::values(poelkikker_land_gefilterd_max, mat = FALSE))) && 
     !all(is.na(terra::values(r_poelkikker_waterbiotoop1, mat = FALSE)))) {
   
-  r_land_mask_max  <- poelkikker_land_gefilterd_max
-  r_water_mask_max <- r_poelkikker_waterbiotoop1
+  # Buffer het land 10m om aangrenzende waterpixels volledig mee te grijpen
+  r_land_buf_max <- terra::buffer(poelkikker_land_gefilterd_max, width = 10)
   
-  pk_land_gekoppeld_max  <- terra::mask(poelkikker_land_gefilterd_max, r_water_mask_max)
-  pk_water_gekoppeld_max <- terra::mask(r_poelkikker_waterbiotoop1, r_land_mask_max)
+  # Selecteer de volledige waterplassen die raken aan het gekwalificeerde land
+  pk_water_gekoppeld_max <- terra::mask(r_poelkikker_waterbiotoop1, r_land_buf_max)
   
-  poelkikker_leefgebied1_max <- pk_land_gekoppeld_max | pk_water_gekoppeld_max
-  poelkikker_leefgebied1_max <- terra::ifel(poelkikker_leefgebied1_max == 1, 1, NA)
+  # Voeg het volledige landbiotoop en het volledige waterbiotoop samen
+  poelkikker_leefgebied1_max <- terra::cover(poelkikker_land_gefilterd_max, pk_water_gekoppeld_max)
+  poelkikker_leefgebied1_max <- terra::ifel(!is.na(poelkikker_leefgebied1_max), 1, NA)
 } else {
   poelkikker_leefgebied1_max <- template_TV * NA
 }
 
-# --- SPOOR OPP (Volledig autonoom) ---
+# ==============================================================================
+# SPOOR OPP (Volledig autonoom met behoud van volledige wateroppervlaktes)
+# ==============================================================================
 if (!all(is.na(terra::values(poelkikker_land_gefilterd_opp, mat = FALSE))) && 
     !all(is.na(terra::values(r_poelkikker_waterbiotoop1_opp, mat = FALSE)))) {
   
-  r_land_mask_opp  <- terra::ifel(!is.na(poelkikker_land_gefilterd_opp) & poelkikker_land_gefilterd_opp > 0, 1, NA)
-  r_water_mask_opp <- terra::ifel(!is.na(r_poelkikker_waterbiotoop1_opp) & r_poelkikker_waterbiotoop1_opp > 0, 1, NA)
+  # Binaire landkaart maken en 10m buffer toepassen
+  r_binair_land_opp <- terra::ifel(!is.na(poelkikker_land_gefilterd_opp) & poelkikker_land_gefilterd_opp > 0, 1, NA)
+  r_land_buf_opp    <- terra::buffer(r_binair_land_opp, width = 10)
   
-  pk_land_gekoppeld_opp  <- terra::mask(poelkikker_land_gefilterd_opp, r_water_mask_opp)
-  pk_water_gekoppeld_opp <- terra::mask(r_poelkikker_waterbiotoop1_opp, r_land_mask_opp)
+  # Filter het water op basis van de landbuffer
+  pk_water_gekoppeld_opp <- terra::mask(r_poelkikker_waterbiotoop1_opp, r_land_buf_opp)
   
+  # Samenvoegen op basis van werkelijke bedekkingsgraden
   water_opp_clean <- terra::ifel(is.na(pk_water_gekoppeld_opp), 0, pk_water_gekoppeld_opp)
-  land_opp_clean  <- terra::ifel(is.na(pk_land_gekoppeld_opp), 0, pk_land_gekoppeld_opp)
+  land_opp_clean  <- terra::ifel(is.na(poelkikker_land_gefilterd_opp), 0, poelkikker_land_gefilterd_opp)
 
   som_opp <- terra::clamp(water_opp_clean + land_opp_clean, upper = 1.0)
   poelkikker_leefgebied1_opp <- terra::ifel(som_opp > 0, som_opp, NA)
@@ -773,13 +780,13 @@ for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
   export_rast <- terra::deepcopy(item$rast)
-  export_rast <- terra::mask(export_rast, area_buffer_fix)
+  export_rast <- terra::extend(export_rast, master_grid, fill = NA)
   
   if(all(is.na(terra::values(export_rast, mat = FALSE)))) {
     export_rast <- terra::ifel(is.na(export_rast), 0, 0)
-    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
   } else {
-    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
   }
   
   writeRaster(export_rast, 

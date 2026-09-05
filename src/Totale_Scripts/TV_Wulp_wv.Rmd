@@ -73,10 +73,10 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
     
     # Buffer de BINAIR kaart (dit kost vrijwel geen geheugen!)
     # Volle afstand dist_m zorgt dat plukjes binnen dist_m gegarandeerd samensmelten
-    r_buffered <- terra::buffer(r_binair, width = dist_m)
+    r_buffered <- terra::buffer(r_binair, width = dist_m / 2)
     
     # Maak unieke Netwerk-ID's op de gebufferde zones
-    cl_network <- terra::patches(r_buffered, directions = 8, zeroAsNA = TRUE)
+    cl_network <- terra::patches(r_buffered, directions = 4, zeroAsNA = TRUE)
     
     # Snijd de Netwerk-ID's direct terug naar waar de originele biotooppixels liggen
     cl_biotoop_only <- terra::mask(cl_network, masker)
@@ -135,7 +135,7 @@ select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
 
 # Variabelen definiëren
 oppervlakte_ha <- resultaat$MinOpp_ha[1]
-afstand_m <- resultaat$AfstandBiotopen_m[1]
+afstand_m <- 150
 buffer_m <- 50000
 
 print(resultaat)
@@ -186,36 +186,50 @@ gc()
 
 # Biotoopfiltering (BWK-codes)
 ```{r Biotoopfiltering}
-# 1. LAAD DE BRON-CROSSWALK/DICTIONARY IN
+# 1. LAAD DE BRON-CROSSWALK IN
 df_nieuw <- read_csv(here("data/input/Excel_files/Resultaten_Totaal_Samengevoegd.csv"), show_col_types = FALSE)
 
+# Zoek expliciet naar "wulp_wv" in de brondatabase
+zoek_sleutel <- paste0(tolower(trimws(soort)), "_wv") # Maakt er automatisch "wulp_wv" van
+
 resultaten_gegroepeerd <- df_nieuw %>%
-  mutate(Soort_clean = tolower(trimws(Soort))) %>%
-  filter(Soort_clean == soort) %>%
-  group_by(Type) %>%
+  mutate(
+    Soort_clean = tolower(trimws(Soort)),
+    Type_clean  = tolower(trimws(Type))
+  ) %>%
+  filter(Soort_clean == zoek_sleutel) %>%  # Filtert op "wulp_wv"
+  group_by(Type_clean) %>%
   nest(Data = c(Code, Match))
+
+# CONTROLE: Geeft duidelijke melding als "wulp_wv" niet in de CSV staat
+if (nrow(resultaten_gegroepeerd) == 0) {
+  stop(paste0(
+    "❌ FOUT: Sleutel '", zoek_sleutel, "' is NIET gevonden in Resultaten_Totaal_Samengevoegd.csv!\n",
+    "Aanwezige soorten in het bestand zijn: ", 
+    paste(head(unique(tolower(df_nieuw$Soort)), 10), collapse = ", ")
+  ))
+}
 
 # 2. LAAD DE REGIONALE TABEL IN
 tabel_vlaanderen <- readRDS(here("data/input/Raster_Vlaanderen/BWK_Tabel_Turnhouts_Vennegebied_Plus_50km.rds"))
 setDT(tabel_vlaanderen)
 tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
 
-# Initialiseer de lijsten voor de verschillende habitat-bouwstenen
 lijst_matches      <- list()
 lijst_oppervlaktes <- list()
 
 # 3. VERWERK ELK HABITAT-TYPE DYNAMISCH VIA DATA.TABLE
-for(i in 1:nrow(resultaten_gegroepeerd)) {
-  h_type <- resultaten_gegroepeerd$Type[i]
+for(i in seq_len(nrow(resultaten_gegroepeerd))) {
+  h_type <- resultaten_gegroepeerd$Type_clean[i]
   h_data <- resultaten_gegroepeerd$Data[[i]]
   
   exact_codes <- tolower(trimws(h_data$Code[h_data$Match == "exact"]))
   bevat_codes <- tolower(trimws(h_data$Code[h_data$Match == "bevat"]))
   
   if(length(bevat_codes) > 0) {
-    bevat_codes_escaped <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
+    bevat_codes_escaped  <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
     bevat_codes_anchored <- paste0("^", bevat_codes_escaped)
-    regex_term <- paste0(bevat_codes_anchored, collapse = "|")
+    regex_term           <- paste0(bevat_codes_anchored, collapse = "|")
     
     tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes | grepl(regex_term, CODE)]
   } else {
@@ -225,8 +239,7 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   tabel_TV <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
   tabel_TV_unique <- unique(tabel_TV, by = c("cel_id", "CODE"))
 
-  # 2. Bereken de som per cel_id en cap de maximale waarde hard op 1.0 (100%)
-  tabel_cel_som <- tabel_TV_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)),by = .(cel_id)]
+  tabel_cel_som <- tabel_TV_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)), by = .(cel_id)]
   
   r_match_type <- id_raster_TV * NA
   r_opp_type   <- id_raster_TV * NA
@@ -252,59 +265,29 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   }
 }
 
-# Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
-foerageer_bwk_max <- lijst_matches[["foerageer_bwk"]]
-foerageer_bwk_opp <- lijst_oppervlaktes[["foerageer_bwk"]]
+# Veilig uitpakken (herkent zowel 'foerageer_bwk', 'foerageer', als hoofdletterverschillen)
+key_foerageer <- names(lijst_matches)[grepl("foerageer", names(lijst_matches), ignore.case = TRUE)][1]
 
-# Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
+if(!is.na(key_foerageer)) {
+  foerageer_bwk_max <- lijst_matches[[key_foerageer]]
+  foerageer_bwk_opp <- lijst_oppervlaktes[[key_foerageer]]
+} else {
+  warning("⚠️ Geen 'foerageer' type gevonden in de biotooptabel voor wulp_wv!")
+}
+
 rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
-```{r watervogelgebieden filteren gefixt}
+```{r geschikte regio definiëren}
 # ==============================================================================
-# STAP 1: WULP - REGIO CLIP EN STABIELE RASTERISATIE OP TEMPLATE
+# STAP 1: ONAFHANKELIJK VAN WATERVOGELTELGEBIEDEN
+# Koppel geschiktheid aan het gehele studiegebied + buffer in plaats van tellingen
 # ==============================================================================
-message("-> Universele wulpdata inlezen...")
-sf_wulp_vlaanderen <- readRDS(here("data/input/Watervogelgebieden_Ruw/watervogelgebieden_ruw_wulp.rds"))
+message("-> Watervogelgebieden filter overgeslagen: Analyse wordt uitgevoerd op het volledige studiegebied...")
 
-message("-> Ruimtelijk uitsnijden op actieve regio via sf st_filter...")
-sf_regio_template <- sf::st_as_sf(area_buffer_fix)
-sf_wulp_regio  <- sf::st_filter(sf_wulp_vlaanderen, sf_regio_template)
-
-message("-> Filteren op vogelgebieden met waargenomen aantallen > 0...")
-locatie_aantallen <- sf_wulp_regio %>%
-  st_drop_geometry() %>% 
-  group_by(locationwvkey) %>%
-  summarise(
-    MaximaalGeteld = max(seizoenstotaal, na.rm = TRUE),
-    TotaalGeteld   = sum(seizoenstotaal, na.rm = TRUE)
-  )
-
-# Selecteer alle keys met positieve tellingen
-goedgekeurde_keys <- locatie_aantallen$locationwvkey[
-  locatie_aantallen$TotaalGeteld > 0 | locatie_aantallen$MaximaalGeteld > 0
-]
-
-gebied_geselecteerd <- sf_wulp_regio %>%
-  distinct(locationwvkey, .keep_all = TRUE) %>% 
-  filter(locationwvkey %in% goedgekeurde_keys)
-
-message("-> Geselecteerde vogelgebieden rasteriseren op de stabiele template...")
-
-r_watervogelgebied_max <- terra::rasterize(
-  x = terra::vect(gebied_geselecteerd),
-  y = template_TV,
-  field = 1,
-  background = NA
-)
-
-if (is.null(r_watervogelgebied_max)) {
-  r_watervogelgebied_max <- template_TV * NA
-}
-
-rm(sf_wulp_vlaanderen, sf_wulp_regio, locatie_aantallen, gebied_geselecteerd, sf_regio_template)
-gc()
+# Maak een masker op basis van template_TV waarbij alle geldige cellen de waarde 1 krijgen
+r_watervogelgebied_max <- terra::ifel(!is.na(template_TV), 1, NA)
 ```
 
 ```{r leefgebied clustering en intersectie gefixt}
@@ -335,7 +318,6 @@ if (exists("foerageer_bwk_max") && !is.null(foerageer_bwk_max) && !all(is.na(ter
       wulp_leefgebied_max <- r_wulp_30ha_max %>% terra::crop(template_TV)
     }
   }
-  if (exists("wulp_clusters_max")) rm(wulp_clusters_max, r_wulp_30ha_max)
 }
 
 # --- SPOOR B: WERKELIJKE OPPERVLAKTE (Parallel & Autonoom) ---
@@ -359,14 +341,12 @@ if (exists("foerageer_bwk_opp") && !is.null(foerageer_bwk_opp) && !all(is.na(ter
       wulp_leefgebied_opp <- r_wulp_30ha_opp %>% terra::crop(template_TV)
     }
   }
-  if (exists("wulp_clusters_opp")) rm(wulp_clusters_opp, r_wulp_30ha_opp, r_binair_foer_opp)
 }
 
 message("--- WULP MODEL SUCCESVOL AFGEROND ---")
 cat("Totaal stabiel leefgebied Wulp MAX (ha):", round(calc_ha_exact(wulp_leefgebied_max), 2), "\n")
 cat("Totaal stabiel leefgebied Wulp OPP (ha):", round(calc_ha_exact(wulp_leefgebied_opp), 2), "\n")
 
-if(exists("r_watervogelgebied_max")) rm(r_watervogelgebied_max)
 gc()
 ```
 
@@ -650,13 +630,13 @@ for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, "_wv.tif"))
   
   export_rast <- terra::deepcopy(item$rast)
-  export_rast <- terra::mask(export_rast, area_buffer_fix)
+  export_rast <- terra::extend(export_rast, master_grid, fill = NA)
   
   if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
     export_rast <- terra::ifel(is.na(export_rast), 0, 0)
-    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
   } else {
-    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
   }
   
   writeRaster(export_rast, 

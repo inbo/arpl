@@ -88,10 +88,10 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
     
     # Buffer de BINAIR kaart (dit kost vrijwel geen geheugen!)
     # Volle afstand dist_m zorgt dat plukjes binnen dist_m gegarandeerd samensmelten
-    r_buffered <- terra::buffer(r_binair, width = dist_m)
+    r_buffered <- terra::buffer(r_binair, width = dist_m / 2)
     
     # Maak unieke Netwerk-ID's op de gebufferde zones
-    cl_network <- terra::patches(r_buffered, directions = 8, zeroAsNA = TRUE)
+    cl_network <- terra::patches(r_buffered, directions = 4, zeroAsNA = TRUE)
     
     # Snijd de Netwerk-ID's direct terug naar waar de originele biotooppixels liggen
     cl_biotoop_only <- terra::mask(cl_network, masker)
@@ -765,13 +765,13 @@ for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
   export_rast <- terra::deepcopy(item$rast)
-  export_rast <- terra::mask(export_rast, area_buffer_fix)
+  export_rast <- terra::extend(export_rast, master_grid, fill = NA)
   
   if(all(is.na(terra::values(export_rast, mat = FALSE)))) {
     export_rast <- terra::ifel(is.na(export_rast), 0, 0)
-    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
   } else {
-    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
+    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
   }
   
   writeRaster(export_rast, 
