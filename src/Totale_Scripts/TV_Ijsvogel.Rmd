@@ -433,32 +433,44 @@ message("-> Finale leefgebiedrasters op basis van >1km oeverlengte en 20m zone s
 # ==============================================================================
 # STAP 10: ACTUELE VERSPREIDING & ARPL OP BASIS VAN FINALE CLUSTERS (IJSVOGEL)
 # ==============================================================================
-message("-> Start ARPL en Actuele Verspreiding analyse met waarnemingen voor ijsvogel...")
+message("-> Start ARPL en Actuele Verspreiding analyse met territoria voor ijsvogel...")
 
-# 1. Pad naar het waarnemingsbestand van de ijsvogel (dynamisch opgebouwd)
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied", paste0("Waarnemingen_", tools::toTitleCase(soort), ".csv"))
+# 1. Pad naar het gefilterde territoria-bestand (Python export op broedcode >= 4)
+waarnemingen_path <- here("data/input/Territoria_Soorten/TV_Territoria_Ijsvogel.csv")
 
-# 2. Inlezen en bufferen van waarnemingen
+# 2. Inlezen en bufferen van territoria/waarnemingen
 if (file.exists(waarnemingen_path)) {
-  waarnemingen_raw    <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)
-  df_points_sf        <- st_as_sf(waarnemingen_raw, coords = c("x", "y"), crs = 31370)
-  waarneming_smear_sf <- st_buffer(df_points_sf, dist = buffer_m) %>% st_union() %>% st_sf()
-  waarneming_blobs_vect  <- vect(waarneming_smear_sf)
-  waarneming_punten_vect <- vect(df_points_sf) 
-  has_observations    <- TRUE
-  message("-> Waarnemingsbestand succesvol geladen.")
+  # Inlezen via read_csv (komma-gescheiden Python export voor territoria)
+  waarnemingen_raw <- read_csv(waarnemingen_path, show_col_types = FALSE)
+  colnames(waarnemingen_raw) <- tolower(colnames(waarnemingen_raw))
+  
+  if (nrow(waarnemingen_raw) > 0 && "x" %in% colnames(waarnemingen_raw) && "y" %in% colnames(waarnemingen_raw)) {
+    # Omzetten naar Spatial/sf object op basis van Lambert 72 (EPSG:31370)
+    df_points_sf           <- st_as_sf(waarnemingen_raw, coords = c("x", "y"), crs = 31370)
+    waarneming_smear_sf    <- st_buffer(df_points_sf, dist = buffer_m) %>% st_union() %>% st_sf()
+    waarneming_blobs_vect  <- vect(waarneming_smear_sf)
+    waarneming_punten_vect <- vect(df_points_sf) 
+    has_observations       <- TRUE
+    message("-> Territoriabestand van de IJsvogel succesvol geladen.")
+  } else {
+    has_observations       <- FALSE
+  }
 } else {
-  message(paste("⚠️ Waarschuwing: Geen waarnemingsbestand gevonden op pad:", waarnemingen_path))
-  df_points_sf        <- st_sf(st_sfc(crs = 31370)) 
-  waarneming_smear_sf <- st_sf(st_sfc(crs = 31370))
+  message(paste("ℹ️ Geen territoria-bestand gevonden op pad:", waarnemingen_path))
+  has_observations         <- FALSE
+}
+
+# Failsafe afhandeling bij afwezigheid van territoria
+if (!has_observations) {
+  df_points_sf           <- st_sf(st_sfc(crs = 31370)) 
+  waarneming_smear_sf    <- st_sf(st_sfc(crs = 31370))
   waarneming_blobs_vect  <- vect(st_sf(st_sfc(crs = 31370)))
   waarneming_punten_vect <- vect(st_sf(st_sfc(crs = 31370)))
-  has_observations    <- FALSE
 }
 
 # Initialiseer de finale rasters, tellers en hectares voor de ijsvogel
-ijsvogel_arpl_opp           <- terra::rast(template_TV, vals = NA)
-ijsvogel_verspreiding_bin   <- terra::rast(template_TV, vals = NA) 
+ijsvogel_arpl_opp          <- terra::rast(template_TV, vals = NA)
+ijsvogel_verspreiding_bin  <- terra::rast(template_TV, vals = NA) 
 arpl_netwerk_count         <- 0
 verspreiding_netwerk_count <- 0
 ha_verspreiding_bin        <- 0
@@ -503,7 +515,7 @@ if (!all(is.na(terra::values(ijsvogel_leefgebied_max, mat=FALSE)))) {
     # --- EXTRACTION A: ARPL ---
     if (has_observations && nrow(df_points_sf) > 0) {
       extract_ids_arpl <- terra::extract(r_opp_net_ids, waarneming_blobs_vect)
-      ids_netwerken_raken_arpl <- unique(na.omit(extract_ids_arpl[[2]]))
+      ids_netwerken_raken_arpl <- if(!is.null(extract_ids_arpl) && ncol(extract_ids_arpl) >= 2) unique(na.omit(extract_ids_arpl[[2]])) else c()
     } else {
       ids_netwerken_raken_arpl <- c()
     }
@@ -520,7 +532,7 @@ if (!all(is.na(terra::values(ijsvogel_leefgebied_max, mat=FALSE)))) {
     # --- EXTRACTION B: ACTUELE VERSPREIDING ---
     if (has_observations && nrow(df_points_sf) > 0) {
       extract_ids_verspr <- terra::extract(r_opp_net_ids, waarneming_punten_vect)
-      ids_netwerken_raken_punten <- unique(na.omit(extract_ids_verspr[[2]]))
+      ids_netwerken_raken_punten <- if(!is.null(extract_ids_verspr) && ncol(extract_ids_verspr) >= 2) unique(na.omit(extract_ids_verspr[[2]])) else c()
     } else {
       ids_netwerken_raken_punten <- c()
     }
@@ -536,7 +548,7 @@ if (!all(is.na(terra::values(ijsvogel_leefgebied_max, mat=FALSE)))) {
       ha_verspreiding_bin <- calc_ha_exact(clusters_actueel_tv)
     }
     
-    # --- TABEL METRICS BEREKENEN ---
+    # --- TABEL METRICS BEREKENING ---
     r_max_tv <- terra::crop(ijsvogel_leefgebied_max, template_TV)
     r_opp_tv <- terra::crop(ijsvogel_leefgebied_opp, template_TV)
     r_net_ids_tv <- terra::crop(r_opp_net_ids, template_TV)

@@ -463,39 +463,48 @@ message("=======================================================================
 ```
 
 ```{r Resultaten en statistiek}
-# ==============================================================================
-# STAP 6: ACTUELE VERSPREIDING & ARPL (WATERDICHTE RASTER-OVERLAY LOGICA)
-# ==============================================================================
-message(paste("-> Start netwerkanalyse voor:", soort))
-
 # ------------------------------------------------------------------------------
-# 1. WAARNEMINGEN INLEZEN EN HERPROJECTEREN
+# 1. DYNAMISCH INLEZEN VAN DE GEFILTERDE TERRITORIA (TV_Territoria_Bruine_Kiekendief.csv)
 # ------------------------------------------------------------------------------
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_BruineKiekendief.csv")
+gebied_code_actueel <- "TV"
+gebied_naam_actueel <- "Turnhouts_Vennegebied"
+formatted_s_naam    <- "BruineKiekendief"
 
-target_crs <- crs(bruinekiekendief_leefgebied1_max)
+waarnemingen_path <- here("data/input/Territoria_Soorten", 
+                            paste0(gebied_code_actueel, "_Territoria_", formatted_s_naam, ".csv"))
 
 if (file.exists(waarnemingen_path)) {
-  waarnemingen_raw    <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)
-  df_points_sf        <- st_as_sf(waarnemingen_raw, coords = c("x", "y"), crs = 31370)
-  waarneming_smear_sf <- st_buffer(df_points_sf, dist = buffer_m) %>% st_union() %>% st_sf()
+  # Inlezen via read_csv (komma-gescheiden Python export voor territoria)
+  waarnemingen_raw <- read_csv(waarnemingen_path, show_col_types = FALSE)
+  colnames(waarnemingen_raw) <- tolower(colnames(waarnemingen_raw))
   
-  df_points_proj        <- st_transform(df_points_sf, target_crs)
-  waarneming_smear_proj <- st_transform(waarneming_smear_sf, target_crs)
-  
-  waarneming_blobs_vect  <- vect(waarneming_smear_proj)
-  waarneming_punten_vect <- vect(df_points_proj) 
-  has_observations    <- TRUE
+  if (nrow(waarnemingen_raw) > 0 && "x" %in% colnames(waarnemingen_raw) && "y" %in% colnames(waarnemingen_raw)) {
+    # Omzetten naar Spatial/sf object op basis van Lambert 72 (EPSG:31370)
+    df_points_sf <- st_as_sf(waarnemingen_raw, coords = c("x", "y"), crs = 31370)
+    
+    # Dispersiebuffer (Smear) en ruimtelijke vectoren opbouwen
+    waarneming_smear_sf    <- st_buffer(df_points_sf, dist = buffer_m) %>% st_union() %>% st_sf() 
+    waarneming_blobs_vect  <- vect(waarneming_smear_sf)
+    waarneming_punten_vect <- vect(df_points_sf)
+    has_observations       <- TRUE
+  } else {
+    has_observations       <- FALSE
+  }
 } else {
-  df_points_sf        <- st_sf(st_sfc(crs = 31370)) 
-  waarneming_smear_sf <- st_sf(st_sfc(crs = 31370))
+  message(paste("ℹ️ Geen territoria-bestand gevonden op:", waarnemingen_path))
+  has_observations         <- FALSE
+}
+
+# Failsafe afhandeling bij afwezigheid van observaties
+if (!has_observations) {
+  df_points_sf           <- st_sf(st_sfc(crs = 31370)) 
+  waarneming_smear_sf    <- st_sf(st_sfc(crs = 31370))
   waarneming_blobs_vect  <- vect(st_sf(st_sfc(crs = 31370)))
   waarneming_punten_vect <- vect(st_sf(st_sfc(crs = 31370)))
-  has_observations    <- FALSE
 }
 
 # ------------------------------------------------------------------------------
-# 2. NETWERK-CLUSTERS ANALYSEREN VIA RASTER-UITSNIJDT
+# 2. NETWERK-CLUSTERS ANALYSEREN VIA RASTER-UITSNIJDING
 # ------------------------------------------------------------------------------
 r_scherpe_clusters <- terra::patches(bruinekiekendief_leefgebied1_max, directions = 8, zeroAsNA = TRUE)
 
@@ -544,7 +553,6 @@ if (!all(is.na(terra::values(r_scherpe_clusters, mat=FALSE)))) {
   safe_ha_sum_local <- function(m_ids, r_waarde) {
     if (length(m_ids) == 0) return(0)
     
-    # Maak masker op basis van de lokale rastercellen in De Maten
     m_mask_raw <- terra::ifel(r_net_ids_tv %in% m_ids, 1, NA)
     m_mask_aligned <- terra::crop(m_mask_raw, r_waarde, snap = "near")
     

@@ -387,40 +387,8 @@ gc()
 
 ```{r GladdeSlang Audit Tabel Gehele Clusters Waterdicht}
 # ==============================================================================
-# 1. WAARNEMINGEN INLADEN (GECORRIGEERD EN WATERDICHT)
+# 0. INITIALISEER ALLE TELLERS EN VARIABELEN HARDE OP 0 VOORAF
 # ==============================================================================
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_GladdeSlang.csv")
-
-if (file.exists(waarnemingen_path)) {
-  # Inlezen via de nieuwe Python-export (gescheiden door ;, decimalen zijn .)
-  waarnemingen_raw <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)
-  colnames(waarnemingen_raw) <- tolower(colnames(waarnemingen_raw))
-  
-  # Filter eventuele lege coördinaten eruit
-  waarnemingen_clean <- waarnemingen_raw %>% filter(!is.na(lon) & !is.na(lat))
-  
-  # Omzetten van GPS-graden naar Lambert 72 meters
-  df_points_gps       <- st_as_sf(waarnemingen_clean, coords = c("lon", "lat"), crs = 4326)
-  df_points_sf        <- st_transform(df_points_gps, crs = 31370)
-  
-  # Maak de dispersiebufferwolk (smear)
-  waarneming_buffer_ruw <- st_buffer(df_points_sf, dist = buffer_m)
-  waarneming_union      <- st_union(waarneming_buffer_ruw)
-  waarneming_smear_sf   <- st_sf(id = 1, geometry = waarneming_union)
-  
-  # Omzetten naar Terra SpatVectors
-  waarneming_blobs_vect  <- terra::vect(waarneming_smear_sf)
-  waarneming_punten_vect <- terra::vect(df_points_sf) 
-  has_observations       <- TRUE
-} else {
-  df_points_sf           <- st_sf(st_sfc(crs = 31370)) 
-  waarneming_smear_sf    <- st_sf(st_sfc(crs = 31370))
-  waarneming_blobs_vect  <- vect(st_sf(st_sfc(crs = 31370)))
-  waarneming_punten_vect <- vect(st_sf(st_sfc(crs = 31370)))
-  has_observations       <- FALSE
-}
-
-# Initialiseer alle tabel-tellers vooraf hard op 0 (Voorkomt 0.00 ha / lege tabel-fouten)
 n_cl_pot_bin  <- 0; n_cl_pot_buit  <- 0; ha_pot_bin  <- 0; ha_pot_buit  <- 0
 n_cl_werk_bin <- 0; n_cl_werk_buit <- 0; ha_werk_bin <- 0; ha_werk_buit <- 0
 arpl_count    <- 0; verspreiding_count <- 0; ha_arpl    <- 0; ha_versp    <- 0
@@ -430,13 +398,45 @@ gladdeslang_verspreiding_bin <- template_TV
 grens_sf                     <- sf::st_as_sf(area_shape_proj)
 
 # ==============================================================================
+# 1. WAARNEMINGEN INLADEN (ROBUUST MET DIRECTE X/Y LAMBERT 72)
+# ==============================================================================
+waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_GladdeSlang.csv")
+
+has_observations <- FALSE
+
+if (file.exists(waarnemingen_path)) {
+  waarnemingen_raw <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE, show_col_types = FALSE)
+  colnames(waarnemingen_raw) <- tolower(colnames(waarnemingen_raw))
+  
+  waarnemingen_clean <- waarnemingen_raw %>% filter(!is.na(x) & !is.na(y))
+  
+  if (nrow(waarnemingen_clean) > 0) {
+    df_points_sf          <- st_as_sf(waarnemingen_clean, coords = c("x", "y"), crs = 31370)
+    waarneming_buffer_ruw <- st_buffer(df_points_sf, dist = buffer_m)
+    waarneming_union      <- st_union(waarneming_buffer_ruw)
+    
+    waarneming_smear_sf   <- st_sf(id = 1, geometry = st_cast(waarneming_union, "MULTIPOLYGON"))
+    waarneming_blobs_vect  <- terra::vect(waarneming_smear_sf)
+    waarneming_punten_vect <- terra::vect(df_points_sf) 
+    has_observations       <- TRUE
+  }
+}
+
+if (!has_observations) {
+  df_points_sf           <- st_sf(geometry = st_sfc(crs = 31370)) 
+  waarneming_smear_sf    <- st_sf(geometry = st_sfc(crs = 31370))
+  waarneming_blobs_vect  <- terra::vect(crs = "EPSG:31370")
+  waarneming_punten_vect <- terra::vect(crs = "EPSG:31370")
+}
+
+# ==============================================================================
 # 2. ANALYSE MAXIMAAL POTENTIEEL
 # ==============================================================================
 if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   f_max_totaal <- as.data.frame(terra::freq(cl_max))
   colnames(f_max_totaal) <- c("layer", "Cluster_ID", "Pixels")
   f_max_totaal <- f_max_totaal[!is.na(f_max_totaal$Cluster_ID), ]
-  f_max_totaal$Totaal_ha = f_max_totaal$Pixels * 0.01
+  f_max_totaal$Totaal_ha <- f_max_totaal$Pixels * 0.01
   
   p_max <- terra::as.polygons(cl_max, aggregate = TRUE) %>% sf::st_as_sf()
   colnames(p_max)[1] <- "Cluster_ID"
@@ -491,11 +491,9 @@ if (has_observations && nrow(df_points_sf) > 0 && !all(is.na(terra::values(cl_ma
     arpl_count         <- length(ids_arpl)
     verspreiding_count <- length(ids_arpl)
     
-    # FIX: Bereken de hectares direct loepzuiver via het resulterende werkelijke habitat-raster
     global_arpl_sum <- terra::global(gladdeslang_arpl_opp, "sum", na.rm = TRUE)[[1]]
-    
-    ha_arpl <- round(global_arpl_sum * 0.01, 2)
-    ha_versp <- round(global_arpl_sum * 0.01, 2)
+    ha_arpl         <- round(global_arpl_sum * 0.01, 2)
+    ha_versp        <- round(global_arpl_sum * 0.01, 2)
   }
 }
 

@@ -430,8 +430,13 @@ gc()
 
 # Resultaten en Statistiek
 ```{r Resultaten en statistiek}
-# Dynamisch pad naar de waarnemingen van de woudaap
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_woudaap.csv")
+# --- RECHTSTREEKSE KOPPELING MET DE GEGENEREERDE RASTERS VAN DE WOUDAAP ---
+final_max <- woudaap_finaal_max
+final_opp <- woudaap_finaal_opp
+opp_bron  <- woudaap_finaal_opp
+
+# 1. Pad naar het gefilterde territoria-bestand (Python export op broedcode >= 4)
+waarnemingen_path <- here("data/input/Territoria_Soorten/TV_Territoria_Woudaap.csv")
 
 # ==============================================================================
 # ECO-VISUELE FIX: Clusters definiëren via de echte 500m model-zoekstraal!
@@ -460,23 +465,35 @@ if (!all(is.na(terra::values(final_max, mat=FALSE)))) {
   cl_max <- final_max * NA
 }
 
-# Maak een binaire mal van de Maten ZONDER de buffer
+# Maak een binaire mal van Turnhouts Vennegebied ZONDER de buffer
 binnen_masker <- terra::rasterize(area_shape_proj, id_raster_TV, field = 1, background = 0)
 
-# --- WAARNEMINGEN INLEZEN ---
+# --- TERRITORIA INLEZEN ---
 if (file.exists(waarnemingen_path)) {
-  waarnemingen_raw <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)
-  df_points_sf <- st_as_sf(waarnemingen_raw, coords = c("x", "y"), crs = 31370)
-  waarneming_smear_sf <- st_buffer(df_points_sf, dist = buffer_m) %>% st_union() %>% st_sf() 
-  waarneming_blobs_vect  <- vect(waarneming_smear_sf)
-  waarneming_punten_vect <- vect(df_points_sf)
-  has_observations <- TRUE
+  # Inlezen via read_csv (komma-gescheiden Python export voor territoria)
+  waarnemingen_raw <- read_csv(waarnemingen_path, show_col_types = FALSE)
+  colnames(waarnemingen_raw) <- tolower(colnames(waarnemingen_raw))
+  
+  if (nrow(waarnemingen_raw) > 0 && "x" %in% colnames(waarnemingen_raw) && "y" %in% colnames(waarnemingen_raw)) {
+    df_points_sf           <- st_as_sf(waarnemingen_raw, coords = c("x", "y"), crs = 31370)
+    waarneming_smear_sf    <- st_buffer(df_points_sf, dist = buffer_m) %>% st_union() %>% st_sf() 
+    waarneming_blobs_vect  <- vect(waarneming_smear_sf)
+    waarneming_punten_vect <- vect(df_points_sf)
+    has_observations       <- TRUE
+  } else {
+    has_observations       <- FALSE
+  }
 } else {
-  df_points_sf <- st_sf(st_sfc(crs = 31370)) 
-  waarneming_smear_sf <- st_sf(st_sfc(crs = 31370))
+  message(paste("ℹ️ Geen territoria-bestand gevonden op pad:", waarnemingen_path))
+  has_observations         <- FALSE
+}
+
+# Failsafe afhandeling bij afwezigheid van territoria
+if (!has_observations) {
+  df_points_sf           <- st_sf(st_sfc(crs = 31370)) 
+  waarneming_smear_sf    <- st_sf(st_sfc(crs = 31370))
   waarneming_blobs_vect  <- vect(st_sf(st_sfc(crs = 31370)))
   waarneming_punten_vect <- vect(st_sf(st_sfc(crs = 31370)))
-  has_observations <- FALSE
 }
 
 verspreiding_raster <- terra::rast(template_TV, vals = NA)
@@ -506,7 +523,7 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   colnames(zonal_zone) <- c("ID", "In_TV")
   ids_die_TV_raken <- zonal_zone$ID[!is.na(zonal_zone$In_TV) & zonal_zone$In_TV > 0]
   
-  # 4. DYNAMISCHE FILTERING
+  # 4. FILTERING OP MINIMAAL HABITAT (drempel via oppervlakte_ha)
   ids_potentieel_totaal <- stats_gecombineerd$ID
   ids_werkelijk_totaal  <- stats_gecombineerd$ID[stats_gecombineerd$Werk_ha >= oppervlakte_ha]
   
@@ -517,7 +534,7 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   ids_werk_bin  <- intersect(ids_werkelijk_totaal, ids_die_TV_raken)
   ids_werk_buit <- setdiff(ids_werkelijk_totaal, ids_die_TV_raken)
   
-  # A. ARPL Extractie
+  # A. ARPL EXTRACTIE (Uitsluitend filteren op basis van de ECHTE goedgekeurde werkelijke ID's)
   if(has_observations && nrow(df_points_sf) > 0) {
     extract_ids_max <- terra::extract(cl_max, waarneming_blobs_vect, ID = FALSE)
     ids_raken_waarneming <- if(nrow(extract_ids_max) > 0) unique(na.omit(extract_ids_max[[1]])) else c()
@@ -526,7 +543,7 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   }
   ids_actueel_relevant <- intersect(ids_werkelijk_totaal, ids_raken_waarneming)
 
-  # B. Actuele Verspreiding Extractie
+  # B. ACTUELE VERSPREIDING EXTRACTIE
   if(has_observations && nrow(df_points_sf) > 0) {
     extract_ids_verspr <- terra::extract(cl_max, waarneming_punten_vect, ID = FALSE)
     ids_raken_punten <- if(nrow(extract_ids_verspr) > 0) unique(na.omit(extract_ids_verspr[[1]])) else c()
@@ -537,7 +554,7 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   
   if(length(ids_verspreiding_clusters) > 0) {
     masker_verspr <- cl_max %in% ids_verspreiding_clusters
-    clusters_actueel <- terra::mask(final_max, masker_verspr)
+    clusters_actueel <- terra::mask(final_opp, masker_verspr)
     verspreiding_raster <- terra::ifel(!is.na(clusters_actueel), 1, NA)
     verspreiding_netwerk_count <- length(ids_verspreiding_clusters)
   }

@@ -52,7 +52,7 @@ heeft_waarnemingen_bestand <- function(soort_naam, map_waarnemingen) {
 
 
 # ------------------------------------------------------------------------------
-# HULPFUNCTIE: Moet dit bestand opnieuw geknit worden? (Check laatste 5 dagen)
+# HULPFUNCTIE: Moet dit bestand opnieuw geknit worden? (Check laatste dag)
 # ------------------------------------------------------------------------------
 moet_knitten <- function(bestandsnaam, map) {
   pad_naar_bestand <- file.path(map, bestandsnaam)
@@ -62,15 +62,15 @@ moet_knitten <- function(bestandsnaam, map) {
     return(TRUE) # Bestaat niet, dus we moeten knitten
   }
   
-  # Check 2: Is het in de afgelopen 5 dagen aangemaakt/gewijzigd?
+  # Check 2: Is het in de afgelopen dag aangemaakt/gewijzigd?
   info            <- file.info(pad_naar_bestand)
   wijzigingsdatum <- as.Date(info$mtime)
-  grens_datum     <- Sys.Date() - 5
+  grens_datum     <- Sys.Date() - 1
   
   if (wijzigingsdatum >= grens_datum) {
-    return(FALSE) # Bestaat al en is max 5 dagen oud -> overslaan!
+    return(FALSE) # Bestaat al en is max dag oud -> overslaan!
   } else {
-    return(TRUE)  # Bestaat wel, maar is ouder dan 5 dagen -> opnieuw knitten
+    return(TRUE)  # Bestaat wel, maar is ouder dan dag -> opnieuw knitten
   }
 }
 
@@ -92,7 +92,7 @@ for(script in unieke_tv_scripts) {
   
   # --- SLIMME CHECK ---
   if (!moet_knitten(output_html, OUTPUT_DIR)) {
-    message("⏭️  OVERSLAAN: ", output_html, " bestaat al en is de afgelopen 5 dagen al gemaakt.")
+    message("⏭️  OVERSLAAN: ", output_html, " bestaat al en is de afgelopen dag al gemaakt.")
     algemeen_logboek[[bestandsnaam]] <- data.frame(
       Item = bestandsnaam, Type = "Uniek TV Script", Status = "GEKOZEN_OVERSLAAN", Fout = "Reeds vandaag geknit", stringsAsFactors = FALSE
     )
@@ -126,13 +126,20 @@ for(script in unieke_tv_scripts) {
 # ------------------------------------------------------------------------------
 excel_data <- read_excel(here("data/input/Excel_files/Soortenlijst_Maatwerkgebieden.xlsx"))
 
+# Opschonen van kolomnamen (verwijder eventuele spaties voor/na kolomnamen)
+colnames(excel_data) <- trimws(colnames(excel_data))
+
 soorten_lijst <- excel_data %>% 
-  # Filter op automatische scripts ("ja" negeert eventuele hoofdletters via tolower)
+  # Filter op automatische scripts
   filter(tolower(Automatisch) == "ja") %>% 
   filter(Turnhouts_Vennegebied == 1) %>% 
-  pull(Soort) %>% 
-  unique() %>% 
+  # Haal de waarden op uit de kolom 'Nederlandse naam'
+  pull(`Nederlandse naam`) %>% 
   na.omit() %>%
+  # CRUCIALE FIX: Omzetten naar kleine letters én alle spaties verwijderen
+  # Voorbeeld: "Middelste bonte specht" -> "middelstebontespecht"
+  map_chr(~ tolower(gsub(" ", "", trimws(.x)))) %>%
+  unique() %>%
   # ENKEL soorten behouden waarvoor een Waarnemingen_<Soort>.csv bestaat
   keep(~ heeft_waarnemingen_bestand(.x, MAP_WAARNEMINGEN))
 
@@ -147,12 +154,12 @@ draai_leefgebied_model <- function(huidige_soort, script_pad) {
   
   # --- SLIMME CHECK ---
   if (!moet_knitten(output_file_name, OUTPUT_DIR)) {
-    message("   ⏭️  OVERSLAAN: ", output_file_name, " bestaat al en is de afgelopen 5 dagen al gemaakt.")
+    message("   ⏭️  OVERSLAAN: ", output_file_name, " bestaat al en is de afgelopen dag al gemaakt.")
     return(data.frame(
       Item = huidige_soort,
       Type = "Simpele Soort (Normaal)",
       Status = "GEKOZEN_OVERSLAAN",
-      Fout = "Reeds geknit de afgelopen 5 dagen",
+      Fout = "Reeds geknit de afgelopen dag",
       stringsAsFactors = FALSE
     ))
   }

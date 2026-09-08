@@ -1,1 +1,18 @@
 Wulp en Grutto gecombineerd = codes combineren (zelfde ecologisch verhaal maar dus steeds minst strenge van de 2 nemen: oppervlakte etc.)
+
+Ecologisch Verhaal — De Weidevogel als Paraplu1.
+Van Soortspecifiek naar de "Parapluweidevogel".
+In het natuurbeheer en de ruimtelijke ecologie wordt de Grutto (Limosa limosa) beschouwd als gidssoort voor hoogwaardige, mesofiele en natte tot vochtige graslanden met een hoog grondwaterpeil en een rijke bodemfauna. 
+De Wulp (Numenius arquata) daarentegen heeft een aanzienlijk groter ruimtebeslag en stelt extra eisen aan kleinschalige tot grootschalige openheid, waarbij ook drogere graslanden, heideterreinen, vennen en moerasvegetaties (biotoop_overig) intensief benut worden voor foerageren en nestelen.
+Door de ecologische profielen van de Grutto en de Wulp te combineren tot één overkoepelend "Weidevogel-model", ontstaat een paraplumodel (umbrella species approach). 
+Een landschap dat voldoet aan de gecombineerde voorwaarden van Grutto en Wulp biedt automatisch een geschikt leefgebied voor vrijwel alle overige Europese weidevogels, waaronder de Kievit, Tureluur, Scholekster en Watersnip.
+
+Onderbouwing van de "Minder Strikte" Logica (Synthese)
+Om te voorkomen dat waardevolle, functionele leefgebieden buiten de boot vallen, hanteren we een inclusieve benadering waarin de ruimste en meest belevingsgerichte parameters van beide soorten worden overgenomen: Vegetatie- en Habitatsoorten (Samenvoeging van BWK-codes): Alle typen cultuurgraslanden (cultuur0a), hooilanden, natte graslanden (biotoop_grasland_nat), heide, heischrale graslanden, moerassen en klein water worden samengevoegd tot één brede biotoopmatrix.
+De Wulp brengt een zeer brede range aan schrale, drogere en ruigere habitats in (biotoop_overig zoals 4010, 4030, 6230, 7110), terwijl de Grutto zorgt voor de verankering in productievere, insectenrijke vochtige graslanden (6410, 6510, hj, hc).
+Effening van Uitsluitingsfilters (Verstoringsgevoeligheid): Bebouwing: De Grutto verdraagt geen bebouwingsclusters >10 ha binnen 100 m.
+In het gecombineerde script behouden we deze buffer, maar sluiten we akkerpercelen en bebouwingsranden alleen uit waar ze daadwerkelijk een harde fysieke barrière vormen. 
+Hooggroen/Bos: Hooggroen (bomen/bos) groter dan 20 are verstoort de openheid. De uitsluitingszone wordt vastgezet op de minst belemmerende afstand (50 m in plaats van grotere voorzorgsbuffers).
+Ruimtelijke Schaal- en Oppervlakteeisen (De Minste Voorwaarde): Minimale Kernoppervlakte: De Grutto vereist een kernbiotoop van minimaal 10 ha (met netwerkkoppeling tot 25 ha), terwijl het Wulpenmodel traditioneel drempels van 100 ha gebruikt.
+Ecologische keus: Voor het Weidevogelscript hanteren we de drempelwaarde van 10 ha voor kernen en 25 ha voor het totale gekoppelde netwerk (minst strikt ten opzichte van de 100 ha van de Wulp). Hierdoor worden kleinschaligere maar hoogwaardige mozaïeklandschappen niet langer uitgesloten, wat cruciaal is voor versnipperde Vlaamse landschappen.
+Koppelafstand tussen biotopen: We hanteren een ruimhartige koppelafstand van 200 m (via 100 m netwerkbuffering), waardoor kleine plukjes geschikt grasland en moeras binnen vliegafstand als één functioneel leefgebied worden geanalyseerd.

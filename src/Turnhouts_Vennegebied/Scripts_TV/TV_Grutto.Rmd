@@ -848,27 +848,42 @@ grutto_kaart_A <- maak_kaart_laag(resA_strikt)
 ```{r waarnemingen inladen en ARPL kernen identificeren}
 # --- STAP 11.5 & 11.6: ARPL & ACTUELE VERSPREIDING (TOTAAL LEEFGEBIED: KERN + BOUWSTEEN) ---
 
-# 1. Waarnemingen inladen
-waarnemingen_path <- here("data/input/Waarnemingen_Soorten/Turnhouts_Vennegebied/Waarnemingen_Grutto.csv")
+# 1. Gefilterde territoria-CSV inlezen (Python export op broedcode >= 4)
+waarnemingen_path <- here("data/input/Territoria_Soorten/TV_Territoria_Grutto.csv")
 
 if (file.exists(waarnemingen_path)) {
-  waarnemingen_raw     <- read_delim(waarnemingen_path, delim = ";", escape_double = FALSE, trim_ws = TRUE)
-  df_points_sf         <- st_as_sf(waarnemingen_raw, coords = c("x", "y"), crs = 31370)
-  waarneming_smear_sf  <- st_buffer(df_points_sf, dist = buffer_m) %>% st_union() %>% st_sf()
-  waarneming_blobs_vect  <- vect(waarneming_smear_sf)
-  waarneming_punten_vect <- vect(df_points_sf) 
-  has_observations     <- TRUE
+  # Inlezen via read_csv (komma-gescheiden Python export voor territoria)
+  waarnemingen_raw <- read_csv(waarnemingen_path, show_col_types = FALSE)
+  colnames(waarnemingen_raw) <- tolower(colnames(waarnemingen_raw))
+  
+  if (nrow(waarnemingen_raw) > 0 && "x" %in% colnames(waarnemingen_raw) && "y" %in% colnames(waarnemingen_raw)) {
+    # Omzetten naar Spatial/sf object op basis van Lambert 72 (EPSG:31370)
+    df_points_sf <- st_as_sf(waarnemingen_raw, coords = c("x", "y"), crs = 31370)
+    
+    # Dispersiebuffer (Smear) en ruimtelijke vectoren opbouwen
+    waarneming_smear_sf    <- st_buffer(df_points_sf, dist = buffer_m) %>% st_union() %>% st_sf()
+    waarneming_blobs_vect  <- vect(waarneming_smear_sf)
+    waarneming_punten_vect <- vect(df_points_sf) 
+    has_observations       <- TRUE
+  } else {
+    has_observations       <- FALSE
+  }
 } else {
-  df_points_sf         <- st_sf(st_sfc(crs = 31370)) 
-  waarneming_smear_sf  <- st_sf(st_sfc(crs = 31370))
+  message(paste("ℹ️ Geen territoria-bestand gevonden op:", waarnemingen_path))
+  has_observations         <- FALSE
+}
+
+# Failsafe opvangsysteem bij afwezigheid van territoria
+if (!has_observations) {
+  df_points_sf           <- st_sf(st_sfc(crs = 31370)) 
+  waarneming_smear_sf    <- st_sf(st_sfc(crs = 31370))
   waarneming_blobs_vect  <- vect(st_sf(st_sfc(crs = 31370)))
   waarneming_punten_vect <- vect(st_sf(st_sfc(crs = 31370)))
-  has_observations     <- FALSE
 }
 
 # Initialiseer de rasters en tellers
-grutto_arpl_opp         <- terra::rast(template_TV, vals = NA)
-grutto_verspreiding_bin <- terra::rast(template_TV, vals = NA) 
+grutto_arpl_opp            <- terra::rast(template_TV, vals = NA)
+grutto_verspreiding_bin    <- terra::rast(template_TV, vals = NA) 
 arpl_netwerk_count         <- 0
 verspreiding_netwerk_count <- 0
 ha_arpl_kernen             <- 0
@@ -876,7 +891,7 @@ ha_verspreiding_bin        <- 0
 
 if (has_observations && !is.null(resB_strikt) && (!all(is.na(terra::values(resB_strikt$kern, mat=FALSE))) || !all(is.na(terra::values(resB_strikt$bouw, mat=FALSE))))) {
   
-  # Het TOTALE LEEFGEBIED (Kern + Bijkomend Habitat/Bouwsteen gecombineerd)
+  # Het TOTALE LEEFGEBIED (Kern + Bijkomend Habitat/Bouwsteen gecombineerd op het Wereldfractie/Opp-spoor)
   r_net_totaal_opp <- terra::cover(resB_strikt$kern, resB_strikt$bouw)
   
   # Netwerken bepalen op basis van de 100m bufferkoppeling
@@ -886,7 +901,7 @@ if (has_observations && !is.null(resB_strikt) && (!all(is.na(terra::values(resB_
   
   # --- EXTRACTION A: ARPL (Smear zone x Totaal Leefgebied) ---
   extract_ids_arpl <- terra::extract(r_opp_net_ids, waarneming_blobs_vect, ID = FALSE)
-  ids_netwerken_raken_arpl <- unique(na.omit(extract_ids_arpl[[1]]))
+  ids_netwerken_raken_arpl <- if(!is.null(extract_ids_arpl) && nrow(extract_ids_arpl) > 0) unique(na.omit(extract_ids_arpl[[1]])) else c()
   
   if(length(ids_netwerken_raken_arpl) > 0) {
     m_arpl <- r_opp_net_ids %in% ids_netwerken_raken_arpl
@@ -898,7 +913,7 @@ if (has_observations && !is.null(resB_strikt) && (!all(is.na(terra::values(resB_
   
   # --- EXTRACTION B: ACTUELE VERSPREIDING (Punten x Totaal Leefgebied) ---
   extract_ids_verspr <- terra::extract(r_opp_net_ids, waarneming_punten_vect, ID = FALSE)
-  ids_netwerken_raken_punten <- unique(na.omit(extract_ids_verspr[[1]]))
+  ids_netwerken_raken_punten <- if(!is.null(extract_ids_verspr) && nrow(extract_ids_verspr) > 0) unique(na.omit(extract_ids_verspr[[1]])) else c()
   
   if(length(ids_netwerken_raken_punten) > 0) {
     m_verspr <- r_opp_net_ids %in% ids_netwerken_raken_punten

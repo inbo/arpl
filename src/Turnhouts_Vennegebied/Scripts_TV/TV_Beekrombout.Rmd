@@ -30,7 +30,7 @@ library(kableExtra)
 library(data.table)
 
 conflicted::conflicts_prefer(dplyr::filter)
-conflicted::conflicted::conflicts_prefer(dplyr::select)
+conflicted::conflicts_prefer(dplyr::select)
 conflicted::conflicts_prefer(terra::intersect)
 conflicted::conflicts_prefer(terra::any)
 
