@@ -89,10 +89,10 @@ for(script in unieke_scripts) {
 # 2. OPTIONEEL: SIMPELE SOORTEN VIA GENERIEK SCRIPT (Indien van toepassing)
 # ------------------------------------------------------------------------------
 if (file.exists(soorten_script_pad)) {
-  excel_data <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
+  excel_data <- read_excel(here("data/input/Excel_files/Soortenlijst_Maatwerkgebieden_Gefilterd.xlsx"))
   
   soorten_lijst <- excel_data %>% 
-    filter(Script == "Simpel") %>%                 
+    filter(Automatisch == "ja") %>%                 
     filter(Turnhouts_Vennegebied == 1) %>%        
     pull(Soort) %>%                                
     unique() %>%                                   

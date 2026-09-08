@@ -1,5 +1,5 @@
 ---
-title: "Leefgebiedenscript in R: Turnhouts Vennegebied — Weidevogel (Integraal zonder Kernen)"
+title: "Leefgebiedenscript in R: Turnhouts Vennegebied — Weidevogel (Integraal & Territoria)"
 author: "Bert Van Hecke"
 date: "`r Sys.Date()`"
 output: 
@@ -43,6 +43,7 @@ calc_ha_exact <- function(r) {
   return(as.numeric(val))
 }
 
+# GEHEUGEN-VEILIGE CLUSTER FILTER (GEEN std::bad_alloc MEER)
 cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
   if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
     return(list(raster = masker * NA, clusters = masker * NA))
@@ -50,9 +51,15 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
   
   if (dist_m > 0) {
     r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
-    r_buffered <- terra::buffer(r_binair, width = dist_m / 2)
+    
+    # RAM-beveiliging: schrijf tijdelijke buffer naar schijf indien te groot
+    tmp_buf_file <- tempfile(fileext = ".tif")
+    r_buffered <- terra::buffer(r_binair, width = dist_m / 2, filename = tmp_buf_file, overwrite = TRUE)
+    
     cl_network <- terra::patches(r_buffered, directions = 4, zeroAsNA = TRUE)
     cl_biotoop_only <- terra::mask(cl_network, masker)
+    
+    if(file.exists(tmp_buf_file)) unlink(tmp_buf_file)
   } else {
     cl_network <- terra::patches(masker, directions = 8, zeroAsNA = TRUE)
     cl_biotoop_only <- cl_network
@@ -84,8 +91,8 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
 }
 
 terraOptions(
-  memfrac = 0.8,
-  tempdir = tempdir(),
+  memfrac = 0.7,        # Gebruik max 70% RAM
+  tempdir = tempdir(),  # Automatische schijf-swapping
   verbose = FALSE
 )
 ```
@@ -325,7 +332,105 @@ weidevogel_finaal_opp <- terra::mask(weidevogel_biotoop_schoon_opp, res_netwerk_
 gc()
 ```
 
-```{r}
+# Territoria & ARPL Integratie (`TV_Territoria_Weidevogel.csv`)
+```{r Territoria & ARPL}
+path_territoria <- here("data/input/Territoria_Soorten/TV_Territoria_Weidevogel.csv")
+
+weidevogel_arpl_opp         <- terra::rast(template_TV, vals = NA)
+weidevogel_verspreiding_bin <- terra::rast(template_TV, vals = NA) 
+arpl_netwerk_count         <- 0
+verspreiding_netwerk_count <- 0
+ha_arpl_leefgebied         <- 0
+ha_verspreiding_bin        <- 0
+
+has_observations <- FALSE
+
+if (file.exists(path_territoria)) {
+  # 1. Probeer het bestand in te lezen (eerst puntkomma, anders komma)
+  territoria_raw <- tryCatch({
+    read_delim(path_territoria, delim = ";", show_col_types = FALSE)
+  }, error = function(e) {
+    read_csv(path_territoria, show_col_types = FALSE)
+  })
+  
+  # Als er maar 1 kolom geparst is, was het scheidingsteken waarschijnlijk een komma
+  if (ncol(territoria_raw) == 1) {
+    territoria_raw <- read_csv(path_territoria, show_col_types = FALSE)
+  }
+  
+  if (nrow(territoria_raw) > 0) {
+    # 2. Zet alle kolomnamen om naar kleine letters en verwijder spaties
+    colnames(territoria_raw) <- tolower(trimws(colnames(territoria_raw)))
+    
+    # 3. Zoek flexibel naar X- en Y-kolomnamen
+    col_x <- intersect(c("x", "x_coord", "xcoord", "lambert_x", "lambertx", "lon", "longitude"), colnames(territoria_raw))[1]
+    col_y <- intersect(c("y", "y_coord", "ycoord", "lambert_y", "lamberty", "lat", "latitude"), colnames(territoria_raw))[1]
+    
+    if (!is.na(col_x) && !is.na(col_y)) {
+      message(paste0("✓ Territoria ingelezen. Coördinatenkolommen gevonden: '", col_x, "' en '", col_y, "'."))
+      
+      # Maak numeriek voor de zekerheid (vervang eventuele komma-decimalen)
+      territoria_raw[[col_x]] <- as.numeric(gsub(",", ".", as.character(territoria_raw[[col_x]])))
+      territoria_raw[[col_y]] <- as.numeric(gsub(",", ".", as.character(territoria_raw[[col_y]])))
+      
+      # Filter eventuele lege coördinaten uit
+      territoria_clean <- territoria_raw %>% filter(!is.na(.data[[col_x]]) & !is.na(.data[[col_y]]))
+      
+      if (nrow(territoria_clean) > 0) {
+        df_points_sf           <- st_as_sf(territoria_clean, coords = c(col_x, col_y), crs = 31370)
+        waarneming_smear_sf   <- st_buffer(df_points_sf, dist = buffer_m) %>% st_union() %>% st_sf()
+        waarneming_blobs_vect  <- vect(waarneming_smear_sf)
+        waarneming_punten_vect <- vect(df_points_sf) 
+        has_observations       <- TRUE
+      }
+    } else {
+      warning(paste("Kon geen coördinatenkolommen (X/Y) vinden in", path_territoria, 
+                    ". Gevonden kolommen zijn:", paste(colnames(territoria_raw), collapse = ", ")))
+    }
+  }
+} else {
+  warning(paste("Bestand niet gevonden op pad:", path_territoria))
+}
+
+# Dummy SF objecten aanmaken als er geen waarnemingen zijn/gevonden worden
+if (!has_observations) {
+  df_points_sf           <- st_sf(st_sfc(crs = 31370)) 
+  waarneming_smear_sf   <- st_sf(st_sfc(crs = 31370))
+  waarneming_blobs_vect  <- vect(st_sf(st_sfc(crs = 31370)))
+  waarneming_punten_vect <- vect(st_sf(st_sfc(crs = 31370)))
+}
+
+# Ruimtelijke overlay (ARPL & Actuele Verspreiding)
+if (has_observations && !is.null(weidevogel_finaal_opp) && !all(is.na(terra::values(weidevogel_finaal_opp, mat=FALSE)))) {
+  
+  r_buf_opp <- terra::buffer(weidevogel_finaal_opp, width = koppel_afstand_m / 2)
+  r_opp_net_ids <- terra::patches(r_buf_opp, directions = 8, zeroAsNA = TRUE)
+  r_opp_net_ids <- terra::mask(r_opp_net_ids, weidevogel_finaal_opp)
+  
+  # 1. ARPL Extraction (Welke netwerken vallen binnen de 500m dispersie van territoria)
+  extract_ids_arpl <- terra::extract(r_opp_net_ids, waarneming_blobs_vect, ID = FALSE)
+  ids_netwerken_arpl <- unique(na.omit(extract_ids_arpl[[1]]))
+  
+  if(length(ids_netwerken_arpl) > 0) {
+    m_arpl <- r_opp_net_ids %in% ids_netwerken_arpl
+    weidevogel_arpl_opp <- terra::mask(weidevogel_finaal_opp, m_arpl)
+    arpl_netwerk_count <- length(ids_netwerken_arpl)
+    ha_arpl_leefgebied <- calc_ha_exact(weidevogel_arpl_opp)
+  }
+  
+  # 2. Actuele Verspreiding Extraction (Netwerken die direct territoriapunten bevatten)
+  extract_ids_verspr <- terra::extract(r_opp_net_ids, waarneming_punten_vect, ID = FALSE)
+  ids_netwerken_verspr <- unique(na.omit(extract_ids_verspr[[1]]))
+  
+  if(length(ids_netwerken_verspr) > 0) {
+    m_verspr <- r_opp_net_ids %in% ids_netwerken_verspr
+    clusters_actueel <- terra::mask(weidevogel_finaal_opp, m_verspr)
+    weidevogel_verspreiding_bin <- terra::ifel(!is.na(clusters_actueel) & clusters_actueel > 0, 1, NA)
+    verspreiding_netwerk_count <- length(ids_netwerken_verspr)
+    ha_verspreiding_bin <- calc_ha_exact(clusters_actueel)
+  }
+}
+
 get_classified_netwerk_stats <- function(r_finaal) {
   if (is.null(r_finaal) || all(is.na(terra::values(r_finaal, mat=FALSE)))) {
     return(list(n_binnen = 0, n_buiten = 0, ha_binnen = 0, ha_buiten = 0))
@@ -356,60 +461,71 @@ weidevogel_audit_tabel <- data.frame(
   Type = c("Maximaal Potentieel ((Deels) Binnen TV Gebied)", 
            "Maximaal Potentieel (Volledig Buiten TV Gebied)", 
            "Werkelijk Habitat ((Deels) Binnen TV Gebied)", 
-           "Werkelijk Habitat (Volledig Buiten TV Gebied)"),
-  Netwerken = c(stats_max$n_binnen, stats_max$n_buiten, stats_opp$n_binnen, stats_opp$n_buiten),
-  Oppervlakte_ha = c(round(stats_max$ha_binnen, 2), round(stats_max$ha_buiten, 2), round(stats_opp$ha_binnen, 2), round(stats_opp$ha_buiten, 2))
+           "Werkelijk Habitat (Volledig Buiten TV Gebied)",
+           "Actueel Relevant (ARPL - Territoria gekoppeld)",
+           "Actuele Verspreiding (Territoria netwerken in ha)"),
+  Netwerken = c(stats_max$n_binnen, stats_max$n_buiten, stats_opp$n_binnen, stats_opp$n_buiten, arpl_netwerk_count, verspreiding_netwerk_count),
+  Oppervlakte_ha = c(round(stats_max$ha_binnen, 2), round(stats_max$ha_buiten, 2), round(stats_opp$ha_binnen, 2), round(stats_opp$ha_buiten, 2), round(ha_arpl_leefgebied, 2), round(ha_verspreiding_bin, 2))
 )
 
 weidevogel_audit_tabel %>% 
-  knitr::kable(caption = "Potentieel leefgebied Weidevogel (Integraal model)") %>% 
+  knitr::kable(caption = "Resultaten Weidevogel-analyse (Inclusief Territoria)") %>% 
   kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
 ```{r}
-# Voorbereiden van polygonen op basis van werkelijk leefgebied (Spoor B)
+if (has_observations && nrow(df_points_sf) > 0) {
+  smear_web  <- st_transform(waarneming_smear_sf, 4326)
+  points_web <- st_transform(df_points_sf, 4326)
+} else {
+  smear_web  <- st_sf(st_sfc(crs = 4326))
+  points_web <- st_sf(st_sfc(crs = 4326))
+}
+
 if (!is.null(weidevogel_finaal_opp) && !all(is.na(terra::values(weidevogel_finaal_opp, mat=FALSE)))) {
   
-  # Netwerkwolken bepalen op basis van de koppelafstand
   r_buf_opp <- terra::buffer(weidevogel_finaal_opp, width = koppel_afstand_m / 2)
-  p_net_wolken <- terra::patches(r_buf_opp, directions = 8, zeroAsNA = TRUE) %>% 
-                  terra::as.polygons(aggregate = TRUE) %>% 
-                  sf::st_as_sf()
+  cl_ids_rast <- terra::patches(r_buf_opp, directions = 8, zeroAsNA = TRUE)
+  cl_ids_biotoop <- terra::mask(cl_ids_rast, weidevogel_finaal_opp)
   
+  p_net_wolken <- terra::as.polygons(cl_ids_rast, aggregate = TRUE) %>% sf::st_as_sf()
   colnames(p_net_wolken)[1] <- "Netwerk_ID"
   
-  # Vectoriseer het werkelijke habitat
   poly_finaal <- terra::as.polygons(weidevogel_finaal_opp > 0, aggregate = TRUE) %>% 
     sf::st_as_sf() %>% 
     sf::st_transform(4326)
-  
-  # Koppel Netwerk_IDs en bereken netto hectares per cluster via zonal
-  cl_ids_rast <- terra::patches(r_buf_opp, directions = 8, zeroAsNA = TRUE)
-  cl_ids_biotoop <- terra::mask(cl_ids_rast, weidevogel_finaal_opp)
   
   stats_ha <- terra::zonal(weidevogel_finaal_opp, cl_ids_biotoop, fun = "sum", na.rm = TRUE)
   colnames(stats_ha) <- c("Netwerk_ID", "Netto_ha")
   
   poly_finaal <- sf::st_join(poly_finaal, sf::st_transform(p_net_wolken, 4326), join = sf::st_intersects) %>%
-    left_join(stats_ha, by = "Netwerk_ID") %>%
-    mutate(
-      Popup = paste0(
-        "<div style='font-family: Arial; min-width: 180px;'>",
-        "<strong>Potentieel Weidevogelhabitat</strong><br><hr>",
-        "<strong>Netwerk ID:</strong> #", Netwerk_ID, "<br>",
-        "<strong>Netto Oppervlakte:</strong> ", round(Netto_ha, 2), " ha",
-        "</div>"
-      )
+    left_join(stats_ha, by = "Netwerk_ID")
+    
+  if (nrow(smear_web) > 0) {
+    poly_finaal$ARPL_Status <- sf::st_intersects(poly_finaal$geometry, smear_web, sparse = FALSE)[,1]
+  } else {
+    poly_finaal$ARPL_Status <- FALSE
+  }
+  
+  poly_finaal <- poly_finaal %>% mutate(
+    Popup = paste0(
+      "<div style='font-family: Arial; min-width: 200px;'>",
+      "<strong>Weidevogel Habitat</strong><br><hr>",
+      "<strong>Netwerk ID:</strong> #", Netwerk_ID, "<br>",
+      "<strong>Netto Oppervlakte:</strong> ", round(Netto_ha, 2), " ha<br>",
+      "<strong>Actueel Relevant (ARPL):</strong> ", 
+      ifelse(ARPL_Status, "<span style='color:green; font-weight:bold;'>JA (Territorium aanwezig)</span>", 
+                          "<span style='color:red;'>NEE</span>"),
+      "</div>"
     )
+  )
 } else {
   poly_finaal <- NULL
 }
 
-# Transformeer rasters naar Web Mercator voor weergave
 r_web_max <- if(!is.null(weidevogel_finaal_max)) terra::project(weidevogel_finaal_max, "EPSG:4326", method = "near") else NULL
 r_web_opp <- if(!is.null(weidevogel_finaal_opp)) terra::project(weidevogel_finaal_opp, "EPSG:4326", method = "near") else NULL
 
-# Maak Leaflet Kaart
 m <- leaflet() %>%
   addTiles(group = "OSM (Standaardkaart)") %>%
   addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet (Luchtfoto)")
@@ -426,12 +542,26 @@ if(!is.null(poly_finaal) && nrow(poly_finaal) > 0) {
   m <- m %>% addPolygons(
     data = poly_finaal,
     fillColor = "#27AE60",
-    fillOpacity = 0.5,
-    color = "#1E8449",
-    weight = 1.5,
+    fillOpacity = 0.6,
+    color = ~ifelse(ARPL_Status, "#DFFF00", "#1E8449"), # Felgeel randje voor ARPL!
+    weight = ~ifelse(ARPL_Status, 3, 1),
     popup = ~Popup,
     label = ~paste0("Netwerk #", Netwerk_ID, ": ", round(Netto_ha, 2), " ha"),
-    group = "Geselecteerde Netwerken (Vector)"
+    group = "Geselecteerde Netwerken"
+  )
+}
+
+if (nrow(smear_web) > 0) {
+  m <- m %>% addPolygons(
+    data = smear_web, color = "#3498DB", weight = 2, fill = FALSE, dashArray = "10, 5",
+    group = "Territoria Dispersie (500m)"
+  )
+}
+
+if (nrow(points_web) > 0) {
+  m <- m %>% addCircles(
+    data = points_web, color = "black", weight = 1, fillColor = "yellow", fillOpacity = 1,
+    radius = 20, group = "Territoria (Punten)"
   )
 }
 
@@ -439,7 +569,7 @@ m <- m %>%
   addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 2.5, group = "Grens Studiegebied") %>%
   addLayersControl(
     baseGroups = c("OSM (Standaardkaart)", "Satelliet (Luchtfoto)"),
-    overlayGroups = c("Geselecteerde Netwerken (Vector)", "Werkelijk Habitat (Raster)", "Maximaal Potentieel (Raster)", "Grens Studiegebied"),
+    overlayGroups = c("Geselecteerde Netwerken", "Territoria (Punten)", "Territoria Dispersie (500m)", "Werkelijk Habitat (Raster)", "Maximaal Potentieel (Raster)", "Grens Studiegebied"),
     options = layersControlOptions(collapsed = FALSE)
   )
 
@@ -449,18 +579,24 @@ m
 ```{r}
 base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
 folders <- list(
-  potentie  = file.path(base_dir, "01_Maximale_Potentie"),
-  werkelijk = file.path(base_dir, "02_Werkelijke_Oppervlakte")
+  potentie     = file.path(base_dir, "01_Maximale_Potentie"),
+  werkelijk    = file.path(base_dir, "02_Werkelijke_Oppervlakte"),
+  arpl         = file.path(base_dir, "03_ARPL"),
+  verspreiding = file.path(base_dir, "04_Actuele_Verspreiding")
 )
 
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-potentie_export_rast  <- if(exists("weidevogel_finaal_max") && !is.null(weidevogel_finaal_max)) terra::ifel(!is.na(weidevogel_finaal_max), 1, NA) else terra::rast(template_TV, vals = NA)
-werkelijk_export_rast <- if(exists("weidevogel_finaal_opp") && !is.null(weidevogel_finaal_opp)) terra::ifel(!is.na(weidevogel_finaal_opp) & weidevogel_finaal_opp > 0, 1, NA) else terra::rast(template_TV, vals = NA)
+potentie_export_rast     <- if(exists("weidevogel_finaal_max") && !is.null(weidevogel_finaal_max)) terra::ifel(!is.na(weidevogel_finaal_max), 1, NA) else terra::rast(template_TV, vals = NA)
+werkelijk_export_rast    <- if(exists("weidevogel_finaal_opp") && !is.null(weidevogel_finaal_opp)) terra::ifel(!is.na(weidevogel_finaal_opp) & weidevogel_finaal_opp > 0, 1, NA) else terra::rast(template_TV, vals = NA)
+arpl_export_rast         <- if(exists("weidevogel_arpl_opp") && !is.null(weidevogel_arpl_opp)) terra::ifel(weidevogel_arpl_opp > 0, 1, NA) else terra::rast(template_TV, vals = NA)
+verspreiding_export_rast <- if(exists("weidevogel_verspreiding_bin") && !is.null(weidevogel_verspreiding_bin)) terra::ifel(weidevogel_verspreiding_bin > 0, 1, NA) else terra::rast(template_TV, vals = NA)
 
 export_config <- list(
-  list(rast = potentie_export_rast,  naam = "Maximale_Potentie",     folder = folders$potentie,  type = "INT1U"),
-  list(rast = werkelijk_export_rast, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk, type = "INT1U")
+  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",     folder = folders$potentie,     type = "INT1U"),
+  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"),
+  list(rast = arpl_export_rast,         naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
+  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
 )
 
 for(item in export_config) {
@@ -473,6 +609,5 @@ for(item in export_config) {
 }
 
 gc()
-message("✓ Weidevogel-kaarten (Potentieel leefgebied) succesvol geëxporteerd!")
+message("✓ Weidevogel-kaarten (Inclusief territoria) succesvol geëxporteerd!")
 ```
-
