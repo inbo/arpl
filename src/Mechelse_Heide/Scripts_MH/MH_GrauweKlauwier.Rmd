@@ -1,5 +1,5 @@
 ---
-title: "Leefgebiedenscript in R: Mechelse Heide"
+title: "Leefgebiedenscript in R: Mechelse_Heide"
 author: "Bert Van Hecke"
 date: "`r Sys.Date()`"
 output: 
@@ -17,8 +17,6 @@ knitr::opts_chunk$set(
 )
 
 library(here)
-# CRUCIALE FIX: Dwing R Markdown om te werken vanaf de hoofdmap (arpl/)
-# Hierdoor werken relatieve paden met hier() overal hetzelfde.
 knitr::opts_knit$set(root.dir = here())
 
 library(knitr)
@@ -31,65 +29,60 @@ library(leaflet)
 library(kableExtra)
 library(data.table)
 
+# STEL DIT METEEN BOVENAAN IN VOOR C++ RAM-BUFFER:
+terraOptions(
+  memfrac = 0.5,        # 50% RAM geeft C++ GDAL genoeg ademruimte buiten R
+  tempdir = tempdir(), 
+  verbose = FALSE
+)
+
 conflicted::conflicts_prefer(dplyr::filter)
 conflicted::conflicts_prefer(dplyr::select)
 conflicted::conflicts_prefer(dplyr::first)
 conflicted::conflicts_prefer(terra::intersect)
 conflicted::conflicts_prefer(terra::any)
 
-# Exacte hectare-berekening behouden (cellSize voor 100% precisie)
 calc_ha_exact <- function(r) {
   if(is.null(r)) return(0)
   if(all(is.na(terra::values(r, mat=FALSE)))) return(0)
-  area_raster <- r * terra::cellSize(r, unit = "ha")
-  val <- terra::global(area_raster, "sum", na.rm = TRUE)[[1]]
-  return(as.numeric(val))
+  val <- terra::global(r, "sum", na.rm = TRUE)[[1]]
+  if(is.na(val)) return(0)
+  return(as.numeric(val) * 0.01)
 }
 
-maak_kaart_laag <- function(res_list) {
-  if(is.null(res_list)) return(NULL)
-  kernen <- terra::ifel(!is.na(res_list$kern), 1, NA)
-  if(!is.null(res_list$bouw)) {
-    bouw <- terra::ifel(!is.na(res_list$bouw), 2, NA)
-    finaal <- terra::cover(kernen, bouw)
-  } else {
-    finaal = kernen
-  }
-  return(finaal)
-}
-
-cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
-  # 1. Controleer of het raster leeg is
-  if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
+cluster_filter_compleet <- function(masker, opp_laag = NULL, drempel_m2, dist_m, werkelijk = FALSE) {
+  if (is.null(masker) || terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
     return(list(raster = masker * NA, clusters = masker * NA))
   }
   
-  # ----------------------------------------------------------------------------
-  # STAP 1: VEILIGE & SNELLER NETWERKVORMING ZONDER RAM-CRASH
-  # ----------------------------------------------------------------------------
-  if (dist_m > 0) {
-    # Maak binaire kaart (1 = biotoop, NA = rest)
-    r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
-    
-    # Buffer de BINAIR kaart (dit kost vrijwel geen geheugen!)
-    # Volle afstand dist_m zorgt dat plukjes binnen dist_m gegarandeerd samensmelten
-    r_buffered <- terra::buffer(r_binair, width = dist_m / 2)
-    
-    # Maak unieke Netwerk-ID's op de gebufferde zones
-    cl_network <- terra::patches(r_buffered, directions = 4, zeroAsNA = TRUE)
-    
-    # Snijd de Netwerk-ID's direct terug naar waar de originele biotooppixels liggen
-    cl_biotoop_only <- terra::mask(cl_network, masker)
-  } else {
-    cl_network <- terra::patches(masker, directions = 8, zeroAsNA = TRUE)
-    cl_biotoop_only <- cl_network
+  r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
+  if (terra::global(!is.na(r_binair), "sum")[[1]] == 0) {
+    return(list(raster = masker * NA, clusters = masker * NA))
+  }
+
+  p_ruw <- terra::as.polygons(r_binair, aggregate = TRUE)
+  if (is.null(p_ruw) || nrow(p_ruw) == 0) {
+    return(list(raster = masker * NA, clusters = masker * NA))
   }
   
-  # ----------------------------------------------------------------------------
-  # STAP 2: OPPERVLAKTE-OPTELSOM PER GEKOPPELD NETWERK
-  # ----------------------------------------------------------------------------
-  if(werkelijk) {
-    stats_df <- terra::zonal(opp_laag, cl_biotoop_only, fun = "sum", na.rm = TRUE)
+  p_ruw <- terra::disagg(p_ruw)
+  
+  if (dist_m > 0) {
+    p_buf <- terra::buffer(p_ruw, width = dist_m / 2)
+    p_netwerk <- terra::aggregate(p_buf) %>% terra::disagg()
+    p_netwerk$Netwerk_ID <- 1:nrow(p_netwerk)
+    
+    temp_net_file <- tempfile(fileext = ".tif")
+    r_net_zones <- terra::rasterize(p_netwerk, r_binair, field = "Netwerk_ID", filename = temp_net_file, datatype = "INT4U", overwrite = TRUE)
+    cl_biotoop_only <- terra::mask(r_net_zones, r_binair)
+    
+    rm(p_buf, p_netwerk, r_net_zones)
+  } else {
+    cl_biotoop_only <- terra::patches(r_binair, directions = 4, zeroAsNA = TRUE)
+  }
+
+  if (werkelijk && !is.null(opp_laag)) {
+    stats_df <- terra::zonal(opp_laag, cl_biotoop_only, fun = "sum", na.rm = TRUE, as.raster = FALSE)
     colnames(stats_df) <- c("ID", "Waarde")
     stats_df$Area_m2 <- stats_df$Waarde * 100 
   } else {
@@ -99,29 +92,22 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
   }
   
   stats_df <- stats_df[!is.na(stats_df$ID), ]
-  if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  if (nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
-  # ----------------------------------------------------------------------------
-  # STAP 3: FILTEREN OP TOTALE NETWERK-OPPERVLAKTE >= DREMPEL
-  # ----------------------------------------------------------------------------
   voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
-  if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  if (length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
-  # Behaal alleen de winnende netwerk-ID's
   masker_binair <- cl_biotoop_only %in% voldoet_ids
   final_network_mask <- terra::ifel(masker_binair == 1, 1, NA)
   
   r_finaal  <- terra::mask(masker, final_network_mask)
   cl_finaal <- terra::mask(cl_biotoop_only, r_finaal) 
   
+  rm(p_ruw, masker_binair, final_network_mask, r_binair)
+  gc()
+  
   return(list(raster = r_finaal, clusters = cl_finaal))
 }
-
-terraOptions(
-  memfrac = 0.8,        # Dwing terra om tot max. 80% van het RAM-geheugen te gebruiken
-  tempdir = tempdir(),  # Geef toestemming voor automatische disk-swapping bij zware rasters
-  verbose = FALSE
-)
 ```
 
 # Soort informatie ophalen
@@ -142,7 +128,7 @@ print(resultaat)
 rm(df, resultaat)
 ```
 
-# Gebied voorbereiden (Mechelse Heide)
+# Gebied voorbereiden (Mechelse_Heide)
 ```{r Gebied Voorbereiden}
 area_shape  <- vect(here("data/input/Mechelse_Heide.shp"))
 master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
@@ -191,7 +177,7 @@ studiegebied_globale_ids <- unique(vertaal_df$globale_id)
 values(id_raster_MH) <- NA
 # --- DE CRUCIALE TEMPLATE REPARATIE ---
 # In plaats van alles op NA te zetten, maken we een binaire 'mal' van het studiegebied.
-# We rasteriseren de shapefile van het Mechelse Heide (area_buffer_fix) op het uitgesneden raster.
+# We rasteriseren de shapefile van het Mechelse_Heide (area_buffer_fix) op het uitgesneden raster.
 template_MH <- terra::rasterize(area_buffer_fix, id_raster_MH, field = 1, background = 0)
 
 # Controleer of het nu wél cellen bevat:
@@ -290,14 +276,12 @@ bebouwing_opp <- lijst_oppervlaktes[["bebouwing"]]
 
 ```{r infrastructurele stoorfactoren}
 # ==============================================================================
-# STAP 1: KOGELVRIJE BEBOUWINGS- EN WEGENFILTER CONFORM GRUTTO-METHODE
+# STAP 1: BEBOUWINGS- EN WEGENFILTER (RAM-VEILIG)
 # ==============================================================================
 message("-> GDX-specifieke bebouwingslagen isoleren...")
 
-# De exacte GDX-lijst voor grauwe klauwier bebouwing
 gdx_bebouw_codes <- c("u", "ua", "ua-", "uc", "ud", "ui", "ui-", "un", "un-", "ur", "ur-", "ur+", "uv", "uv-", "uv+")
 
-# Filter de tabel op deze specifieke codes binnen jouw studiegebied
 tabel_bebouw_MH <- tabel_vlaanderen[CODE %in% gdx_bebouw_codes & cel_id %in% studiegebied_globale_ids]
 tabel_bebouw_som <- tabel_bebouw_MH[, .(Present = ifelse(sum(BWK_FRAC, na.rm = TRUE) > 0, 1, 0)), by = .(cel_id)]
 
@@ -313,111 +297,54 @@ if(nrow(tabel_bebouw_som) > 0) {
   }
 }
 
-message("-> Grote bebouwingskernen (>= 10 ha) identificeren via 50m fuzzy clustering...")
-# GDX: fuzzy clustering binnen 50m (in R: buffer van 50m om te koppelen)
-r_bebouw_dik <- terra::buffer(r_bebouwing_raw, width = 50)
-r_patches    <- terra::patches(r_bebouw_dik, directions = 8, zeroAsNA = TRUE)
+message("-> Grote bebouwingskernen (>= 10 ha) identificeren...")
+p_bebouw <- terra::as.polygons(r_bebouwing_raw, aggregate = TRUE)
 
-# Isoleer de clusters groter dan of gelijk aan 10 ha (1000 pixels van 10x10m)
-patch_freq         <- terra::freq(r_patches)
-grote_clusters_ids <- patch_freq$value[patch_freq$count >= 1000]
+if (!is.null(p_bebouw) && nrow(p_bebouw) > 0) {
+  p_bebouw_buf <- terra::buffer(p_bebouw, width = 25)
+  p_netwerk <- terra::aggregate(p_bebouw_buf) %>% terra::disagg()
+  
+  p_netwerk$area_ha <- as.numeric(st_area(st_as_sf(p_netwerk))) / 10000
+  p_groot <- p_netwerk[p_netwerk$area_ha >= 10, ]
+  
+  if (nrow(p_groot) > 0) {
+    tf_bebouw <- tempfile(fileext = ".tif")
+    r_bebouw_groot <- terra::rasterize(p_groot, template_MH, field = 1, filename = tf_bebouw, overwrite = TRUE)
+    dist_bebouw <- terra::distance(r_bebouw_groot)
+    masker_bebouw_stoor <- dist_bebouw <= 100
+  } else {
+    masker_bebouw_stoor <- template_MH * 0
+  }
+} else {
+  masker_bebouw_stoor <- template_MH * 0
+}
 
-r_masker_clusters           <- r_patches %in% grote_clusters_ids
-r_bebouw_finaal_voor_buffer <- terra::mask(r_bebouwing_raw, r_masker_clusters)
-
-# 100 meter afstandsberekening rond deze grote kernen
-dist_bebouw_groot   <- terra::distance(r_bebouw_finaal_voor_buffer)
-masker_bebouw_stoor <- dist_bebouw_groot <= 100
-
-# --- WEGENSTORING INTEGREREN ---
 message("-> Wegenstoring (100m) berekenen...")
 if (file.exists(here("data/input/Raster_Vlaanderen/GRB_Wegverbinding_at.tif"))) {
   r_wegen_raw <- terra::rast(here("data/input/Raster_Vlaanderen/GRB_Wegverbinding_at.tif"))
-  r_wegen     <- terra::resample(r_wegen_raw, id_raster_MH, method = "near") %>% terra::crop(id_raster_MH)
+  r_wegen     <- terra::crop(r_wegen_raw, template_MH, snap = "near") %>% terra::resample(template_MH, method = "near")
   
   weg_cats <- terra::cats(r_wegen)[[1]]
   gewenste_weg_labels <- c("autosnelweg", "weg met gescheiden rijbanen die geen autosnelweg is")
   ids_wegen_ok <- weg_cats$value[tolower(trimws(weg_cats$Label)) %in% gewenste_weg_labels]
   
   if(length(ids_wegen_ok) == 0) {
-    ids_wegen_ok <- weg_cats$value[grepl("autosnelweg|gescheiden rijbanen", tolower(weg_cats$Label))]
+    ids_wegen_ok <- weg_cats$value[grepl("autosnelweg\vert{}gescheiden rijbanen", tolower(weg_cats$Label))]
   }
   
   r_grote_wegen  <- r_wegen %in% ids_wegen_ok
   dist_wegen     <- terra::distance(terra::ifel(r_grote_wegen == 1, 1, NA))
   masker_weg_stoor <- dist_wegen <= 100
 } else {
-  message("⚠️ GRB_Wegverbinding_at.tif niet gevonden. Wegenstoring overgeslagen.")
-  masker_weg_stoor <- id_raster_MH == -999 # Geeft overal FALSE/0
+  masker_weg_stoor <- template_MH * 0
 }
 
-# --- STOORFACTOREN TOEPASSEN OP KERNBIOTOOP ---
 message("-> Stoorfactoren toepassen op de bruto voortplantingsbiotoop...")
-# Indien binnen 100m van weg of grote bebouwing -> NA, anders behouden we de biotooppixel
 voortplanting_gezuiverd_max <- terra::ifel(masker_bebouw_stoor == 1 | masker_weg_stoor == 1, NA, voortplanting_bwk_max)
 voortplanting_gezuiverd_opp <- terra::mask(voortplanting_bwk_opp, voortplanting_gezuiverd_max)
 
-# Schoonmaken van zware objecten uit het geheugen
-# rm(tabel_bebouw_MH, tabel_bebouw_som, tabel_bebouw_mapping, r_bebouwing_raw, 
-#    r_bebouw_dik, r_patches, patch_freq, grote_clusters_ids, r_masker_clusters, 
-#    r_bebouw_finaal_voor_buffer, dist_bebouw_groot, masker_bebouw_stoor, masker_weg_stoor)
-# if (exists("r_wegen_raw")) rm(r_wegen_raw, r_wegen, weg_cats, ids_wegen_ok, r_grote_wegen, dist_wegen)
-# gc()
-```
-
-```{r grauweklauwier debug - visuele inspectie kaarten}
-# ==============================================================================
-# IMPACTANALYSE FILTER 1: GEREDDE MH. VERLOREN BIOTOOP VISUALISEREN
-# ==============================================================================
-message("-> Impactanalyse voor Stap 1 opbouwen...")
-
-# Bereken wat er verloren gaat door bebouwing en wegen binnen de biotoop
-r_verlies_bouw  <- terra::ifel(masker_bebouw_stoor == 1 & voortplanting_bwk_max == 1, 1, NA)
-r_verlies_wegen <- terra::ifel(masker_weg_stoor == 1 & voortplanting_bwk_max == 1, 1, NA)
-
-# Projecteer de resultaten naar Web Mercator (EPSG:4326) voor Leaflet
-r_web_gered   <- terra::project(voortplanting_gezuiverd_max, "EPSG:4326", method = "near")
-r_web_v_bouw  <- terra::project(r_verlies_bouw, "EPSG:4326", method = "near")
-r_web_v_wegen <- terra::project(r_verlies_wegen, "EPSG:4326", method = "near")
-
-# Bepaal de bounds op basis van de studiegebied-grens
-grens_web <- sf::st_transform(sf::st_as_sf(area_shape_proj), 4326)
-bbox <- sf::st_bbox(grens_web)
-
-# Bouw de interactieve Leaflet-kaart
-impact_map <- leaflet() %>%
-  addTiles(group = "OSM (Wegenkaart)") %>%
-  addProviderTiles(providers$Esri.WorldImagery, group = "Satellietbeeld") %>%
-  fitBounds(bbox[['xmin']], bbox[['ymin']], bbox[['xmax']], bbox[['ymax']])
-
-# 1. Toon de geredde biotoop (Groen)
-if (!all(is.na(terra::values(r_web_gered, mat=FALSE)))) {
-  impact_map <- impact_map %>%
-    addRasterImage(terra::as.int(r_web_gered), colors = "#2ca25f", opacity = 0.8, group = "Geredde Biotoop (Groen)")
-}
-
-# 2. Toon de verloren biotoop door bebouwing (Rood)
-if (!all(is.na(terra::values(r_web_v_bouw, mat=FALSE)))) {
-  impact_map <- impact_map %>%
-    addRasterImage(terra::as.int(r_web_v_bouw), colors = "#de2d26", opacity = 0.8, group = "Verlies door Bebouwing (Rood)")
-}
-
-# 3. Toon de verloren biotoop door grote wegen (Paars)
-if (!all(is.na(terra::values(r_web_v_wegen, mat=FALSE)))) {
-  impact_map <- impact_map %>%
-    addRasterImage(terra::as.int(r_web_v_wegen), colors = "#756bb1", opacity = 0.8, group = "Verlies door Wegen (Paars)")
-}
-
-# Toon de grens van je studiegebied (Zwarte lijn)
-impact_map <- impact_map %>%
-  addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens Studiegebied") %>%
-  addLayersControl(
-    baseGroups = c("OSM (Wegenkaart)", "Satellietbeeld"),
-    overlayGroups = c("Grens Studiegebied", "Geredde Biotoop (Groen)", "Verlies door Bebouwing (Rood)", "Verlies door Wegen (Paars)"),
-    options = layersControlOptions(collapsed = FALSE)
-  )
-
-impact_map
+rm(tabel_bebouw_MH, tabel_bebouw_som, r_bebouwing_raw)
+gc()
 ```
 
 ```{r netwerkgrootte kernbiotoop}
@@ -458,21 +385,14 @@ gc()
 # ==============================================================================
 message("-> Groenkaart inlezen en synchroniseren...")
 r_groen_raw <- terra::rast(here("data/input/ASCI Files/Groenkaart_2021.tif"))
-r_groen     <- terra::resample(r_groen_raw, id_raster_MH, method = "near") %>% terra::crop(id_raster_MH)
+r_groen     <- terra::crop(r_groen_raw, template_MH, snap = "near") %>% terra::resample(template_MH, method = "near")
 
-r_hooggroen <- r_groen == 1
-r_laaggroen <- r_groen == 2
-
-focal_hoog <- terra::focal(r_hooggroen, w = 3, fun = "sum", na.rm = TRUE)
-focal_laag <- terra::focal(r_laaggroen, w = 3, fun = "sum", na.rm = TRUE)
-
-r_lijn_hooggroen <- r_hooggroen == 1 & (focal_hoog >= 1 & focal_hoog <= 6)
-r_lijn_laaggroen <- r_laaggroen == 1 & (focal_laag >= 1 & focal_laag <= 6)
-r_kle_groenkaart <- (r_lijn_hooggroen == 1) | (r_lijn_laaggroen == 1)
+# Binariseer groen
+r_kle_groenkaart <- (r_groen == 1) | (r_groen == 2)
 r_kle_binair      <- terra::ifel(r_kle_groenkaart, 1, 0)
 
-r_voortplanting_finaal_max <- id_raster_MH * NA
-r_voortplanting_finaal_opp <- id_raster_MH * NA
+r_voortplanting_finaal_max <- template_MH * NA
+r_voortplanting_finaal_opp <- template_MH * NA
 
 # --- SPOOR A: MAX ---
 if (!all(is.na(terra::values(r_kern_10ha_max, mat=FALSE)))) {
@@ -488,7 +408,7 @@ if (!all(is.na(terra::values(r_kern_10ha_max, mat=FALSE)))) {
   }
 }
 
-# --- SPOOR B: OPP (Parallel & Autonoom) ---
+# --- SPOOR B: OPP ---
 r_binair_kern_opp <- terra::ifel(!is.na(r_kern_10ha_opp) & r_kern_10ha_opp > 0, 1, NA)
 
 if (!all(is.na(terra::values(r_binair_kern_opp, mat=FALSE)))) {
@@ -504,55 +424,20 @@ if (!all(is.na(terra::values(r_binair_kern_opp, mat=FALSE)))) {
   }
 }
 
-rm(r_groen_raw, r_groen, r_hooggroen, r_laaggroen, focal_hoog, focal_laag, 
-   r_lijn_hooggroen, r_lijn_laaggroen, r_kle_groenkaart, r_kle_binair, r_binair_kern_opp)
+rm(r_groen_raw, r_groen, r_kle_groenkaart, r_kle_binair, r_binair_kern_opp)
 gc()
-```
-
-```{r grauweklauwier diagnose - habitat per stap opgelost}
-# ==============================================================================
-# DIAGNOSTISCHE BOUNDARY-CHECK PER STAP (CORRECTE VARIABELEN)
-# ==============================================================================
-message("=== RECONSTRUCTIE EN STATISTIEK PER STAP ===")
-
-calc_ha_binair <- function(r) {
-  if(is.null(r) || all(is.na(terra::values(r, mat=FALSE)))) return(0)
-  return(sum(terra::values(r) == 1, na.rm = TRUE) * 0.01)
-}
-
-# We meten hier nu direct de echte modelspecificaties
-ha_stap_0  <- calc_ha_binair(voortplanting_bwk_max)
-ha_stap_1  <- calc_ha_binair(voortplanting_gezuiverd_max) # Directe meting van de gezuiverde biotoop!
-ha_stap_2  <- calc_ha_binair(r_kern_10ha_max)
-ha_stap_3  <- calc_ha_binair(r_voortplanting_finaal_max)
-ha_stap_4a <- calc_ha_binair(r_leefgebied_bruto_max)
-ha_stap_4b <- calc_ha_binair(grauweklauwier_leefgebied_max)
-
-diagnose_tabel <- data.frame(
-  Modellatiestap = c(
-    "0. Bruto voortplantingsbiotoop (BWK)",
-    "1. Kernbiotoop buiten 100m buffers (Wegen & Bouw)",
-    "2. Gecentreerde clusters van minimaal 10 ha",
-    "3. Kernen met minstens 500m Groenkaart-KLE",
-    "4a. Totaal netwerk inclusief foerageerbiotoop (min. 15 ha)",
-    "4b. Finaal leefgebied na de <90% grasland-test"
-  ),
-  Resterend_Habitat_ha = c(ha_stap_0, ha_stap_1, ha_stap_2, ha_stap_3, ha_stap_4a, ha_stap_4b)
-)
-
-diagnose_tabel %>% 
-  knitr::kable(caption = "🔍 Diagnose: Waar verliest de grauwe klauwier zijn leefgebied?") %>% 
-  kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
 ```
 
 ```{r grauweklauwier stap 4 - foerageerkoppeling en graslandfilter}
 # ==============================================================================
-# STAP 4: FOERAGEERHABITAT KOPPELEN (100M BUFFER) EN GRASLAND MONOTONITEITSTEST
+# STAP 4: FOERAGEERHABITAT KOPPELEN EN GRASLANDTEST
 # ==============================================================================
-message("-> Wederzijdse afstandsinteractie berekenen (100m foerageerbereik)...")
+message("-> Foerageerhabitat koppelen en graslandfilter toepassen...")
 
-grauweklauwier_leefgebied_max <- id_raster_MH * NA
-grauweklauwier_leefgebied_opp <- id_raster_MH * NA
+# EXPLICITE INITIALISATIE (VOORKOMT "OBJECT NOT FOUND" ERROR)
+r_leefgebied_bruto_max        <- template_MH * NA
+grauweklauwier_leefgebied_max <- template_MH * NA
+grauweklauwier_leefgebied_opp <- template_MH * NA
 
 # ==============================================================================
 # SPOOR A: MAXIMALE POTENTIE
@@ -607,7 +492,7 @@ if (!all(is.na(terra::values(r_voortplanting_finaal_max, mat=FALSE)))) {
 }
 
 # ==============================================================================
-# SPOOR B: WERKELIJKE OPPERVLAKTE (Parallel & Autonoom)
+# SPOOR B: WERKELIJKE OPPERVLAKTE
 # ==============================================================================
 if (!all(is.na(terra::values(r_voortplanting_finaal_opp, mat=FALSE)))) {
   r_binair_vpt_opp     <- terra::ifel(!is.na(r_voortplanting_finaal_opp) & r_voortplanting_finaal_opp > 0, 1, NA)
@@ -926,43 +811,33 @@ folders <- list(
 
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-if(length(ids_actueel_relevant) > 0) {
-  arpl_export_rast <- cl_max %in% ids_actueel_relevant
-  arpl_export_rast <- terra::ifel(arpl_export_rast, 1, NA)
-} else {
-  arpl_export_rast <- terra::rast(template_MH, vals = NA)
-}
-
-if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
-  werkelijk_export_rast <- terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA)
-} else {
-  werkelijk_export_rast <- terra::rast(template_MH, vals = NA)
-}
-
-export_config <- list(
-  list(rast = final_max,              naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,      naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
-  list(rast = verspreiding_raster,   naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
-)
-
-for(item in export_config) {
-  file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
-  
-  export_rast <- terra::deepcopy(item$rast)
-  export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  
-  if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
-    export_rast <- terra::ifel(is.na(export_rast), 0, 0)
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
+veilige_export <- function(r_in, file_path) {
+  if (is.null(r_in) || all(is.na(terra::values(r_in, mat = FALSE)))) {
+    r_export <- terra::rast(master_grid, vals = 0)
   } else {
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
+    r_export <- terra::extend(r_in, master_grid, fill = NA)
+    r_export <- terra::ifel(is.na(r_export), 0, r_export)
   }
   
-  writeRaster(export_rast, 
-              filename = file_path, 
-              overwrite = TRUE, 
-              gdal = c("COMPRESS=LZW"), 
-              datatype = item$type)
+  terra::writeRaster(
+    r_export, 
+    filename = file_path, 
+    overwrite = TRUE, 
+    gdal = c("COMPRESS=LZW"), 
+    datatype = "INT1U"
+  )
+  rm(r_export)
+  gc()
 }
+
+# Export afhandelen
+r_arpl <- if(length(ids_actueel_relevant) > 0) terra::ifel(cl_max %in% ids_actueel_relevant, 1, NA) else NULL
+r_werk <- if(!all(is.na(terra::values(final_opp, mat=FALSE)))) terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA) else NULL
+
+veilige_export(final_max, file.path(folders$potentie, paste0("Habitat_Maximale_Potentie_", soort, ".tif")))
+veilige_export(r_werk, file.path(folders$werkelijk, paste0("Habitat_Werkelijke_Oppervlaktes_", soort, ".tif")))
+veilige_export(r_arpl, file.path(folders$arpl, paste0("Habitat_ARPL_", soort, ".tif")))
+veilige_export(verspreiding_raster, file.path(folders$verspreiding, paste0("Habitat_Actuele_Verspreiding_", soort, ".tif")))
+
+message("✓ Grauwe Klauwier rasters succesvol geëxporteerd!")
 ```
