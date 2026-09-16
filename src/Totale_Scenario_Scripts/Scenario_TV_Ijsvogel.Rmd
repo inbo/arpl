@@ -1,5 +1,5 @@
 ---
-title: "Leefgebiedenscript in R: Turnhouts Vennegebied"
+title: "Scenario Leefgebiedenscript: IJsvogel"
 author: "Bert Van Hecke"
 date: "`r Sys.Date()`"
 output: 
@@ -7,6 +7,8 @@ output:
     self_contained: true
     toc: true
     theme: flatly
+params:
+  scenario_rds_path: "data/input/Scenario_rds/TV_Scenario_bosbehoudss_ss31fix_tvg_vrij_2026.rds"
 ---
 
 ```{r setup, include = FALSE}
@@ -141,19 +143,32 @@ terraOptions(
 )
 ```
 
-# Soort informatie ophalen
+# Soort en scenario informatie ophalen
 ```{r Soort informatie}
-df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
+df <- read_excel(here::here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
 soort <- "ijsvogel"
 
+# Scenario pad en naam bepalen
+p_raw <- gsub("^(\\.\\./)+", "", params$scenario_rds_path)
+scenario_path <- here::here(p_raw)
+
+if (!file.exists(scenario_path)) {
+  stop(paste("❌ FOUT: Scenario RDS bestand NIET gevonden op:", scenario_path))
+}
+
+scen_volledig <- basename(scenario_path)
+scenario_naam <- gsub("^TV_Scenario_|^Scenario_|.rds$", "", scen_volledig)
+
+message(paste("Verwerken van soort:", soort, "binnen scenario:", scenario_naam))
+
 resultaat <- df %>%
-filter(Soort == soort) %>%
-select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
+  filter(tolower(trimws(Soort)) == soort) %>%
+  select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
 
 # Variabelen definiëren
 oppervlakte_ha <- resultaat$MinOpp_ha[1]
-afstand_m <- resultaat$AfstandBiotopen_m[1]
-buffer_m <- resultaat$Dispersiecap_m[1]
+afstand_m      <- resultaat$AfstandBiotopen_m[1]
+buffer_m       <- resultaat$Dispersiecap_m[1]
 
 print(resultaat)
 rm(df, resultaat)
@@ -208,16 +223,14 @@ resultaten_gegroepeerd <- df_nieuw %>%
   group_by(Type) %>%
   nest(Data = c(Code, Match))
 
-# 2. LAAD DE REGIONALE TABEL IN
-tabel_vlaanderen <- readRDS(here("data/input/Raster_Vlaanderen/BWK_Tabel_Turnhouts_Vennegebied_Plus_50km.rds"))
+# Lees de scenario-RDS in
+tabel_vlaanderen <- readRDS(scenario_path)
 setDT(tabel_vlaanderen)
 tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
 
-# Initialiseer de lijsten voor de verschillende habitat-bouwstenen
 lijst_matches      <- list()
 lijst_oppervlaktes <- list()
 
-# 3. VERWERK ELK HABITAT-TYPE DYNAMISCH VIA DATA.TABLE
 for(i in 1:nrow(resultaten_gegroepeerd)) {
   h_type <- resultaten_gegroepeerd$Type[i]
   h_data <- resultaten_gegroepeerd$Data[[i]]
@@ -238,8 +251,7 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   tabel_TV <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
   tabel_TV_unique <- unique(tabel_TV, by = c("cel_id", "CODE"))
 
-  # 2. Bereken de som per cel_id en cap de maximale waarde hard op 1.0 (100%)
-  tabel_cel_som <- tabel_TV_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)),by = .(cel_id)]
+  tabel_cel_som <- tabel_TV_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)), by = .(cel_id)]
   
   r_match_type <- id_raster_TV * NA
   r_opp_type   <- id_raster_TV * NA
@@ -265,12 +277,10 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   }
 }
 
-# Uitpakken naar de exacte losse variabelen (Naadloze match met je database)
 bwk_max <- lijst_matches[["bwk"]]
 bwk_opp <- lijst_oppervlaktes[["bwk"]]
 
-# Grote eindschoonmaak (vertaal_df weggooien mag nu pas!)
-rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
+rm(tabel_vlaanderen, vertaal_df, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
@@ -614,140 +624,100 @@ tabel_totaal %>%
   kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
-```{r interactieve kaart ijsvogel}
+# Scenario Transitiekaart
+```{r Transitiekaart Leaflet}
 # ==============================================================================
-# STAP 11: INTERACTIEVE KAART (LEAFLET - INCLUSIEF OEVER LAAG IJSVOGEL)
+# 1. SCENARIO TRANSITIEKAART LEAFLET
 # ==============================================================================
-if (exists("r_net_ids_tv") && !all(is.na(terra::values(r_net_ids_tv, mat=FALSE)))) {
-  
-  message("-> Clusterstatistieken berekenen op basis van het TOTALE, gedeelde netwerk voor ijsvogel...")
-  
-  stats_global_freq <- terra::freq(r_opp_net_ids)
-  colnames(stats_global_freq) <- c("layer", "ID", "count")
-  
-  stats_global_opp <- terra::zonal(ijsvogel_leefgebied_opp * 0.01, r_opp_net_ids, fun = "sum", na.rm = TRUE)
-  colnames(stats_global_opp) <- c("ID", "Totaal_Netwerk_Werk_ha")
-  
-  stats_tv_opp <- terra::zonal(r_opp_tv * 0.01, r_net_ids_tv, fun = "sum", na.rm = TRUE)
-  colnames(stats_tv_opp) <- c("ID", "Binnen_TV_Werk_ha")
-  
-  cluster_info <- data.frame(
-      ID = stats_global_freq$ID, 
-      Tot_Pot_ha = stats_global_freq$count * 0.01
-    ) %>%
-    left_join(stats_global_opp, by = "ID") %>%
-    left_join(stats_tv_opp, by = "ID") %>%
-    mutate(
-      Zone = "Binnen TV / Grensoverschrijdend",
-      ARPL = ID %in% ids_actueel_relevant,
-      Type = ifelse(ID %in% ids_pot_bin, "Werkelijk Habitat", "Potentieel (Niet Werkelijk)"),
-      Popup = paste0(
-        "<div style='font-family: Arial; min-width: 200px;'>",
-        "<strong>Netwerk ID (Clusternummer):</strong> ", ID, "<br>",
-        "<strong>Soort:</strong> ", tools::toTitleCase(soort), "<br>",
-        "<strong>Zone:</strong> ", Zone, "<br><hr>",
-        "<strong>Status:</strong> ", Type, "<br>",
-        "<strong>Actueel Relevant (ARPL):</strong> ", 
-        ifelse(ARPL, "<span style='color:green; font-weight:bold;'>JA (Populatielaag)</span>", 
-                     "<span style='color:red;'>NEE (Geen waarneming)</span>"), "<br><br>",
-        "<strong>Totaal Potentieel Netwerk (Gedeeld):</strong> ", round(Tot_Pot_ha, 2), " ha<br>",
-        "<strong>Totaal Werkelijk Habitat (Gedeeld):</strong> ", round(coalesce(Totaal_Netwerk_Werk_ha, 0), 2), " ha<br><hr>",
-        "<span style='font-size:11px; color:#555;'><strong>Waarvan binnen TV grens:</strong> ", 
-        round(coalesce(Binnen_TV_Werk_ha, 0), 2), " ha netto</span>",
-        "</div>"
-      )
-    )
 
-  cl_poly <- terra::as.polygons(r_net_ids_tv, aggregate = TRUE) %>% 
-    st_as_sf() %>% 
-    st_transform(4326)
+# Bepaal de te exporteren binaire rasters vooraf (1 / NA)
+potentie_export_rast     <- if(exists("ijsvogel_leefgebied_max") && !all(is.na(terra::values(ijsvogel_leefgebied_max, mat=FALSE)))) terra::ifel(!is.na(ijsvogel_leefgebied_max) & ijsvogel_leefgebied_max > 0, 1, NA) else terra::rast(template_TV, vals = NA)
+werkelijk_export_rast    <- if(exists("ijsvogel_leefgebied_opp") && !all(is.na(terra::values(ijsvogel_leefgebied_opp, mat=FALSE)))) terra::ifel(!is.na(ijsvogel_leefgebied_opp) & ijsvogel_leefgebied_opp > 0, 1, NA) else terra::rast(template_TV, vals = NA)
+arpl_export_rast         <- if(exists("ijsvogel_arpl_opp") && !all(is.na(terra::values(ijsvogel_arpl_opp, mat=FALSE)))) terra::ifel(ijsvogel_arpl_opp > 0, 1, NA) else terra::rast(template_TV, vals = NA)
+verspreiding_export_rast <- if(exists("ijsvogel_verspreiding_bin") && !all(is.na(terra::values(ijsvogel_verspreiding_bin, mat=FALSE)))) terra::ifel(ijsvogel_verspreiding_bin > 0, 1, NA) else terra::rast(template_TV, vals = NA)
 
-  colnames(cl_poly)[1] <- "ID" 
-  cl_poly_final <- cl_poly %>%
-    inner_join(cluster_info, by = "ID")
+hts_file <- here::here("data/input/Excel_files/HTS.xlsx")
+is_hts_exclusief <- FALSE
+
+if (file.exists(hts_file)) {
+  hts_df <- read_excel(hts_file)
+  col_naam <- names(hts_df)[grepl("nederland", names(hts_df), ignore.case = TRUE)][1]
+  
+  if (!is.na(col_naam)) {
+    hts_soorten <- hts_df[[col_naam]] %>% 
+      as.character() %>% 
+      tolower() %>% 
+      trimws() %>% 
+      gsub("[ _-]", "", .)
     
-} else {
-  cl_poly_final <- st_sf(st_sfc(crs = 4326))
+    soort_clean <- tolower(trimws(gsub("[ _-]", "", soort)))
+    
+    if (soort_clean %in% hts_soorten) {
+      is_hts_exclusief <- TRUE
+    }
+  }
 }
 
-r_web_status <- terra::project(r_status, "EPSG:4326", method = "near")
-bbox         <- st_bbox(grens_web)
-
-# Projecteer de oeverlaag (cruciaal voor voortplanting ijsvogel)
-if(exists("ijsvogel_oever1") && !all(is.na(terra::values(ijsvogel_oever1, mat=FALSE)))) {
-  r_web_vpt <- terra::project(ijsvogel_oever1, "EPSG:4326", method = "near")
+if (is_hts_exclusief) {
+  message("-> Soort is HTS-exclusief: Vergelijking gebeurt op basis van ARPL.")
+  r_scen <- arpl_export_rast
+  ref_folder <- "03_ARPL"
+  ref_prefix <- "Habitat_ARPL_"
 } else {
-  r_web_vpt <- NULL
+  message("-> Soort is NIET HTS-exclusief (SBP/RBS/SIHD): Vergelijking gebeurt op basis van Werkelijke Oppervlakte.")
+  r_scen <- werkelijk_export_rast
+  ref_folder <- "02_Werkelijke_Oppervlakte"
+  ref_prefix <- "Habitat_Werkelijke_Oppervlaktes_"
 }
 
-if(has_observations && nrow(df_points_sf) > 0) {
-  waarneming_smear_web <- st_transform(waarneming_smear_sf, 4326)
-  points_web           <- st_transform(df_points_sf, 4326)
+ref_file_std <- here::here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", ref_folder, paste0(ref_prefix, soort, ".tif"))
+ref_file_wv  <- here::here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", ref_folder, paste0(ref_prefix, soort, "_wv.tif"))
+
+referentie_file <- if (file.exists(ref_file_std)) ref_file_std else if (file.exists(ref_file_wv)) ref_file_wv else NULL
+
+if (!is.null(referentie_file) && file.exists(referentie_file)) {
+  r_ref_raw <- rast(referentie_file) %>% terra::resample(template_TV, method = "near")
+  r_ref <- terra::ifel(r_ref_raw == 1, 1, NA)
 } else {
-  waarneming_smear_web <- st_sf(st_sfc(crs = 4326))
-  points_web           <- st_sf(st_sfc(crs = 4326))
+  message("⚠️ Waarschuwing: Geen referentiebestand gevonden op schijf.")
+  r_ref <- terra::rast(template_TV, vals = NA)
 }
 
-pal_status <- colorFactor(palette = c("#4daf4a", "#e41a1c"), levels = c("Werkelijk Habitat", "Potentieel (Niet Werkelijk)"))
-pal_4      <- colorFactor(palette = c("#FF00FF", "#FF8C00", "#4daf4a", "#377eb8"), levels = 1:4, na.color = "transparent")
+r_rgb <- terra::ifel(!is.na(r_ref) & is.na(r_scen), 1, NA)
+r_rgb <- terra::cover(r_rgb, terra::ifel(is.na(r_ref) & !is.na(r_scen), 2, NA))
+r_rgb <- terra::cover(r_rgb, terra::ifel(!is.na(r_ref) & !is.na(r_scen), 3, NA))
 
-map <- leaflet() %>%
+r_rgb_web <- terra::project(terra::as.int(r_rgb), "EPSG:4326", method = "near")
+
+kleuren_rgb <- c("#E74C3C", "#2ECC71", "#3498DB") 
+pal_rgb <- colorFactor(palette = kleuren_rgb, levels = 1:3, na.color = "transparent")
+
+type_label <- if (is_hts_exclusief) "ARPL (HTS-exclusief)" else "Werkelijke Oppervlakte (SBP/RBS/SIHD)"
+
+leaflet() %>%
   addTiles(group = "OSM (Kaart)") %>%
   addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet") %>%
-  fitBounds(bbox[['xmin']], bbox[['ymin']], bbox[['xmax']], bbox[['ymax']])
-
-if(!all(is.na(terra::values(r_web_status, mat=FALSE)))) {
-  map <- map %>% addRasterImage(terra::as.int(r_web_status), colors = pal_4, opacity = 0.4, group = "Habitat Status (Pixels)")
-}
-
-if(!is.null(r_web_vpt)) {
-  map <- map %>% addRasterImage(terra::as.int(r_web_vpt), colors = "#0000FF", opacity = 0.8, group = "Broedoever (Gefilterd)")
-}
-
-map <- map %>%
-  addPolygons(
-    data = cl_poly_final,
-    fillColor = ~pal_status(Type),
-    fillOpacity = ~ifelse(ARPL, 0.6, 0.1), 
-    color = ~pal_status(Type), 
-    weight = ~ifelse(ARPL, 3, 0.5), 
-    opacity = 1,
-    popup = ~Popup,
-    group = "Leefgebieden (Clusters)"
-  )
-
-if(has_observations && nrow(df_points_sf) > 0) {
-  map <- map %>%
-    addPolygons(
-      data = waarneming_smear_web,  
-      color = "#377eb8", weight = 2, fill = FALSE,
-      dashArray = "10, 5", group = "Dispersiebereik (Smear)"
-    ) %>%
-    addCircles(
-      data = points_web, 
-      color = "black", weight = 1, fillColor = "yellow", fillOpacity = 1,
-      radius = 15, group = "Waarnemingen"
-    )
-}
-
-map %>%
-  addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens Studiegebied") %>%
+  addRasterImage(r_rgb_web, colors = pal_rgb, opacity = 0.7, group = "Scenario Vergelijking") %>%
+  addPolygons(data = grens_web, fill = FALSE, color = "black", weight = 3, group = "Grens TV") %>%
+  addLegend(
+    colors = kleuren_rgb,
+    labels = c("Verloren gegaan leefgebied", "Nieuw bijgekomen leefgebied", "Status Quo (Behouden)"),
+    title = paste0("Scenario vs Referentie (", type_label, "): ", scenario_naam),
+    position = "bottomright"
+  ) %>%
   addLayersControl(
     baseGroups = c("OSM (Kaart)", "Satelliet"),
-    overlayGroups = c("Leefgebieden (Clusters)", "Habitat Status (Pixels)", 
-                      "Broedoever (Gefilterd)", "Dispersiebereik (Smear)", 
-                      "Waarnemingen", "Grens Studiegebied"),
+    overlayGroups = c("Scenario Vergelijking", "Grens TV"),
     options = layersControlOptions(collapsed = FALSE)
   )
 ```
 
-```{r export ijsvogel}
+```{r export}
 # ==============================================================================
-# EXPORT MET KOGELVRIJE NUL-OPVULLING & CONTRACT FIX (IJSVOGEL)
+# 2. SCHONE BINAIR EXPORT ZONDER VALSE NULLEN (SCENARIO IJSVOGEL)
 # ==============================================================================
-message("-> Start geformatteerde export met nul-opvulling voor ijsvogel...")
+base_dir <- here::here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", scenario_naam)
 
-base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
 folders <- list(
   potentie     = file.path(base_dir, "01_Maximale_Potentie"),
   werkelijk    = file.path(base_dir, "02_Werkelijke_Oppervlakte"),
@@ -756,51 +726,30 @@ folders <- list(
 )
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-if(!all(is.na(terra::values(ijsvogel_leefgebied_opp, mat=FALSE)))) {
-  werkelijk_export_rast <- terra::ifel(!is.na(ijsvogel_leefgebied_opp) & ijsvogel_leefgebied_opp > 0, 1, NA)
-} else {
-  werkelijk_export_rast <- terra::rast(template_TV, vals = NA)
-}
-
-if(exists("ijsvogel_arpl_opp") && !all(is.na(terra::values(ijsvogel_arpl_opp, mat=FALSE)))) {
-  arpl_export_rast <- terra::ifel(ijsvogel_arpl_opp > 0, 1, NA)
-} else {
-  arpl_export_rast <- terra::rast(template_TV, vals = NA)
-}
-
-if(!all(is.na(terra::values(ijsvogel_verspreiding_bin, mat=FALSE)))) {
-  verspreiding_export_rast <- terra::ifel(ijsvogel_verspreiding_bin > 0, 1, NA)
-} else {
-  verspreiding_export_rast <- terra::rast(template_TV, vals = NA)
-}
-
 export_config <- list(
-  list(rast = ijsvogel_leefgebied_max,   naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,         naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
-  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
+  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",        folder = folders$potentie),
+  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk), 
+  list(rast = arpl_export_rast,         naam = "ARPL",                    folder = folders$arpl),
+  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding)
 )
 
 for(item in export_config) {
-  file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
+  suffix <- if (exists("zoek_sleutel") && grepl("_wv$", zoek_sleutel)) "_wv.tif" else ".tif"
+  file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, suffix))
   
+  # Uitlijnen op mastergrid met transparante NA als achtergrond
   export_rast <- terra::deepcopy(item$rast)
   export_rast <- terra::extend(export_rast, master_grid, fill = NA)
   
-  if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
-    export_rast <- terra::ifel(is.na(export_rast), 0, 0)
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  } else {
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  }
-  
-  writeRaster(export_rast, 
-              filename = file_path, 
-              overwrite = TRUE, 
-              gdal = c("COMPRESS=LZW"), 
-              datatype = item$type)
-              
-  message(paste("    [OK] Geëxporteerd:", basename(file_path)))
+  # Overschrijven met expliciete NAflag = 255
+  terra::writeRaster(export_rast, 
+                     filename = file_path, 
+                     overwrite = TRUE, 
+                     gdal = c("COMPRESS=LZW"), 
+                     datatype = "INT1U",
+                     NAflag = 255)
+                     
+  message(paste("    [OK] Geëxporteerd naar scenariomap:", basename(file_path)))
 }
 
 # --- EINDOPRUIMING TIJDELIJKE CACHE BESTANDEN ---
@@ -812,7 +761,11 @@ temp_files <- c(
 )
 file.remove(temp_files[file.exists(temp_files)])
 
-rm(werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast, temp_files)
+suppressWarnings(
+  rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
+)
 gc()
+
+message("🏁 SCENARIO EXPORT VOLLEDIG AFGEROND VOOR IJSVOGEL!")
 ```
 

@@ -656,50 +656,18 @@ tabel_totaal %>%
   kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
-# Export alle 4 de kaarten naar de gespecificeerde scenariomappen
-```{r export}
-base_dir <- here::here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", scenario_naam)
+# Scenario Transitiekaart
+```{r Transitiekaart Leaflet}
+# ==============================================================================
+# 1. SCENARIO TRANSITIEKAART LEAFLET
+# ==============================================================================
 
-folders <- list(
-  potentie     = file.path(base_dir, "01_Maximale_Potentie"),
-  werkelijk    = file.path(base_dir, "02_Werkelijke_Oppervlakte"),
-  arpl         = file.path(base_dir, "03_ARPL"),
-  verspreiding = file.path(base_dir, "04_Actuele_Verspreiding")
-)
-purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
-
-# Expliciete declaratie van de 4 rasters
+# Bepaal de te exporteren binaire rasters vooraf (1 / NA)
 potentie_export_rast     <- if(exists("final_max") && !all(is.na(terra::values(final_max, mat=FALSE)))) terra::ifel(!is.na(final_max) & final_max > 0, 1, NA) else terra::rast(template_TV, vals = NA)
 werkelijk_export_rast    <- if(exists("final_opp") && !all(is.na(terra::values(final_opp, mat=FALSE)))) terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA) else terra::rast(template_TV, vals = NA)
 arpl_export_rast         <- if(exists("arpl_raster") && !all(is.na(terra::values(arpl_raster, mat=FALSE)))) terra::ifel(arpl_raster > 0, 1, NA) else terra::rast(template_TV, vals = NA)
 verspreiding_export_rast <- if(exists("verspreiding_raster") && !all(is.na(terra::values(verspreiding_raster, mat=FALSE)))) terra::ifel(verspreiding_raster > 0, 1, NA) else terra::rast(template_TV, vals = NA)
 
-export_config <- list(
-  list(rast = potentie_export_rast,    naam = "Maximale_Potentie",    folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,   type = "INT1U"), 
-  list(rast = arpl_export_rast,         naam = "ARPL",                  folder = folders$arpl,        type = "INT1U"),
-  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",  folder = folders$verspreiding, type = "INT1U")
-)
-
-for(item in export_config) {
-  file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
-  
-  export_rast <- terra::deepcopy(item$rast)
-  export_rast <- terra::mask(export_rast, area_buffer_fix)
-  
-  if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
-    export_rast <- terra::ifel(is.na(export_rast), 0, 0)
-    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
-  } else {
-    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
-  }
-  
-  writeRaster(export_rast, filename = file_path, overwrite = TRUE, gdal = c("COMPRESS=LZW"), datatype = item$type)
-}
-```
-
-# Scenario Transitiekaart
-```{r Transitiekaart Leaflet}
 hts_file <- here::here("data/input/Excel_files/HTS.xlsx")
 is_hts_exclusief <- FALSE
 
@@ -774,4 +742,52 @@ leaflet() %>%
     overlayGroups = c("Scenario Vergelijking", "Grens TV"),
     options = layersControlOptions(collapsed = FALSE)
   )
+```
+
+```{r export}
+# ==============================================================================
+# 2. SCHONE BINAIR EXPORT ZONDER VALSE NULLEN (SCENARIO EUROPESE OTTER)
+# ==============================================================================
+base_dir <- here::here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", scenario_naam)
+
+folders <- list(
+  potentie     = file.path(base_dir, "01_Maximale_Potentie"),
+  werkelijk    = file.path(base_dir, "02_Werkelijke_Oppervlakte"),
+  arpl         = file.path(base_dir, "03_ARPL"),
+  verspreiding = file.path(base_dir, "04_Actuele_Verspreiding")
+)
+purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
+
+export_config <- list(
+  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",        folder = folders$potentie),
+  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk), 
+  list(rast = arpl_export_rast,         naam = "ARPL",                    folder = folders$arpl),
+  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding)
+)
+
+for(item in export_config) {
+  suffix <- if (exists("zoek_sleutel") && grepl("_wv$", zoek_sleutel)) "_wv.tif" else ".tif"
+  file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, suffix))
+  
+  # Uitlijnen op mastergrid met transparante NA als achtergrond
+  export_rast <- terra::deepcopy(item$rast)
+  export_rast <- terra::extend(export_rast, master_grid, fill = NA)
+  
+  # Overschrijven met expliciete NAflag = 255
+  terra::writeRaster(export_rast, 
+                     filename = file_path, 
+                     overwrite = TRUE, 
+                     gdal = c("COMPRESS=LZW"), 
+                     datatype = "INT1U",
+                     NAflag = 255)
+                     
+  message(paste("    [OK] Geëxporteerd naar scenariomap:", basename(file_path)))
+}
+
+suppressWarnings(
+  rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
+)
+gc()
+
+message("🏁 SCENARIO EXPORT VOLLEDIG AFGEROND VOOR EUROPESE OTTER!")
 ```

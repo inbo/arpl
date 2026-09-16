@@ -594,72 +594,6 @@ tabel_totaal %>%
   kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
-```{r, export}
-# --- EXPORT MET KOGELVRIJE NUL-OPVULLING & CONTRACT FIX (veldkrekel) ---
-message("-> Start geformatteerde export met nul-opvulling voor veldkrekel...")
-
-base_dir <- here("data/output/Mechelse_Heide/Rasters_Soorten")
-folders <- list(
-  potentie     = file.path(base_dir, "01_Maximale_Potentie"),
-  werkelijk    = file.path(base_dir, "02_Werkelijke_Oppervlakte"),
-  arpl         = file.path(base_dir, "03_ARPL"),
-  verspreiding = file.path(base_dir, "04_Actuele_Verspreiding")
-)
-purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
-
-if(!all(is.na(terra::values(veldkrekel_leefgebied_opp, mat=FALSE)))) {
-  werkelijk_export_rast <- terra::ifel(!is.na(veldkrekel_leefgebied_opp) & veldkrekel_leefgebied_opp > 0, 1, NA)
-} else {
-  werkelijk_export_rast <- terra::rast(template_MH, vals = NA)
-}
-
-if(exists("veldkrekel_arpl_opp") && !all(is.na(terra::values(veldkrekel_arpl_opp, mat=FALSE)))) {
-  arpl_export_rast <- terra::ifel(veldkrekel_arpl_opp > 0, 1, NA)
-} else {
-  arpl_export_rast <- terra::rast(template_MH, vals = NA)
-}
-
-if(!all(is.na(terra::values(veldkrekel_verspreiding_bin, mat=FALSE)))) {
-  verspreiding_export_rast <- terra::ifel(veldkrekel_verspreiding_bin > 0, 1, NA)
-} else {
-  verspreiding_export_rast <- terra::rast(template_MH, vals = NA)
-}
-
-export_config <- list(
-  list(rast = veldkrekel_leefgebied_max,   naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast,       naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,            naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
-  list(rast = verspreiding_export_rast,    naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
-)
-
-for(item in export_config) {
-  file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
-  
-  export_rast <- terra::deepcopy(item$rast)
-  export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  
-  if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
-    export_rast <- terra::ifel(is.na(export_rast), 0, 0)
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  } else {
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  }
-  
-  writeRaster(export_rast, 
-              filename = file_path, 
-              overwrite = TRUE, 
-              gdal = c("COMPRESS=LZW"), 
-              datatype = item$type)
-}
-
-suppressWarnings(
-  rm(werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
-)
-gc()
-
-message("🏁 SCRIPT EN EXPORT VOLLEDIG EN SUCCESVOL AFGEROND VOOR veldkrekel!")
-```
-
 ```{r Interactieve kaart}
 # ==============================================================================
 # STAP 14: INTERACTIEVE KAART (LEAFLET - INCLUSIEF VOORTPLANTINGSLAAAG veldkrekel)
@@ -784,4 +718,89 @@ map %>%
                       "Waarnemingen", "Grens Studiegebied"),
     options = layersControlOptions(collapsed = FALSE)
   )
+```
+
+```{r export}
+# ==============================================================================
+# SCHONE BINAIR EXPORT ZONDER VALSE NULLEN (VELDKREKEL - TURNHOUTS VENNEGEBIED)
+# ==============================================================================
+message(paste("-> Start geformatteerde binaire export voor:", soort))
+
+base_dir <- here("data/output/Mechelse_Heide/Rasters_Soorten")
+folders <- list(
+  potentie     = file.path(base_dir, "01_Maximale_Potentie"),
+  werkelijk    = file.path(base_dir, "02_Werkelijke_Oppervlakte"),
+  arpl         = file.path(base_dir, "03_ARPL"),
+  verspreiding = file.path(base_dir, "04_Actuele_Verspreiding")
+)
+purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
+
+# --- BINAIR TRANSFORMATIES VOORAF ---
+
+# 1. Maximale potentie
+if (exists("veldkrekel_leefgebied_max") && !all(is.na(terra::values(veldkrekel_leefgebied_max, mat = FALSE)))) {
+  potentie_export_rast <- terra::ifel(!is.na(veldkrekel_leefgebied_max) & veldkrekel_leefgebied_max > 0, 1, NA)
+} else if (exists("final_max") && !all(is.na(terra::values(final_max, mat = FALSE)))) {
+  potentie_export_rast <- terra::ifel(!is.na(final_max) & final_max > 0, 1, NA)
+} else {
+  potentie_export_rast <- terra::rast(template_MH, vals = NA)
+}
+
+# 2. Werkelijke oppervlakte
+if (exists("veldkrekel_leefgebied_opp") && !all(is.na(terra::values(veldkrekel_leefgebied_opp, mat = FALSE)))) {
+  werkelijk_export_rast <- terra::ifel(!is.na(veldkrekel_leefgebied_opp) & veldkrekel_leefgebied_opp > 0, 1, NA)
+} else if (exists("final_opp") && !all(is.na(terra::values(final_opp, mat = FALSE)))) {
+  werkelijk_export_rast <- terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA)
+} else {
+  werkelijk_export_rast <- terra::rast(template_MH, vals = NA)
+}
+
+# 3. ARPL
+if (exists("veldkrekel_arpl_opp") && !all(is.na(terra::values(veldkrekel_arpl_opp, mat = FALSE)))) {
+  arpl_export_rast <- terra::ifel(!is.na(veldkrekel_arpl_opp) & veldkrekel_arpl_opp > 0, 1, NA)
+} else if (exists("arpl_raster") && !all(is.na(terra::values(arpl_raster, mat = FALSE)))) {
+  arpl_export_rast <- terra::ifel(!is.na(arpl_raster) & arpl_raster > 0, 1, NA)
+} else {
+  arpl_export_rast <- terra::rast(template_MH, vals = NA)
+}
+
+# 4. Actuele verspreiding
+if (exists("veldkrekel_verspreiding_bin") && !all(is.na(terra::values(veldkrekel_verspreiding_bin, mat = FALSE)))) {
+  verspreiding_export_rast <- terra::ifel(!is.na(veldkrekel_verspreiding_bin) & veldkrekel_verspreiding_bin > 0, 1, NA)
+} else if (exists("verspreiding_raster") && !all(is.na(terra::values(verspreiding_raster, mat = FALSE)))) {
+  verspreiding_export_rast <- terra::ifel(!is.na(verspreiding_raster) & verspreiding_raster > 0, 1, NA)
+} else {
+  verspreiding_export_rast <- terra::rast(template_MH, vals = NA)
+}
+
+export_config <- list(
+  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",        folder = folders$potentie),
+  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk), 
+  list(rast = arpl_export_rast,         naam = "ARPL",                    folder = folders$arpl),
+  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding)
+)
+
+for(item in export_config) {
+  file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
+  
+  # Uitlijnen op mastergrid met transparante NA als achtergrond
+  export_rast <- terra::extend(item$rast, master_grid, fill = NA)
+  
+  # Overschrijven met expliciete NAflag = 255
+  terra::writeRaster(export_rast, 
+                     filename = file_path, 
+                     overwrite = TRUE, 
+                     gdal = c("COMPRESS=LZW"), 
+                     datatype = "INT1U",
+                     NAflag = 255)
+                     
+  message(paste("    [OK] Geëxporteerd:", basename(file_path)))
+}
+
+suppressWarnings(
+  rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
+)
+gc()
+
+message("🏁 SCRIPT EN EXPORT VOLLEDIG EN SUCCESVOL AFGEROND VOOR VELDKREKEL!")
 ```

@@ -835,9 +835,9 @@ map %>%
 
 ```{r export heivlinder}
 # ==============================================================================
-# EXPORT MET KOGELVRIJE NUL-OPVULLING & CONTRACT FIX (HEIVLINDER)
+# SCHONE BINAIR EXPORT ZONDER VALSE NULLEN (HEIVLINDER - TURNHOUTS VENNEGEBIED)
 # ==============================================================================
-message("-> Start geformatteerde export met nul-opvulling voor heivlinder...")
+message("-> Start geformatteerde binaire export voor heivlinder...")
 
 base_dir <- here("data/output/De_Maten/Rasters_Soorten")
 folders <- list(
@@ -848,53 +848,62 @@ folders <- list(
 )
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-if(!all(is.na(terra::values(heivlinder_leefgebied_metzand_opp, mat=FALSE)))) {
+# --- BINAIR TRANSFORMATIES VOORAF ---
+
+# 1. Maximale potentie
+if (exists("heivlinder_leefgebied_metzand_max") && !all(is.na(terra::values(heivlinder_leefgebied_metzand_max, mat = FALSE)))) {
+  potentie_export_rast <- terra::ifel(!is.na(heivlinder_leefgebied_metzand_max) & heivlinder_leefgebied_metzand_max > 0, 1, NA)
+} else {
+  potentie_export_rast <- terra::rast(template_DM, vals = NA)
+}
+
+# 2. Werkelijke oppervlakte
+if (exists("heivlinder_leefgebied_metzand_opp") && !all(is.na(terra::values(heivlinder_leefgebied_metzand_opp, mat = FALSE)))) {
   werkelijk_export_rast <- terra::ifel(!is.na(heivlinder_leefgebied_metzand_opp) & heivlinder_leefgebied_metzand_opp > 0, 1, NA)
 } else {
   werkelijk_export_rast <- terra::rast(template_DM, vals = NA)
 }
 
-if(exists("heivlinder_arpl_opp") && !all(is.na(terra::values(heivlinder_arpl_opp, mat=FALSE)))) {
-  arpl_export_rast <- terra::ifel(heivlinder_arpl_opp > 0, 1, NA)
+# 3. ARPL
+if (exists("heivlinder_arpl_opp") && !all(is.na(terra::values(heivlinder_arpl_opp, mat = FALSE)))) {
+  arpl_export_rast <- terra::ifel(!is.na(heivlinder_arpl_opp) & heivlinder_arpl_opp > 0, 1, NA)
 } else {
   arpl_export_rast <- terra::rast(template_DM, vals = NA)
 }
 
-if(!all(is.na(terra::values(heivlinder_verspreiding_bin, mat=FALSE)))) {
-  verspreiding_export_rast <- terra::ifel(heivlinder_verspreiding_bin > 0, 1, NA)
+# 4. Actuele verspreiding
+if (exists("heivlinder_verspreiding_bin") && !all(is.na(terra::values(heivlinder_verspreiding_bin, mat = FALSE)))) {
+  verspreiding_export_rast <- terra::ifel(!is.na(heivlinder_verspreiding_bin) & heivlinder_verspreiding_bin > 0, 1, NA)
 } else {
   verspreiding_export_rast <- terra::rast(template_DM, vals = NA)
 }
 
 export_config <- list(
-  list(rast = heivlinder_leefgebied_metzand_max,   naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast,                naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,                     naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
-  list(rast = verspreiding_export_rast,             naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
+  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",        folder = folders$potentie),
+  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk), 
+  list(rast = arpl_export_rast,         naam = "ARPL",                    folder = folders$arpl),
+  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding)
 )
 
 for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
-  export_rast <- terra::deepcopy(item$rast)
-  export_rast <- terra::extend(export_rast, master_grid, fill = NA)
+  # Uitlijnen op mastergrid met transparante NA als achtergrond
+  export_rast <- terra::extend(item$rast, master_grid, fill = NA)
   
-  if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
-    export_rast <- terra::ifel(is.na(export_rast), 0, 0)
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  } else {
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  }
-  
-  writeRaster(export_rast, 
-              filename = file_path, 
-              overwrite = TRUE, 
-              gdal = c("COMPRESS=LZW"), 
-              datatype = item$type)
-              
+  # Overschrijven met expliciete NAflag = 255
+  terra::writeRaster(export_rast, 
+                     filename = file_path, 
+                     overwrite = TRUE, 
+                     gdal = c("COMPRESS=LZW"), 
+                     datatype = "INT1U",
+                     NAflag = 255)
+                     
   message(paste("    [OK] Geëxporteerd:", basename(file_path)))
 }
 
-rm(werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
+rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
 gc()
+
+message("-> Alle GeoTIFF exports voor de Heivlinder zijn succesvol weggeschreven!")
 ```

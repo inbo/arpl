@@ -762,9 +762,9 @@ map
 
 ```{r export}
 # ==============================================================================
-# EXPORT MET GEFORMATTEERDE RASTERS (BRUINE KIEKENDIEF)
+# SCHONE BINAIR EXPORT ZONDER VALSE NULLEN (BRUINE KIEKENDIEF - TURNHOUTS VENNEGEBIED)
 # ==============================================================================
-message(paste("-> Start geformatteerde export met nul-opvulling voor:", soort))
+message(paste("-> Start geformatteerde binaire export voor:", soort))
 
 base_dir <- here("data/output/Kalmthoutse_Heide/Rasters_Soorten")
 folders <- list(
@@ -775,62 +775,62 @@ folders <- list(
 )
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
+# --- BINAIR TRANSFORMATIES VOORAF ---
+
 # 1. Spoor A: Maximale Potentie
-if(!all(is.na(terra::values(bruinekiekendief_leefgebied1_max, mat=FALSE)))) {
+if (exists("bruinekiekendief_leefgebied1_max") && !all(is.na(terra::values(bruinekiekendief_leefgebied1_max, mat = FALSE)))) {
   potentie_export_rast <- terra::ifel(!is.na(bruinekiekendief_leefgebied1_max) & bruinekiekendief_leefgebied1_max > 0, 1, NA)
 } else {
   potentie_export_rast <- terra::rast(template_KH, vals = NA)
 }
 
 # 2. Spoor B: Werkelijke Oppervlakte
-if(!all(is.na(terra::values(bruinekiekendief_leefgebied1_opp, mat=FALSE)))) {
+if (exists("bruinekiekendief_leefgebied1_opp") && !all(is.na(terra::values(bruinekiekendief_leefgebied1_opp, mat = FALSE)))) {
   werkelijk_export_rast <- terra::ifel(!is.na(bruinekiekendief_leefgebied1_opp) & bruinekiekendief_leefgebied1_opp > 0, 1, NA)
 } else {
   werkelijk_export_rast <- terra::rast(template_KH, vals = NA)
 }
 
 # 3. ARPL
-if(exists("bruinekiekendief_arpl_opp") && !all(is.na(terra::values(bruinekiekendief_arpl_opp, mat=FALSE)))) {
-  arpl_export_rast <- terra::ifel(bruinekiekendief_arpl_opp > 0, 1, NA)
+if (exists("bruinekiekendief_arpl_opp") && !all(is.na(terra::values(bruinekiekendief_arpl_opp, mat = FALSE)))) {
+  arpl_export_rast <- terra::ifel(!is.na(bruinekiekendief_arpl_opp) & bruinekiekendief_arpl_opp > 0, 1, NA)
 } else {
   arpl_export_rast <- terra::rast(template_KH, vals = NA)
 }
 
 # 4. Actuele Verspreiding
-if(exists("bruinekiekendief_verspreiding_bin") && !all(is.na(terra::values(bruinekiekendief_verspreiding_bin, mat=FALSE)))) {
-  verspreiding_export_rast <- terra::ifel(bruinekiekendief_verspreiding_bin > 0, 1, NA)
+if (exists("bruinekiekendief_verspreiding_bin") && !all(is.na(terra::values(bruinekiekendief_verspreiding_bin, mat = FALSE)))) {
+  verspreiding_export_rast <- terra::ifel(!is.na(bruinekiekendief_verspreiding_bin) & bruinekiekendief_verspreiding_bin > 0, 1, NA)
 } else {
   verspreiding_export_rast <- terra::rast(template_KH, vals = NA)
 }
 
 export_config <- list(
-  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",       folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,         naam = "ARPL",                    folder = folders$arpl,         type = "INT1U"),
-  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
+  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",        folder = folders$potentie),
+  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk), 
+  list(rast = arpl_export_rast,         naam = "ARPL",                    folder = folders$arpl),
+  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding)
 )
 
 for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
-  export_rast <- terra::deepcopy(item$rast)
-  export_rast <- terra::extend(export_rast, master_grid, fill = NA)
+  # Uitlijnen op mastergrid met transparante NA als achtergrond
+  export_rast <- terra::extend(item$rast, master_grid, fill = NA)
   
-  if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
-    export_rast <- terra::ifel(is.na(export_rast), 0, 0)
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  } else {
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  }
-  
-  writeRaster(export_rast, 
-              filename = file_path, 
-              overwrite = TRUE, 
-              gdal = c("COMPRESS=LZW"), 
-              datatype = item$type)
+  # Overschrijven met expliciete NAflag = 255
+  terra::writeRaster(export_rast, 
+                     filename = file_path, 
+                     overwrite = TRUE, 
+                     gdal = c("COMPRESS=LZW"), 
+                     datatype = "INT1U",
+                     NAflag = 255)
+                     
+  message(paste("    [OK] Geëxporteerd:", basename(file_path)))
 }
 
-rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast,
-   bruinekiekendief_leefgebied1_max, bruinekiekendief_leefgebied1_opp)
+rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
 gc()
+
+message("-> Alle GeoTIFF exports voor de Bruine Kiekendief in Kalmthoutse Heide zijn succesvol afgerond!")
 ```

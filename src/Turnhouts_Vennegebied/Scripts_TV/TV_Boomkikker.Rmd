@@ -764,7 +764,10 @@ map %>%
 ```
 
 ```{r, export}
-message("-> Start geformatteerde export met nul-opvulling voor boomkikker...")
+# ==============================================================================
+# SCHONE BINAIR EXPORT ZONDER VALSE NULLEN (BOOMKIKKER - TURNHOUTS VENNEGEBIED)
+# ==============================================================================
+message("-> Start geformatteerde binaire export voor boomkikker...")
 
 base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
 folders <- list(
@@ -775,55 +778,62 @@ folders <- list(
 )
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-if(!all(is.na(terra::values(boomkikker_leefgebied_opp, mat=FALSE)))) {
+# --- BINAIR TRANSFORMATIES VOORAF ---
+
+# 1. Maximale potentie
+if (exists("boomkikker_leefgebied_max") && !all(is.na(terra::values(boomkikker_leefgebied_max, mat = FALSE)))) {
+  potentie_export_rast <- terra::ifel(!is.na(boomkikker_leefgebied_max) & boomkikker_leefgebied_max > 0, 1, NA)
+} else {
+  potentie_export_rast <- terra::rast(template_TV, vals = NA)
+}
+
+# 2. Werkelijke oppervlakte
+if (exists("boomkikker_leefgebied_opp") && !all(is.na(terra::values(boomkikker_leefgebied_opp, mat = FALSE)))) {
   werkelijk_export_rast <- terra::ifel(!is.na(boomkikker_leefgebied_opp) & boomkikker_leefgebied_opp > 0, 1, NA)
 } else {
   werkelijk_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-if(exists("boomkikker_arpl_opp") && !all(is.na(terra::values(boomkikker_arpl_opp, mat=FALSE)))) {
-  arpl_export_rast <- terra::ifel(boomkikker_arpl_opp > 0, 1, NA)
+# 3. ARPL
+if (exists("boomkikker_arpl_opp") && !all(is.na(terra::values(boomkikker_arpl_opp, mat = FALSE)))) {
+  arpl_export_rast <- terra::ifel(!is.na(boomkikker_arpl_opp) & boomkikker_arpl_opp > 0, 1, NA)
 } else {
   arpl_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-if(!all(is.na(terra::values(boomkikker_verspreiding_bin, mat=FALSE)))) {
-  verspreiding_export_rast <- terra::ifel(boomkikker_verspreiding_bin > 0, 1, NA)
+# 4. Actuele verspreiding
+if (exists("boomkikker_verspreiding_bin") && !all(is.na(terra::values(boomkikker_verspreiding_bin, mat = FALSE)))) {
+  verspreiding_export_rast <- terra::ifel(!is.na(boomkikker_verspreiding_bin) & boomkikker_verspreiding_bin > 0, 1, NA)
 } else {
   verspreiding_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
 export_config <- list(
-  list(rast = boomkikker_leefgebied_max,   naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast,       naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,            naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
-  list(rast = verspreiding_export_rast,    naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
+  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",        folder = folders$potentie),
+  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk), 
+  list(rast = arpl_export_rast,         naam = "ARPL",                    folder = folders$arpl),
+  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding)
 )
 
 for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
-  export_rast <- terra::deepcopy(item$rast)
-  export_rast <- terra::extend(export_rast, master_grid, fill = NA)
+  # Uitlijnen op mastergrid met transparante NA als achtergrond
+  export_rast <- terra::extend(item$rast, master_grid, fill = NA)
   
-  if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
-    export_rast <- terra::ifel(is.na(export_rast), 0, 0)
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  } else {
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  }
-  
-  writeRaster(export_rast, 
-              filename = file_path, 
-              overwrite = TRUE, 
-              gdal = c("COMPRESS=LZW"), 
-              datatype = item$type)
-              
-  message(paste("   [OK] Geëxporteerd:", basename(file_path)))
+  # Overschrijven met expliciete NAflag = 255
+  terra::writeRaster(export_rast, 
+                     filename = file_path, 
+                     overwrite = TRUE, 
+                     gdal = c("COMPRESS=LZW"), 
+                     datatype = "INT1U",
+                     NAflag = 255)
+                     
+  message(paste("    [OK] Geëxporteerd:", basename(file_path)))
 }
 
 suppressWarnings(
-  rm(werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
+  rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
 )
 gc()
 

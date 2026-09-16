@@ -706,8 +706,10 @@ map %>%
 
 ```{r export}
 # ==============================================================================
-# GEFIXTE EXPORT CHUNK (VARIABELE FOUTEN VERWIJDERD)
+# SCHONE BINAIR EXPORT ZONDER VALSE NULLEN (BEEKROMBOUT - TURNHOUTS VENNEGEBIED)
 # ==============================================================================
+message(paste("-> Start geformatteerde binaire export voor:", soort))
+
 base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
 folders <- list(
   potentie     = file.path(base_dir, "01_Maximale_Potentie"),
@@ -715,35 +717,49 @@ folders <- list(
   arpl         = file.path(base_dir, "03_ARPL"),
   verspreiding = file.path(base_dir, "04_Actuele_Verspreiding")
 )
-
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
+# --- BINAIR TRANSFORMATIES VOORAF ---
+
+# Helper-functie: Maak binair (1 = aanwezig/geschikt, NA = afwezig)
+to_binary_raster <- function(r) {
+  if (is.null(r) || all(is.na(terra::values(r, mat = FALSE)))) {
+    return(template_TV * NA)
+  }
+  return(terra::ifel(!is.na(r) & r > 0, 1, NA))
+}
+
+# Converteer alle te exporteren lagen naar een strak binair raster (1 / NA)
 export_config <- list(
-  list(rast = final_max,               naam = "Maximale_Potentie",        folder = folders$potentie),
-  list(rast = final_opp,               naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk), 
-  list(rast = beekrombout_arpl_opp,   naam = "ARPL",                    folder = folders$arpl),
-  list(rast = beekrombout_verspr_opp, naam = "Actuele_Verspreiding",    folder = folders$verspreiding)
+  list(rast = to_binary_raster(final_max),               naam = "Maximale_Potentie",        folder = folders$potentie),
+  list(rast = to_binary_raster(final_opp),               naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk), 
+  list(rast = to_binary_raster(beekrombout_arpl_opp),   naam = "ARPL",                    folder = folders$arpl),
+  list(rast = to_binary_raster(beekrombout_verspr_opp), naam = "Actuele_Verspreiding",    folder = folders$verspreiding)
 )
 
 for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
   export_rast <- terra::deepcopy(item$rast)
+  
+  # Lijn uit met het MasterGrid (behoudt NA voor cellen buiten het studiegebied)
   export_rast <- terra::extend(export_rast, master_grid, fill = NA)
   
-  if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
-    export_rast <- terra::ifel(is.na(export_rast), 0, 0)
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  } else {
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  }
-  
-  writeRaster(export_rast, 
-              filename = file_path, 
-              overwrite = TRUE, 
-              gdal = c("COMPRESS=LZW"), 
-              datatype = "INT1U")
-  
-  message(paste("   [OK] Geëxporteerd:", basename(file_path)))
+  # Schrijf naar schijf met expliciete NAflag = 255 voor transparantie in GIS
+  terra::writeRaster(export_rast, 
+                     filename = file_path, 
+                     overwrite = TRUE, 
+                     gdal = c("COMPRESS=LZW"), 
+                     datatype = "INT1U", 
+                     NAflag = 255)
+                     
+  message(paste("    [OK] Binaire kaart geëxporteerd:", basename(file_path)))
 }
+
+suppressWarnings(
+  rm(export_config, export_rast)
+)
+gc()
+
+message("🏁 SCRIPT EN EXPORT VOLLEDIG EN SUCCESVOL AFGEROND VOOR BEEKROMBOUT!")
 ```

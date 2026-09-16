@@ -307,7 +307,7 @@ hooggroen_10m_raw <- terra::aggregate(hooggroen_binair, fact = 10, fun = "max")
 tf_groen_sync <- tempfile(fileext = ".tif")
 hooggroen_sync <- project(hooggroen_10m_raw, crs(template_MH)) %>% 
                   terra::resample(template_MH, method = "near")
-hooggroen_sync <- terra::writeRaster(hooggroen_sync, filename = tf_groen_sync, overwrite = TRUE, datatype = "INT1U")
+hooggroen_sync <- terra::writeRaster(hooggroen_sync, filename = tf_groen_sync, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
 
 rm(hooggroen_raw, hooggroen_local_raw, hooggroen_binair, hooggroen_10m_raw)
 gc()
@@ -390,7 +390,7 @@ fase2_frac_file <- tempfile(fileext = ".tif")
 
 biotoop_fase2_bin <- terra::writeRaster(
   terra::mask(biotoop_fase1_bin, vallei_geschikt_binair),
-  filename = fase2_bin_file, overwrite = TRUE, datatype = "INT1U"
+  filename = fase2_bin_file, overwrite = TRUE, datatype = "INT1U", NAflag = 255
 )
 
 biotoop_fase2_frac <- terra::writeRaster(
@@ -417,7 +417,7 @@ gc()
 # 1. Maak binaire kaart (0/1) en schrijf direct weg naar tijdelijk bestand
 r_input_focal <- terra::ifel(!is.na(biotoop_fase2_bin) & biotoop_fase2_bin == 1, 1, 0)
 input_focal_file <- tempfile(fileext = ".tif")
-r_input_focal <- terra::writeRaster(r_input_focal, filename = input_focal_file, overwrite = TRUE, datatype = "INT1U")
+r_input_focal <- terra::writeRaster(r_input_focal, filename = input_focal_file, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
 
 # 2. Gebruik een lichte 3x3 buurtmatrix (stabieler in terra C++ engine)
 w_matrix <- matrix(1, nrow = 3, ncol = 3)
@@ -432,7 +432,7 @@ buurt_som <- terra::focal(
   fun = "sum", 
   na.rm = TRUE,
   filename = temp_focal_file,
-  datatype = "INT1U",
+  datatype = "INT1U", NAflag = 255,
   overwrite = TRUE
 )
 
@@ -509,7 +509,7 @@ gc()
 tf_groen_bin <- tempfile(fileext = ".tif")
 r_groen_bin <- terra::writeRaster(
   terra::ifel(!is.na(hooggroen_sync) & hooggroen_sync == 1, 1, NA),
-  filename = tf_groen_bin, overwrite = TRUE, datatype = "INT1U"
+  filename = tf_groen_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255
 )
 
 # 2. Isolatie boskernen (>= 20 are): Aggrgeer 5x5 cellen (50m x 50m = 2500m²) en tel cellen
@@ -557,7 +557,7 @@ gc()
 tf_f5_bin  <- tempfile(fileext = ".tif")
 tf_f5_frac <- tempfile(fileext = ".tif")
 
-r_in_fase5_bin  <- terra::writeRaster(biotoop_fase5_bin, filename = tf_f5_bin, overwrite = TRUE, datatype = "INT1U")
+r_in_fase5_bin  <- terra::writeRaster(biotoop_fase5_bin, filename = tf_f5_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
 r_in_fase5_frac <- terra::writeRaster(biotoop_fase5_frac, filename = tf_f5_frac, overwrite = TRUE, datatype = "FLT4S")
 
 # SPOOR A: Maximale Potentie (Binair >= 10 ha)
@@ -877,8 +877,10 @@ map %>%
 ```
 
 ```{r export kwartelkoning}
-# --- STAP 10: RAM-VEILIGE EXPORT NAAR GEHEEL VLAANDEREN GRID ---
-message("-> Start geformatteerde export voor kwartelkoning...")
+# ==============================================================================
+# SCHONE BINAIR EXPORT ZONDER VALSE NULLEN (KWARTELKONING - TURNHOUTS VENNEGEBIED)
+# ==============================================================================
+message("-> Start geformatteerde binaire export voor kwartelkoning...")
 
 base_dir <- here("data/output/Mechelse_Heide/Rasters_Soorten")
 folders <- list(
@@ -889,41 +891,70 @@ folders <- list(
 )
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-veilige_export <- function(r_in, file_path, is_integer = FALSE) {
-  if (is.null(r_in) || all(is.na(terra::values(r_in, mat = FALSE)))) {
-    r_export <- terra::rast(master_grid, vals = 0)
-  } else {
-    r_export <- terra::extend(r_in, master_grid, fill = NA)
-    r_export <- terra::ifel(is.na(r_export), 0, r_export)
-  }
-  
-  dtype <- if(is_integer) "INT1U" else "FLT4S"
-  
-  terra::writeRaster(
-    r_export, 
-    filename = file_path, 
-    overwrite = TRUE, 
-    gdal = c("COMPRESS=LZW"), 
-    datatype = dtype
-  )
-  rm(r_export)
-  gc()
+# --- BINAIR TRANSFORMATIES VOORAF ---
+
+# 1. Maximale potentie
+if (exists("biotoop_fase7_bin") && !all(is.na(terra::values(biotoop_fase7_bin, mat = FALSE)))) {
+  potentie_export_rast <- terra::ifel(!is.na(biotoop_fase7_bin) & biotoop_fase7_bin > 0, 1, NA)
+} else if (exists("final_max") && !all(is.na(terra::values(final_max, mat = FALSE)))) {
+  potentie_export_rast <- terra::ifel(!is.na(final_max) & final_max > 0, 1, NA)
+} else {
+  potentie_export_rast <- terra::rast(template_MH, vals = NA)
 }
 
-# 1. Spoor A
-r_pot <- if(!all(is.na(terra::values(biotoop_fase7_bin, mat=FALSE)))) terra::ifel(biotoop_fase7_bin > 0, 1, NA) else NULL
-veilige_export(r_pot, file.path(folders$potentie, paste0("Habitat_Maximale_Potentie_", soort, ".tif")), is_integer = TRUE)
-
-# 2. Spoor B
-veilige_export(biotoop_fase7_frac, file.path(folders$werkelijk, paste0("Habitat_Werkelijke_Oppervlaktes_", soort, ".tif")), is_integer = FALSE)
+# 2. Werkelijke oppervlakte
+if (exists("biotoop_fase7_frac") && !all(is.na(terra::values(biotoop_fase7_frac, mat = FALSE)))) {
+  werkelijk_export_rast <- terra::ifel(!is.na(biotoop_fase7_frac) & biotoop_fase7_frac > 0, 1, NA)
+} else if (exists("final_opp") && !all(is.na(terra::values(final_opp, mat = FALSE)))) {
+  werkelijk_export_rast <- terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA)
+} else {
+  werkelijk_export_rast <- terra::rast(template_MH, vals = NA)
+}
 
 # 3. ARPL
-r_arpl <- if(exists("kwartelkoning_arpl_opp")) kwartelkoning_arpl_opp else NULL
-veilige_export(r_arpl, file.path(folders$arpl, paste0("Habitat_ARPL_", soort, ".tif")), is_integer = FALSE)
+if (exists("kwartelkoning_arpl_opp") && !all(is.na(terra::values(kwartelkoning_arpl_opp, mat = FALSE)))) {
+  arpl_export_rast <- terra::ifel(!is.na(kwartelkoning_arpl_opp) & kwartelkoning_arpl_opp > 0, 1, NA)
+} else if (exists("arpl_raster") && !all(is.na(terra::values(arpl_raster, mat = FALSE)))) {
+  arpl_export_rast <- terra::ifel(!is.na(arpl_raster) & arpl_raster > 0, 1, NA)
+} else {
+  arpl_export_rast <- terra::rast(template_MH, vals = NA)
+}
 
-# 4. Actuele Verspreiding
-r_verspr <- if(exists("kwartelkoning_verspreiding_bin")) kwartelkoning_verspreiding_bin else NULL
-veilige_export(r_verspr, file.path(folders$verspreiding, paste0("Habitat_Actuele_Verspreiding_", soort, ".tif")), is_integer = TRUE)
+# 4. Actuele verspreiding
+if (exists("kwartelkoning_verspreiding_bin") && !all(is.na(terra::values(kwartelkoning_verspreiding_bin, mat = FALSE)))) {
+  verspreiding_export_rast <- terra::ifel(!is.na(kwartelkoning_verspreiding_bin) & kwartelkoning_verspreiding_bin > 0, 1, NA)
+} else if (exists("verspreiding_raster") && !all(is.na(terra::values(verspreiding_raster, mat = FALSE)))) {
+  verspreiding_export_rast <- terra::ifel(!is.na(verspreiding_raster) & verspreiding_raster > 0, 1, NA)
+} else {
+  verspreiding_export_rast <- terra::rast(template_MH, vals = NA)
+}
 
-message("✓ Kwartelkoning-kaarten succesvol geëxporteerd!")
+export_config <- list(
+  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",        folder = folders$potentie),
+  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk), 
+  list(rast = arpl_export_rast,         naam = "ARPL",                    folder = folders$arpl),
+  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding)
+)
+
+for(item in export_config) {
+  file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
+  
+  # Uitlijnen op mastergrid met transparante NA als achtergrond
+  export_rast <- terra::extend(item$rast, master_grid, fill = NA)
+  
+  # Overschrijven met expliciete NAflag = 255 en INT1U datatype
+  terra::writeRaster(export_rast, 
+                     filename = file_path, 
+                     overwrite = TRUE, 
+                     gdal = c("COMPRESS=LZW"), 
+                     datatype = "INT1U",
+                     NAflag = 255)
+                     
+  message(paste("    [OK] Geëxporteerd:", basename(file_path)))
+}
+
+rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
+gc()
+
+message("✓ Kwartelkoning-kaarten succesvol geëxporteerd met transparante NA-achtergrond!")
 ```

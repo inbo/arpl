@@ -829,9 +829,9 @@ map
 
 ```{r export maanwaterjuffer}
 # ==============================================================================
-# STAP 8: EXPORT MET SCHRIJFACTIE VOOR MAANWATERJUFFER
+# SCHONE BINAIR EXPORT ZONDER VALSE NULLEN (MAANWATERJUFFER - TURNHOUTS VENNEGEBIED)
 # ==============================================================================
-message("-> Start geformatteerde export met nul-opvulling voor maanwaterjuffer...")
+message(paste("-> Start geformatteerde binaire export voor:", soort))
 
 base_dir <- here("data/output/Kalmthoutse_Heide/Rasters_Soorten")
 folders <- list(
@@ -842,62 +842,66 @@ folders <- list(
 )
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-if(!all(is.na(terra::values(finaal_max_binair, mat=FALSE)))) {
+# --- BINAIR TRANSFORMATIES VOORAF ---
+
+# 1. Maximale potentie
+if (exists("finaal_max_binair") && !all(is.na(terra::values(finaal_max_binair, mat = FALSE)))) {
   potentie_export_rast <- terra::ifel(!is.na(finaal_max_binair) & finaal_max_binair > 0, 1, NA)
+} else if (exists("leefgebied_max") && !all(is.na(terra::values(leefgebied_max, mat = FALSE)))) {
+  potentie_export_rast <- terra::ifel(!is.na(leefgebied_max) & leefgebied_max > 0, 1, NA)
 } else {
   potentie_export_rast <- terra::rast(template_KH, vals = NA)
 }
 
-if(!all(is.na(terra::values(finaal_opp_binair, mat=FALSE)))) {
+# 2. Werkelijke oppervlakte
+if (exists("finaal_opp_binair") && !all(is.na(terra::values(finaal_opp_binair, mat = FALSE)))) {
   werkelijk_export_rast <- terra::ifel(!is.na(finaal_opp_binair) & finaal_opp_binair > 0, 1, NA)
+} else if (exists("leefgebied_opp") && !all(is.na(terra::values(leefgebied_opp, mat = FALSE)))) {
+  werkelijk_export_rast <- terra::ifel(!is.na(leefgebied_opp) & leefgebied_opp > 0, 1, NA)
 } else {
   werkelijk_export_rast <- terra::rast(template_KH, vals = NA)
 }
 
-if(exists("maanwaterjuffer_arpl_opp") && !all(is.na(terra::values(maanwaterjuffer_arpl_opp, mat=FALSE)))) {
-  arpl_export_rast <- terra::ifel(maanwaterjuffer_arpl_opp > 0, 1, NA)
+# 3. ARPL
+if (exists("maanwaterjuffer_arpl_opp") && !all(is.na(terra::values(maanwaterjuffer_arpl_opp, mat = FALSE)))) {
+  arpl_export_rast <- terra::ifel(!is.na(maanwaterjuffer_arpl_opp) & maanwaterjuffer_arpl_opp > 0, 1, NA)
 } else {
   arpl_export_rast <- terra::rast(template_KH, vals = NA)
 }
 
-if(exists("maanwaterjuffer_verspr_opp") && !all(is.na(terra::values(maanwaterjuffer_verspr_opp, mat=FALSE)))) {
-  verspreiding_export_rast <- terra::ifel(maanwaterjuffer_verspr_opp > 0, 1, NA)
+# 4. Actuele verspreiding
+if (exists("maanwaterjuffer_verspr_opp") && !all(is.na(terra::values(maanwaterjuffer_verspr_opp, mat = FALSE)))) {
+  verspreiding_export_rast <- terra::ifel(!is.na(maanwaterjuffer_verspr_opp) & maanwaterjuffer_verspr_opp > 0, 1, NA)
 } else {
   verspreiding_export_rast <- terra::rast(template_KH, vals = NA)
 }
 
 export_config <- list(
-  list(rast = potentie_export_rast,      naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast,     naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,          naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
-  list(rast = verspreiding_export_rast,  naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
+  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",        folder = folders$potentie),
+  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk), 
+  list(rast = arpl_export_rast,         naam = "ARPL",                    folder = folders$arpl),
+  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding)
 )
 
 for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
-  export_rast <- terra::deepcopy(item$rast)
-  export_rast <- terra::extend(export_rast, master_grid, fill = NA)
+  # Uitlijnen op mastergrid met transparante NA als achtergrond
+  export_rast <- terra::extend(item$rast, master_grid, fill = NA)
   
-  if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
-    export_rast <- terra::ifel(is.na(export_rast), 0, 0)
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  } else {
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  }
-  
+  # Overschrijven met expliciete NAflag = 255
   terra::writeRaster(export_rast, 
                      filename = file_path, 
                      overwrite = TRUE, 
                      gdal = c("COMPRESS=LZW"), 
-                     datatype = item$type)
+                     datatype = "INT1U",
+                     NAflag = 255)
                      
-  message(paste("   [OK] Geëxporteerd naar schijf:", basename(file_path)))
+  message(paste("    [OK] Geëxporteerd naar schijf:", basename(file_path)))
 }
 
 suppressWarnings(
-  rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast,
-     waterbiotoop1_opp, land_buffer100_opp, ruim_buffer500_opp)
+  rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
 )
 gc()
 

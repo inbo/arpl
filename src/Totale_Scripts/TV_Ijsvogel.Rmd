@@ -1,5 +1,5 @@
 ---
-title: "Leefgebiedenscript in R: Turnhouts Vennegebied"
+title: "Leefgebiedenscript in R: Turnhouts_Vennegebied"
 author: "Bert Van Hecke"
 date: "`r Sys.Date()`"
 output: 
@@ -159,7 +159,7 @@ print(resultaat)
 rm(df, resultaat)
 ```
 
-# Gebied voorbereiden (Turnhouts Vennegebied)
+# Gebied voorbereiden (De Maten)
 ```{r Gebied Voorbereiden}
 area_shape  <- vect(here("data/input/Turnhouts_Vennegebied.shp"))
 master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
@@ -743,9 +743,9 @@ map %>%
 
 ```{r export ijsvogel}
 # ==============================================================================
-# EXPORT MET KOGELVRIJE NUL-OPVULLING & CONTRACT FIX (IJSVOGEL)
+# SCHONE BINAIR EXPORT ZONDER VALSE NULLEN (IJSVOGEL - TURNHOUTS VENNEGEBIED)
 # ==============================================================================
-message("-> Start geformatteerde export met nul-opvulling voor ijsvogel...")
+message("-> Start geformatteerde binaire export voor ijsvogel...")
 
 base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
 folders <- list(
@@ -756,50 +756,58 @@ folders <- list(
 )
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-if(!all(is.na(terra::values(ijsvogel_leefgebied_opp, mat=FALSE)))) {
+# --- BINAIR TRANSFORMATIES VOORAF ---
+
+# 1. Maximale potentie
+if (exists("ijsvogel_leefgebied_max") && !all(is.na(terra::values(ijsvogel_leefgebied_max, mat = FALSE)))) {
+  potentie_export_rast <- terra::ifel(!is.na(ijsvogel_leefgebied_max) & ijsvogel_leefgebied_max > 0, 1, NA)
+} else {
+  potentie_export_rast <- terra::rast(template_TV, vals = NA)
+}
+
+# 2. Werkelijke oppervlakte
+if (exists("ijsvogel_leefgebied_opp") && !all(is.na(terra::values(ijsvogel_leefgebied_opp, mat = FALSE)))) {
   werkelijk_export_rast <- terra::ifel(!is.na(ijsvogel_leefgebied_opp) & ijsvogel_leefgebied_opp > 0, 1, NA)
 } else {
   werkelijk_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-if(exists("ijsvogel_arpl_opp") && !all(is.na(terra::values(ijsvogel_arpl_opp, mat=FALSE)))) {
-  arpl_export_rast <- terra::ifel(ijsvogel_arpl_opp > 0, 1, NA)
+# 3. ARPL
+if (exists("ijsvogel_arpl_opp") && !all(is.na(terra::values(ijsvogel_arpl_opp, mat = FALSE)))) {
+  arpl_export_rast <- terra::ifel(!is.na(ijsvogel_arpl_opp) & ijsvogel_arpl_opp > 0, 1, NA)
 } else {
   arpl_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
-if(!all(is.na(terra::values(ijsvogel_verspreiding_bin, mat=FALSE)))) {
-  verspreiding_export_rast <- terra::ifel(ijsvogel_verspreiding_bin > 0, 1, NA)
+# 4. Actuele verspreiding
+if (exists("ijsvogel_verspreiding_bin") && !all(is.na(terra::values(ijsvogel_verspreiding_bin, mat = FALSE)))) {
+  verspreiding_export_rast <- terra::ifel(!is.na(ijsvogel_verspreiding_bin) & ijsvogel_verspreiding_bin > 0, 1, NA)
 } else {
   verspreiding_export_rast <- terra::rast(template_TV, vals = NA)
 }
 
+# Export configuratie
 export_config <- list(
-  list(rast = ijsvogel_leefgebied_max,   naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,         naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
-  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
+  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",        folder = folders$potentie),
+  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk), 
+  list(rast = arpl_export_rast,         naam = "ARPL",                    folder = folders$arpl),
+  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding)
 )
 
 for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
-  export_rast <- terra::deepcopy(item$rast)
-  export_rast <- terra::extend(export_rast, master_grid, fill = NA)
+  # Uitlijnen op mastergrid (vul overige cellen aan met transparante NA)
+  export_rast <- terra::extend(item$rast, master_grid, fill = NA)
   
-  if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
-    export_rast <- terra::ifel(is.na(export_rast), 0, 0)
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  } else {
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  }
-  
-  writeRaster(export_rast, 
-              filename = file_path, 
-              overwrite = TRUE, 
-              gdal = c("COMPRESS=LZW"), 
-              datatype = item$type)
-              
+  # Overschrijf met expliciete NAflag = 255
+  terra::writeRaster(export_rast, 
+                     filename = file_path, 
+                     overwrite = TRUE, 
+                     gdal = c("COMPRESS=LZW"), 
+                     datatype = "INT1U",
+                     NAflag = 255)
+                     
   message(paste("    [OK] Geëxporteerd:", basename(file_path)))
 }
 
@@ -812,7 +820,8 @@ temp_files <- c(
 )
 file.remove(temp_files[file.exists(temp_files)])
 
-rm(werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast, temp_files)
+rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast, temp_files)
 gc()
-```
 
+message("-> Alle GeoTIFF exports voor IJsvogel in Turnhouts Vennegebied zijn succesvol weggeschreven!")
+```

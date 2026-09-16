@@ -576,7 +576,12 @@ m <- m %>%
 m
 ```
 
-```{r}
+```{r export}
+# ==============================================================================
+# SCHONE BINAIR EXPORT ZONDER VALSE NULLEN (WEIDEVOGEL - TURNHOUTS VENNEGEBIED)
+# ==============================================================================
+message(paste("-> Start geformatteerde binaire export voor:", soort))
+
 base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
 folders <- list(
   potentie     = file.path(base_dir, "01_Maximale_Potentie"),
@@ -584,30 +589,44 @@ folders <- list(
   arpl         = file.path(base_dir, "03_ARPL"),
   verspreiding = file.path(base_dir, "04_Actuele_Verspreiding")
 )
-
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
+
+# --- BINAIR TRANSFORMATIES VOORAF ---
 
 potentie_export_rast     <- if(exists("weidevogel_finaal_max") && !is.null(weidevogel_finaal_max)) terra::ifel(!is.na(weidevogel_finaal_max), 1, NA) else terra::rast(template_TV, vals = NA)
 werkelijk_export_rast    <- if(exists("weidevogel_finaal_opp") && !is.null(weidevogel_finaal_opp)) terra::ifel(!is.na(weidevogel_finaal_opp) & weidevogel_finaal_opp > 0, 1, NA) else terra::rast(template_TV, vals = NA)
-arpl_export_rast         <- if(exists("weidevogel_arpl_opp") && !is.null(weidevogel_arpl_opp)) terra::ifel(weidevogel_arpl_opp > 0, 1, NA) else terra::rast(template_TV, vals = NA)
-verspreiding_export_rast <- if(exists("weidevogel_verspreiding_bin") && !is.null(weidevogel_verspreiding_bin)) terra::ifel(weidevogel_verspreiding_bin > 0, 1, NA) else terra::rast(template_TV, vals = NA)
+arpl_export_rast         <- if(exists("weidevogel_arpl_opp") && !is.null(weidevogel_arpl_opp)) terra::ifel(!is.na(weidevogel_arpl_opp) & weidevogel_arpl_opp > 0, 1, NA) else terra::rast(template_TV, vals = NA)
+verspreiding_export_rast <- if(exists("weidevogel_verspreiding_bin") && !is.null(weidevogel_verspreiding_bin)) terra::ifel(!is.na(weidevogel_verspreiding_bin) & weidevogel_verspreiding_bin > 0, 1, NA) else terra::rast(template_TV, vals = NA)
 
 export_config <- list(
-  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",     folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"),
-  list(rast = arpl_export_rast,         naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
-  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
+  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",        folder = folders$potentie),
+  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk),
+  list(rast = arpl_export_rast,         naam = "ARPL",                    folder = folders$arpl),
+  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding)
 )
 
 for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
+  
+  # Uitlijnen op mastergrid met transparante NA als achtergrond
   export_rast <- terra::deepcopy(item$rast)
   export_rast <- terra::extend(export_rast, master_grid, fill = NA)
   
-  writeRaster(export_rast, filename = file_path, overwrite = TRUE, gdal = c("COMPRESS=LZW"), datatype = item$type)
-  message(paste("   [OK] Geëxporteerd:", basename(file_path)))
+  # Overschrijven met expliciete NAflag = 255
+  terra::writeRaster(export_rast, 
+                     filename = file_path, 
+                     overwrite = TRUE, 
+                     gdal = c("COMPRESS=LZW"), 
+                     datatype = "INT1U", 
+                     NAflag = 255)
+                     
+  message(paste("    [OK] Geëxporteerd:", basename(file_path)))
 }
 
+suppressWarnings(
+  rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
+)
 gc()
+
 message("✓ Weidevogel-kaarten (Inclusief territoria) succesvol geëxporteerd!")
 ```

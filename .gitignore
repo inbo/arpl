@@ -48,30 +48,6 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 
-# Raster kaart Vlaanderen 10x10 m
-/data/input/Raster_Vlaanderen/BWK_TidyTabel_Smal_Vlaanderen_2025.rds
-
-# Raster Vlaanderen parquet 10x10 m
-/data/input/Raster_vlaanderen/BWK_TidyTabel_Smal_Vlaanderen_2025.parquet
-
-# Raster kaart Turnhouts Vennegebied + 50 km buffer 10x10 m
-/data/input/Raster_Vlaanderen/BWK_Tabel_Turnhouts_Vennegebied_Plus_50km.rds
-
-# Raster kaart De Maten + 50 km buffer 10x10 m
-/data/input/Raster_Vlaanderen/BWK_Tabel_De_Maten_Plus_50km.rds
-
-# Raster kaart Kalmthoutse Heide + 50 km buffer 10x10 m
-/data/input/Raster_Vlaanderen/BWK_Tabel_Kalmthoutse_Heide_Plus_50km.rds
-
-# Raster kaart Mechelse Heide + 50 km buffer 10x10 m
-/data/input/Raster_Vlaanderen/BWK_Tabel_Mechelse_Heide_Plus_50km.rds
-
-# Raster kaart Heesbossen + 50 km buffer 10x10 m
-/data/input/Raster_Vlaanderen/BWK_Tabel_Heesbossen_Plus_50km.rds
-
-# Raster kaart Voerstreek + 50 km buffer 10x10 m
-/data/input/Raster_Vlaanderen/BWK_Tabel_Voerstreek_Plus_50km.rds
-
 # ASCI Files
 /data/input/ASCI Files
 
@@ -106,8 +82,8 @@ rsconnect/
 # Logboeken
 /data/output/Logboeken/
 
-#
+# deze bestanden zijn allemaal te groot om online te zetten
 /data/input/Raster_Vlaanderen
 
-#
+# territoria broedvogels (niet vrij beschikbaar)
 /data/input/Territoria_Soorten

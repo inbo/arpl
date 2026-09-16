@@ -1,5 +1,5 @@
 ---
-title: "Leefgebiedenscript in R: Kalmthoutse Heide"
+title: "Leefgebiedenscript in R: Kalmthoutse_Heide"
 author: "Bert Van Hecke"
 date: "`r Sys.Date()`"
 output: 
@@ -142,7 +142,7 @@ print(resultaat)
 rm(df, resultaat)
 ```
 
-# Gebied voorbereiden (Kalmthoutse Heide)
+# Gebied voorbereiden (Kalmthoutse_Heide)
 ```{r Gebied Voorbereiden}
 area_shape  <- vect(here("data/input/Kalmthoutse_Heide.shp"))
 master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
@@ -478,7 +478,7 @@ if (!all(is.na(terra::values(final_max, mat=FALSE)))) {
   cl_max <- final_max * NA
 }
 
-# Maak een binaire mal van het Kalmthoutse Heide ZONDER de buffer
+# Maak een binaire mal van het Kalmthoutse_Heide ZONDER de buffer
 binnen_masker <- terra::rasterize(area_shape_proj, id_raster_KH, field = 1, background = 0)
 
 # --- TERRITORIA INLEZEN ---
@@ -530,7 +530,7 @@ if (!all(is.na(terra::values(cl_max, mat=FALSE)))) {
   stats_gecombineerd$Werk_ha[is.na(stats_gecombineerd$Werk_ha)] <- 0
   stats_gecombineerd$Werk_ha <- pmin(stats_gecombineerd$Werk_ha, stats_gecombineerd$Pot_ha)
 
-  # 3. Welke clusters raken het Kalmthoutse Heide
+  # 3. Welke clusters raken het Kalmthoutse_Heide
   zonal_zone <- terra::zonal(binnen_masker, cl_max, fun = "max", na.rm = TRUE)
   zonal_zone <- as.data.frame(zonal_zone)
   colnames(zonal_zone) <- c("ID", "In_KH")
@@ -707,6 +707,11 @@ map %>%
 ```
 
 ```{r export}
+# ==============================================================================
+# SCHONE BINAIR EXPORT ZONDER VALSE NULLEN (ZWARTE SPECHT)
+# ==============================================================================
+message(paste("-> Start geformatteerde binaire export voor:", soort))
+
 base_dir <- here("data/output/Kalmthoutse_Heide/Rasters_Soorten")
 folders <- list(
   potentie     = file.path(base_dir, "01_Maximale_Potentie"),
@@ -714,49 +719,64 @@ folders <- list(
   arpl         = file.path(base_dir, "03_ARPL"),
   verspreiding = file.path(base_dir, "04_Actuele_Verspreiding")
 )
-
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
-if(length(ids_actueel_relevant) > 0) {
+# --- BINAIR TRANSFORMATIES VOORAF ---
+
+# 1. Maximale potentie
+if (!all(is.na(terra::values(final_max, mat = FALSE)))) {
+  potentie_export_rast <- terra::ifel(!is.na(final_max) & final_max > 0, 1, NA)
+} else {
+  potentie_export_rast <- terra::rast(template_KH, vals = NA)
+}
+
+# 2. Werkelijke oppervlakte
+if (!all(is.na(terra::values(final_opp, mat = FALSE)))) {
+  werkelijk_export_rast <- terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA)
+} else {
+  werkelijk_export_rast <- terra::rast(template_KH, vals = NA)
+}
+
+# 3. ARPL
+if (length(ids_actueel_relevant) > 0) {
   arpl_export_rast <- cl_max %in% ids_actueel_relevant
   arpl_export_rast <- terra::ifel(arpl_export_rast, 1, NA)
 } else {
   arpl_export_rast <- terra::rast(template_KH, vals = NA)
 }
 
-if(!all(is.na(terra::values(final_opp, mat=FALSE)))) {
-  werkelijk_export_rast <- terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA)
+# 4. Actuele verspreiding
+if (!all(is.na(terra::values(verspreiding_raster, mat = FALSE)))) {
+  verspreiding_export_rast <- terra::ifel(!is.na(verspreiding_raster) & verspreiding_raster > 0, 1, NA)
 } else {
-  werkelijk_export_rast <- terra::rast(template_KH, vals = NA)
+  verspreiding_export_rast <- terra::rast(template_KH, vals = NA)
 }
 
+# Export configuratie
 export_config <- list(
-  list(rast = final_max,              naam = "Maximale_Potentie",        folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,    type = "INT1U"), 
-  list(rast = arpl_export_rast,      naam = "ARPL",                     folder = folders$arpl,         type = "INT1U"),
-  list(rast = verspreiding_raster,   naam = "Actuele_Verspreiding",    folder = folders$verspreiding, type = "INT1U")
+  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",        folder = folders$potentie),
+  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk), 
+  list(rast = arpl_export_rast,         naam = "ARPL",                    folder = folders$arpl),
+  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding)
 )
 
 for(item in export_config) {
   file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
   
-  export_rast <- terra::deepcopy(item$rast)
-  export_rast <- terra::extend(export_rast, master_grid, fill = NA)
+  # Uitlijnen op mastergrid met transparante NA als achtergrond
+  export_rast <- terra::extend(item$rast, master_grid, fill = NA)
   
-  if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
-    export_rast <- terra::ifel(is.na(export_rast), 0, 0)
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  } else {
-    export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  }
-  
-  writeRaster(export_rast, 
-              filename = file_path, 
-              overwrite = TRUE, 
-              gdal = c("COMPRESS=LZW"), 
-              datatype = item$type)
+  # Overschrijven met expliciete NAflag = 255
+  terra::writeRaster(export_rast, 
+                     filename = file_path, 
+                     overwrite = TRUE, 
+                     gdal = c("COMPRESS=LZW"), 
+                     datatype = "INT1U",
+                     NAflag = 255)
+                     
+  message(paste("    [OK] Geëxporteerd:", basename(file_path)))
 }
 
-rm(werkelijk_export_rast, arpl_export_rast, verspreiding_raster, export_config, export_rast)
+rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
 gc()
 ```

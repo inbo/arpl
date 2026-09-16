@@ -627,65 +627,6 @@ r_wasstraat_factor <- terra::as.factor(r_wasstraat)
 r_wasstraat_web <- terra::project(terra::as.int(r_wasstraat_factor), "EPSG:4326", method = "near")
 ```
 
-```{r Visualisatie filterstappen}
-# 1. Definieer de specifieke kleuren (Nu 5 kleuren ipv 6)
-kleuren_wasstraat <- c(
-  "#27AE60", # 1. Behouden Kernhabitat
-  "#E67E22", # 2. Verlies: Drainage
-  "#9B59B6", # 3. Verlies: Bebouwing
-  "#E74C3C", # 4. Verlies: Hooggroen
-  "#7F8C8D"  # 5. Verlies: Cluster-drempel (<10ha afgevallen)
-)
-
-# 2. Maak de colorFactor functie
-pal_wasstraat <- colorFactor(
-  palette = kleuren_wasstraat, 
-  levels = 1:5, 
-  na.color = "transparent"
-)
-
-# 3. Bouw de kaart (Legenda aangepast)
-kaart_wasstraat <- leaflet() %>%
-  addTiles(group = "OSM (Standaardkaart)") %>%
-  addProviderTiles(providers$Esri.WorldImagery, group = "Satelliet (Luchtfoto)") %>%
-  
-  addRasterImage(
-    r_wasstraat_web, 
-    colors = pal_wasstraat, 
-    opacity = 0.7, 
-    group = "Wasstraat Analyse"
-  ) %>%
-  
-  addPolygons(
-    data = grens_web, 
-    color = "black", 
-    weight = 2, 
-    fill = FALSE, 
-    group = "Grens TV"
-  ) %>%
-  
-  addLegend(
-    colors = kleuren_wasstraat,
-    labels = c(
-      "Behouden Kernhabitat (Uiteindelijke selectie)", 
-      "Verlies: Drainagefilter (Ongeschikte bodem)", 
-      "Verlies: Bebouwingsfilter (Verstoring)", 
-      "Verlies: Hooggroenfilter (>20 are)", 
-      "Verlies: Cluster-drempel (<10 ha afgevallen)"
-    ),
-    title = "Wasstraat: Habitatverlies per stap",
-    position = "bottomright"
-  ) %>%
-  
-  addLayersControl(
-    baseGroups = c("OSM (Standaardkaart)", "Satelliet (Luchtfoto)"),
-    overlayGroups = c("Wasstraat Analyse", "Grens TV"),
-    options = layersControlOptions(collapsed = FALSE)
-  )
-
-kaart_wasstraat
-```
-
 ```{r Bouwstenen Bijkomend habitat samenvoegen}
 # --- STAP 7: SAMENVOEGEN BOUWSTENEN (GECORRIGEERDE RASTER MAX LOGICA) ---
 
@@ -1082,50 +1023,18 @@ if(!is.null(resB_strikt) && !all(is.na(terra::values(resB_strikt$kern, mat=FALSE
 }
 ```
 
-# Export alle 4 de kaarten naar de gespecificeerde scenariomappen
-```{r export}
-base_dir <- here::here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", scenario_naam)
+# Scenario Transitiekaart
+```{r Transitiekaart Leaflet}
+# ==============================================================================
+# 1. SCENARIO TRANSITIEKAART LEAFLET
+# ==============================================================================
 
-folders <- list(
-  potentie     = file.path(base_dir, "01_Maximale_Potentie"),
-  werkelijk    = file.path(base_dir, "02_Werkelijke_Oppervlakte"),
-  arpl         = file.path(base_dir, "03_ARPL"),
-  verspreiding = file.path(base_dir, "04_Actuele_Verspreiding")
-)
-purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
-
-# Expliciete declaratie van de 4 rasters (Totaal leefgebied: Kern + Bouwsteen)
+# Bepaal de te exporteren binaire rasters vooraf (1 / NA)
 potentie_export_rast     <- if(exists("grutto_kaart_A") && !is.null(grutto_kaart_A) && !all(is.na(terra::values(grutto_kaart_A, mat=FALSE)))) terra::ifel(grutto_kaart_A > 0, 1, NA) else terra::rast(template_TV, vals = NA)
-werkelijk_export_rast    <- if(!is.null(resB_strikt) && (!all(is.na(terra::values(resB_strikt$kern, mat=FALSE))) \vert{}\vert{} !all(is.na(terra::values(resB_strikt$bouw, mat=FALSE))))) terra::ifel(!is.na(terra::cover(resB_strikt$kern, resB_strikt$bouw)) & terra::cover(resB_strikt$kern, resB_strikt$bouw) > 0, 1, NA) else terra::rast(template_TV, vals = NA)
+werkelijk_export_rast    <- if(!is.null(resB_strikt) && (!all(is.na(terra::values(resB_strikt$kern, mat=FALSE))) || !all(is.na(terra::values(resB_strikt$bouw, mat=FALSE))))) terra::ifel(!is.na(terra::cover(resB_strikt$kern, resB_strikt$bouw)) & terra::cover(resB_strikt$kern, resB_strikt$bouw) > 0, 1, NA) else terra::rast(template_TV, vals = NA)
 arpl_export_rast         <- if(exists("grutto_arpl_opp") && !is.null(grutto_arpl_opp) && !all(is.na(terra::values(grutto_arpl_opp, mat=FALSE)))) terra::ifel(grutto_arpl_opp > 0, 1, NA) else terra::rast(template_TV, vals = NA)
 verspreiding_export_rast <- if(exists("grutto_verspreiding_bin") && !is.null(grutto_verspreiding_bin) && !all(is.na(terra::values(grutto_verspreiding_bin, mat=FALSE)))) terra::ifel(grutto_verspreiding_bin > 0, 1, NA) else terra::rast(template_TV, vals = NA)
 
-export_config <- list(
-  list(rast = potentie_export_rast,    naam = "Maximale_Potentie",    folder = folders$potentie,     type = "INT1U"),
-  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk,   type = "INT1U"), 
-  list(rast = arpl_export_rast,         naam = "ARPL",                  folder = folders$arpl,        type = "INT1U"),
-  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",  folder = folders$verspreiding, type = "INT1U")
-)
-
-for(item in export_config) {
-  file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
-  
-  export_rast <- terra::deepcopy(item$rast)
-  export_rast <- terra::mask(export_rast, area_buffer_fix)
-  
-  if(all(is.na(terra::values(export_rast, mat=FALSE)))) {
-    export_rast <- terra::ifel(is.na(export_rast), 0, 0)
-    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
-  } else {
-    export_rast <- terra::mask(export_rast, area_buffer_fix, updatevalue = 0)
-  }
-  
-  writeRaster(export_rast, filename = file_path, overwrite = TRUE, gdal = c("COMPRESS=LZW"), datatype = item$type)
-}
-```
-
-# Scenario Transitiekaart
-```{r Transitiekaart Leaflet}
 hts_file <- here::here("data/input/Excel_files/HTS.xlsx")
 is_hts_exclusief <- FALSE
 
@@ -1200,4 +1109,52 @@ leaflet() %>%
     overlayGroups = c("Scenario Vergelijking", "Grens TV"),
     options = layersControlOptions(collapsed = FALSE)
   )
+```
+
+```{r export}
+# ==============================================================================
+# 2. SCHONE BINAIR EXPORT ZONDER VALSE NULLEN (SCENARIO GRUTTO)
+# ==============================================================================
+base_dir <- here::here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", scenario_naam)
+
+folders <- list(
+  potentie     = file.path(base_dir, "01_Maximale_Potentie"),
+  werkelijk    = file.path(base_dir, "02_Werkelijke_Oppervlakte"),
+  arpl         = file.path(base_dir, "03_ARPL"),
+  verspreiding = file.path(base_dir, "04_Actuele_Verspreiding")
+)
+purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
+
+export_config <- list(
+  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",        folder = folders$potentie),
+  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk), 
+  list(rast = arpl_export_rast,         naam = "ARPL",                    folder = folders$arpl),
+  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding)
+)
+
+for(item in export_config) {
+  suffix <- if (exists("zoek_sleutel") && grepl("_wv$", zoek_sleutel)) "_wv.tif" else ".tif"
+  file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, suffix))
+  
+  # Uitlijnen op mastergrid met transparante NA als achtergrond
+  export_rast <- terra::deepcopy(item$rast)
+  export_rast <- terra::extend(export_rast, master_grid, fill = NA)
+  
+  # Overschrijven met expliciete NAflag = 255
+  terra::writeRaster(export_rast, 
+                     filename = file_path, 
+                     overwrite = TRUE, 
+                     gdal = c("COMPRESS=LZW"), 
+                     datatype = "INT1U",
+                     NAflag = 255)
+                     
+  message(paste("    [OK] Geëxporteerd naar scenariomap:", basename(file_path)))
+}
+
+suppressWarnings(
+  rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
+)
+gc()
+
+message("🏁 SCENARIO EXPORT VOLLEDIG AFGEROND VOOR GRUTTO!")
 ```

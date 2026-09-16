@@ -552,6 +552,11 @@ kiekendief_audit_tabel %>%
 ```
 
 ```{r export}
+# ==============================================================================
+# SCHONE BINAIR EXPORT ZONDER VALSE NULLEN (BLAUWE KIEKENDIEF - TURNHOUTS VENNEGEBIED)
+# ==============================================================================
+message(paste("-> Start geformatteerde binaire export voor:", soort))
+
 base_dir <- here("data/output/Turnhouts_Vennegebied/Rasters_Soorten")
 folders  <- list(
   potentie     = file.path(base_dir, "01_Maximale_Potentie"),
@@ -562,33 +567,61 @@ folders  <- list(
 
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
 
+# --- BINAIR TRANSFORMATIES VOORAF ---
+
+# 1. Maximale potentie
+if (exists("kiekendief_leefgebied_max") && !all(is.na(terra::values(kiekendief_leefgebied_max, mat = FALSE)))) {
+  potentie_export_rast <- terra::ifel(!is.na(kiekendief_leefgebied_max) & kiekendief_leefgebied_max > 0, 1, NA)
+} else {
+  potentie_export_rast <- terra::rast(template_TV, vals = NA)
+}
+
+# 2. Werkelijke oppervlakte
+if (exists("kiekendief_leefgebied_opp") && !all(is.na(terra::values(kiekendief_leefgebied_opp, mat = FALSE)))) {
+  werkelijk_export_rast <- terra::ifel(!is.na(kiekendief_leefgebied_opp) & kiekendief_leefgebied_opp > 0, 1, NA)
+} else {
+  werkelijk_export_rast <- terra::rast(template_TV, vals = NA)
+}
+
+# 3. ARPL
+if (exists("kiekendief_arpl_opp") && !all(is.na(terra::values(kiekendief_arpl_opp, mat = FALSE)))) {
+  arpl_export_rast <- terra::ifel(!is.na(kiekendief_arpl_opp) & kiekendief_arpl_opp > 0, 1, NA)
+} else {
+  arpl_export_rast <- terra::rast(template_TV, vals = NA)
+}
+
+# 4. Actuele verspreiding
+if (exists("kiekendief_verspreiding_bin") && !all(is.na(terra::values(kiekendief_verspreiding_bin, mat = FALSE)))) {
+  verspreiding_export_rast <- terra::ifel(!is.na(kiekendief_verspreiding_bin) & kiekendief_verspreiding_bin > 0, 1, NA)
+} else {
+  verspreiding_export_rast <- terra::rast(template_TV, vals = NA)
+}
+
 export_config <- list(
-  list(rast = kiekendief_leefgebied_max, naam = "Maximale_Potentie", folder = folders$potentie),
-  list(rast = kiekendief_leefgebied_opp, naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk),
-  list(rast = kiekendief_arpl_opp, naam = "ARPL", folder = folders$arpl),
-  list(rast = kiekendief_verspreiding_bin, naam = "Actuele_Verspreiding", folder = folders$verspreiding)
+  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",        folder = folders$potentie),
+  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk),
+  list(rast = arpl_export_rast,         naam = "ARPL",                    folder = folders$arpl),
+  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding)
 )
 
 for(item in export_config) {
-  file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, ".tif"))
+  file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, "_wv.tif"))
   
-  if(!all(is.na(terra::values(item$rast, mat=FALSE)))) {
-    # Alleen uitbreiden en schrijven als er effectief data is
-    r_bin <- terra::ifel(item$rast > 0, 1, NA)
-    export_rast <- terra::extend(r_bin, master_grid, fill = NA)
-    writeRaster(export_rast, filename = file_path, overwrite = TRUE, gdal = c("COMPRESS=LZW"), datatype = "INT1U")
-    rm(r_bin, export_rast)
-  } else {
-    # Leeg raster schrijven zonder RAM-load
-    export_rast <- terra::rast(master_grid, vals = NA)
-    writeRaster(export_rast, filename = file_path, overwrite = TRUE, gdal = c("COMPRESS=LZW"), datatype = "INT1U")
-    rm(export_rast)
-  }
+  # Uitlijnen op mastergrid met transparante NA als achtergrond
+  export_rast <- terra::extend(item$rast, master_grid, fill = NA)
   
-  gc()
-  message(paste("   [OK] Geëxporteerd:", basename(file_path)))
+  # Overschrijven met expliciete NAflag = 255
+  terra::writeRaster(export_rast, 
+                     filename = file_path, 
+                     overwrite = TRUE, 
+                     gdal = c("COMPRESS=LZW"), 
+                     datatype = "INT1U", 
+                     NAflag = 255)
+  
+  message(paste("    [OK] Geëxporteerd:", basename(file_path)))
 }
 
+rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
 gc()
 ```
 
