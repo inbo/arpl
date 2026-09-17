@@ -187,26 +187,38 @@ bwk_opp[tabel_cel_som$cel_id] <- tabel_cel_som$Oppervlakte
 rm(ds_vlaanderen, tabel_vlaanderen, tabel_unique, tabel_cel_som, resultaten_gegroepeerd, df_nieuw)
 gc()
 
-# 6. DRAINAGE FILTERING --------------------------------------------------------
-message("-> Bodemdrainage toepassen op Vlaams niveau...")
+# 6. DRAINAGE FILTERING & GRADATIE OPBOUWEN -----------------------------------
+message("-> Bodemdrainage toepassen en gradaties berekenen...")
 
 r_drain_raw <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_drainage_10m.tif"))
-
-# CRS expliciet synchroniseren om "CRS do not match" te voorkomen
 crs(r_drain_raw) <- crs(template_Vlaanderen)
 
-# Herlijnen op template grid
 r_drain_aligned <- terra::resample(r_drain_raw, template_Vlaanderen, method = "near")
 
 drain_cats <- terra::cats(r_drain_aligned)[[1]]
 geselecteerde_letters <- c("a", "b", "c", "a-b") 
 veldkrekel_drain_ids <- drain_cats$value[drain_cats$Label %in% geselecteerde_letters]
 
-masker_drainage <- terra::ifel(r_drain_aligned %in% veldkrekel_drain_ids, 1, NA)
+# A. Masker 1: STRIKT DROOG (Enkel goedgekeurde drainageklassen)
+masker_strikt <- terra::ifel(r_drain_aligned %in% veldkrekel_drain_ids, 1, NA)
 
-veldkrekel_basis_opp <- terra::mask(bwk_opp, masker_drainage)
+# B. Masker 2: INCLUSIEF NA (Droog óf Onbekende drainage)
+masker_inclusief <- terra::ifel(r_drain_aligned %in% veldkrekel_drain_ids | is.na(r_drain_aligned), 1, NA)
 
-rm(r_drain_raw, r_drain_aligned, masker_drainage, drain_cats, bwk_opp)
+# C. Masker 3: GRADATIEKAART (2 = Zeker droog, 1 = Onbekend/NA, NA = Ongeschikt/Te nat)
+masker_gradatie <- terra::ifel(
+  r_drain_aligned %in% veldkrekel_drain_ids, 2,
+  terra::ifel(is.na(r_drain_aligned), 1, NA)
+)
+
+# Biotoopoppervlaktes maskeren
+veldkrekel_basis_strikt    <- terra::mask(bwk_opp, masker_strikt)
+veldkrekel_basis_inclusief <- terra::mask(bwk_opp, masker_inclusief)
+
+# Gradatiekoppeling op aanwezige BWK biotoop
+veldkrekel_basis_gradatie  <- terra::mask(masker_gradatie, bwk_opp)
+
+rm(r_drain_raw, r_drain_aligned, masker_strikt, masker_inclusief, masker_gradatie, bwk_opp)
 gc()
 
 # 7. CLUSTERING ----------------------------------------------------------------
@@ -300,7 +312,8 @@ if (!all(is.na(terra::values(r_patches_opp, mat = FALSE)))) {
 } else {
   veldkrekel_leefgebied_opp <- template_Vlaanderen * NA
 }
-
+# Isoleer de goedgekeurde netwerken op de gradatiekaart
+veldkrekel_leefgebied_gradatie <- terra::mask(veldkrekel_basis_gradatie, veldkrekel_leefgebied_opp)
 cat("\n----------------------------------------------------\n")
 cat("Finaal Werkelijk Leefgebied Veldkrekel Vlaanderen (ha):", round(calc_ha_exact(veldkrekel_leefgebied_opp), 2), "\n")
 cat("----------------------------------------------------\n\n")
@@ -308,51 +321,27 @@ cat("----------------------------------------------------\n\n")
 suppressWarnings(rm(r_patches_opp, veldkrekel_clusters_opp, veldkrekel_basis_opp))
 gc()
 
-# 9. DYNAMISCHE EXPORT MAKEN (INCL. 00_ID_RASTERS) -----------------------------
+# 9. DYNAMISCHE EXPORT MAKEN ----------------------------------------------------
 message("-> Start geformatteerde export voor Vlaanderen...")
 
 base_dir <- here::here("data/output/Vlaanderen/Rasters_Soorten", scenario_naam)
 
 folders <- list(
-  id_raster = file.path(base_dir, "00_ID_Rasters"),
-  werkelijk = file.path(base_dir, "02_Werkelijke_Oppervlaktes")
+  id_raster  = file.path(base_dir, "00_ID_Rasters"),
+  werkelijk  = file.path(base_dir, "02_Werkelijke_Oppervlaktes"),
+  gradatie   = file.path(base_dir, "03_Geschiktheid_Gradatie")
 )
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, showWarnings = FALSE, recursive = TRUE))
 
-# --- A. BINAIR EXPORT WERKELIJK HABITAT ---
-if (exists("veldkrekel_leefgebied_opp") && !all(is.na(terra::values(veldkrekel_leefgebied_opp, mat = FALSE)))) {
-  werkelijk_export_rast <- terra::ifel(!is.na(veldkrekel_leefgebied_opp) & veldkrekel_leefgebied_opp > 0, 1, NA)
-} else {
-  werkelijk_export_rast <- template_Vlaanderen * NA
-}
-
-file_path_werkelijk <- file.path(folders$werkelijk, paste0("Habitat_Werkelijke_Oppervlaktes_", soort, ".tif"))
+# --- EXPORT GRADATIEKAART (0 = NA / Ongeschikt, 1 = Onbekend, 2 = Zeker geschikt) ---
+file_path_gradatie <- file.path(folders$gradatie, paste0("Geschiktheid_Gradatie_", soort, ".tif"))
 
 terra::writeRaster(
-  werkelijk_export_rast, 
-  filename = file_path_werkelijk, 
+  veldkrekel_leefgebied_gradatie, 
+  filename = file_path_gradatie, 
   overwrite = TRUE, 
   gdal = c("COMPRESS=LZW"), 
   datatype = "INT1U",
-  NAflag = 255
-)
-message(paste("    [OK] Werkelijk Habitat geëxporteerd:", basename(file_path_werkelijk)))
-
-# --- B. ANALYTISCH ID-RASTER EXPORT (VOOR SCRIPT 2 / ARPL) ---
-file_path_id <- file.path(folders$id_raster, paste0("ID_Netwerken_", soort, ".tif"))
-
-# Exporteer ID raster met INT4U datatype om unieke netwerk-IDs te behouden
-terra::writeRaster(
-  id_export_rast, 
-  filename = file_path_id, 
-  overwrite = TRUE, 
-  gdal = c("COMPRESS=LZW"), 
-  datatype = "INT4U",
   NAflag = 0
 )
-message(paste("    [OK] Analytisch ID-raster geëxporteerd:", basename(file_path_id)))
-
-suppressWarnings(rm(werkelijk_export_rast, id_export_rast))
-gc()
-
-message(paste("🏁 SCRIPT SUCCESVOL AFGEROND VOOR:", toupper(soort)))
+message(paste("    [OK] Gradatiekaart (0/1/2) geëxporteerd:", basename(file_path_gradatie)))
