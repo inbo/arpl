@@ -1,7 +1,4 @@
 library(here)
-# CRUCIALE FIX: Dwing R Markdown om te werken vanaf de hoofdmap (arpl/)
-# Hierdoor werken relatieve paden met hier() overal hetzelfde.
-
 library(knitr)
 library(tidyverse)
 library(sf)
@@ -49,17 +46,9 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
   # STAP 1: VEILIGE & SNELLER NETWERKVORMING ZONDER RAM-CRASH
   # ----------------------------------------------------------------------------
   if (dist_m > 0) {
-    # Maak binaire kaart (1 = biotoop, NA = rest)
     r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
-    
-    # Buffer de BINAIR kaart (dit kost vrijwel geen geheugen!)
-    # Volle afstand dist_m zorgt dat plukjes binnen dist_m gegarandeerd samensmelten
     r_buffered <- terra::buffer(r_binair, width = dist_m / 2)
-    
-    # Maak unieke Netwerk-ID's op de gebufferde zones
     cl_network <- terra::patches(r_buffered, directions = 4, zeroAsNA = TRUE)
-    
-    # Snijd de Netwerk-ID's direct terug naar waar de originele biotooppixels liggen
     cl_biotoop_only <- terra::mask(cl_network, masker)
   } else {
     cl_network <- terra::patches(masker, directions = 8, zeroAsNA = TRUE)
@@ -88,7 +77,6 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
   voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
   if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
-  # Behaal alleen de winnende netwerk-ID's
   masker_binair <- cl_biotoop_only %in% voldoet_ids
   final_network_mask <- terra::ifel(masker_binair == 1, 1, NA)
   
@@ -99,16 +87,14 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
 }
 
 terraOptions(
-  memfrac = 0.8,        # Dwing terra om tot max. 80% van het RAM-geheugen te gebruiken
-  tempdir = tempdir(),  # Geef toestemming voor automatische disk-swapping bij zware rasters
+  memfrac = 0.8,
+  tempdir = tempdir(),
   verbose = FALSE
 )
 
 soort <- "vroedmeesterpad"
 
 # Scenario pad en naam bepalen
-
-# --- DYNAMISCHE SCENARIO PARAMETER CHECK ---
 if (!exists("params") || is.null(params$scenario_rds_path)) {
   scenario_rds_path <- "data/input/Scenario_rds/TV_Scenario_BWK_2025.rds"
 } else {
@@ -117,7 +103,6 @@ if (!exists("params") || is.null(params$scenario_rds_path)) {
 
 p_raw <- gsub("^([.][.]/)+", "", scenario_rds_path)
 scenario_path <- here::here(p_raw)
-
 
 if (!file.exists(scenario_path)) {
   stop(paste("❌ FOUT: Scenario RDS bestand NIET gevonden op:", scenario_path))
@@ -297,7 +282,7 @@ if (!all(is.na(terra::values(landbiotoop_bwk_max, mat = FALSE)))) {
   vroedmeesterpad_land_gefilterd_max <- template_TV * NA
 }
 
-# --- SPOOR OPP (Autonoom op basis van werkelijke bedekking) ---
+# --- SPOOR OPP ---
 if (!all(is.na(terra::values(landbiotoop_bwk_opp, mat = FALSE)))) {
   r_binair_land_opp <- terra::ifel(!is.na(landbiotoop_bwk_opp) & landbiotoop_bwk_opp > 0, 1, NA)
   land_patches_opp  <- terra::patches(r_binair_land_opp, directions = 8, zeroAsNA = TRUE)
@@ -333,7 +318,7 @@ if (!all(is.na(terra::values(vroedmeesterpad_land_gefilterd_max, mat = FALSE))) 
   vroedmeesterpad_leefgebied1_max <- template_TV * NA
 }
 
-# --- SPOOR OPP (Volledig autonoom) ---
+# --- SPOOR OPP ---
 if (!all(is.na(terra::values(vroedmeesterpad_land_gefilterd_opp, mat = FALSE))) && 
     !all(is.na(terra::values(r_vroedmeesterpad_waterbiotoop1_opp, mat = FALSE)))) {
   
@@ -354,11 +339,9 @@ if (!all(is.na(terra::values(vroedmeesterpad_land_gefilterd_opp, mat = FALSE))) 
 
 message("-> Netwerkvorming binnen 500m en controle op >= 120 ha EN >= 5 plassen voor MAX en OPP parallel...")
 
-drempel_netwerk_m2 <- min_totale_ha * 10000 # 120 ha = 1.200.000 m²
+drempel_netwerk_m2 <- min_totale_ha * 10000
 
-# ==============================================================================
-# SPOOR MAX (AUTONOOM)
-# ==============================================================================
+# SPOOR MAX
 res_netwerk_max <- cluster_filter_compleet(
   masker     = vroedmeesterpad_leefgebied1_max,
   opp_laag   = vroedmeesterpad_leefgebied1_max,
@@ -396,9 +379,7 @@ if (!all(is.na(terra::values(cl_netwerk_max, mat = FALSE)))) {
   cl_max                         <- template_TV * NA
 }
 
-# ==============================================================================
-# SPOOR OPP (AUTONOOM OP BASIS VAN WERKELIJKE HECTARES)
-# ==============================================================================
+# SPOOR OPP
 r_binair_leef1_opp <- terra::ifel(!is.na(vroedmeesterpad_leefgebied1_opp) & vroedmeesterpad_leefgebied1_opp > 0, 1, NA)
 
 res_netwerk_opp <- cluster_filter_compleet(
@@ -427,7 +408,7 @@ if (!all(is.na(terra::values(cl_netwerk_opp, mat = FALSE)))) {
   }
   
   if (length(na.omit(valid_ids_opp)) > 0) {
-    vroedmeesterpad_leefgebied_opp <- terra::mask(vroedmeesterpad_leefgebied1_opp, cl_netwerk_opp %in% valid_ids_opp)
+    vroedmeesterpad_leefgebied_opp <- terra::mask(r_netwerk_opp, cl_netwerk_opp %in% valid_ids_opp)
     cl_opp                         <- terra::mask(cl_netwerk_opp, cl_netwerk_opp %in% valid_ids_opp)
   } else {
     vroedmeesterpad_leefgebied_opp <- template_TV * NA
@@ -442,54 +423,7 @@ final_max <- vroedmeesterpad_leefgebied_max
 final_opp <- vroedmeesterpad_leefgebied_opp
 
 # ==============================================================================
-# 2. SCHONE BINAIR EXPORT ZONDER VALSE NULLEN (SCENARIO VROEDMEESTERPAD)
-# ==============================================================================
-base_dir <- here::here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", scenario_naam)
-
-folders <- list(
-  potentie     = file.path(base_dir, "01_Maximale_Potentie"),
-  werkelijk    = file.path(base_dir, "02_Werkelijke_Oppervlaktes"),
-  arpl         = file.path(base_dir, "03_ARPL"),
-  verspreiding = file.path(base_dir, "04_Actuele_Verspreiding")
-)
-purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, recursive = TRUE))
-
-export_config <- list(
-  list(rast = potentie_export_rast,     naam = "Maximale_Potentie",        folder = folders$potentie),
-  list(rast = werkelijk_export_rast,    naam = "Werkelijke_Oppervlaktes", folder = folders$werkelijk), 
-  list(rast = arpl_export_rast,         naam = "ARPL",                    folder = folders$arpl),
-  list(rast = verspreiding_export_rast, naam = "Actuele_Verspreiding",    folder = folders$verspreiding)
-)
-
-for(item in export_config) {
-  suffix <- if (exists("zoek_sleutel") && grepl("_wv$", zoek_sleutel)) "_wv.tif" else ".tif"
-  file_path <- file.path(item$folder, paste0("Habitat_", item$naam, "_", soort, suffix))
-  
-  # Uitlijnen op mastergrid met transparante NA als achtergrond
-  export_rast <- terra::deepcopy(item$rast)
-  export_rast <- terra::extend(export_rast, master_grid, fill = NA)
-  
-  # Overschrijven met expliciete NAflag = 255
-  terra::writeRaster(export_rast, 
-                     filename = file_path, 
-                     overwrite = TRUE, 
-                     gdal = c("COMPRESS=LZW"), 
-                     datatype = "INT1U",
-                     NAflag = 255)
-                     
-  message(paste("    [OK] Geëxporteerd naar scenariomap:", basename(file_path)))
-}
-
-suppressWarnings(
-  rm(potentie_export_rast, werkelijk_export_rast, arpl_export_rast, verspreiding_export_rast, export_config, export_rast)
-)
-gc()
-
-message("🏁 SCENARIO EXPORT VOLLEDIG AFGEROND VOOR VROEDMEESTERPAD!")
-
-
-# ==============================================================================
-# SCHONE EXPORT BIOTOOP EN ANALYTISCH ID-RASTER (VOOR SCRIPT 2 / ARPL)
+# SCHONE EXPORT BIOTOOP EN ANALYTISCH ID-RASTER
 # ==============================================================================
 base_dir <- here::here("data/output/Turnhouts_Vennegebied/Rasters_Soorten", scenario_naam)
 
@@ -501,30 +435,21 @@ folders <- list(
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, showWarnings = FALSE, recursive = TRUE))
 
 # 1. Bepaal Maximale Potentie Raster
-potentie_export_rast <- if (exists("grutto_kaart_A") && !is.null(grutto_kaart_A) && !all(is.na(terra::values(grutto_kaart_A, mat=FALSE)))) {
-  terra::ifel(grutto_kaart_A > 0, 1, NA)
-} else if (exists("final_max") && !all(is.na(terra::values(final_max, mat=FALSE)))) {
+potentie_export_rast <- if (exists("final_max") && !all(is.na(terra::values(final_max, mat=FALSE)))) {
   terra::ifel(!is.na(final_max) & final_max > 0, 1, NA)
 } else {
   terra::rast(template_TV, vals = NA)
 }
 
 # 2. Bepaal Werkelijke Oppervlakte Raster
-werkelijk_export_rast <- if (exists("resB_strikt") && !is.null(resB_strikt) && (!all(is.na(terra::values(resB_strikt$kern, mat=FALSE))) || !all(is.na(terra::values(resB_strikt$bouw, mat=FALSE))))) {
-  r_net_totaal_opp <- terra::cover(resB_strikt$kern, resB_strikt$bouw)
-  terra::ifel(!is.na(r_net_totaal_opp) & r_net_totaal_opp > 0, 1, NA)
-} else if (exists("final_opp") && !all(is.na(terra::values(final_opp, mat=FALSE)))) {
+werkelijk_export_rast <- if (exists("final_opp") && !all(is.na(terra::values(final_opp, mat=FALSE)))) {
   terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA)
 } else {
   terra::rast(template_TV, vals = NA)
 }
 
 # 3. Bepaal Analytisch Metacluster ID-raster
-if (exists("resB_strikt") && !is.null(resB_strikt) && (!all(is.na(terra::values(resB_strikt$kern, mat=FALSE))) || !all(is.na(terra::values(resB_strikt$bouw, mat=FALSE))))) {
-  r_net_totaal <- terra::cover(resB_strikt$kern, resB_strikt$bouw)
-  r_buf        <- terra::buffer(r_net_totaal, width = 100)
-  id_export_rast <- terra::mask(terra::patches(r_buf, directions = 8, zeroAsNA = TRUE), r_net_totaal)
-} else if (exists("cl_max") && !all(is.na(terra::values(cl_max, mat=FALSE)))) {
+if (exists("cl_max") && !all(is.na(terra::values(cl_max, mat=FALSE)))) {
   id_export_rast <- cl_max
 } else if (exists("cl_opp") && !all(is.na(terra::values(cl_opp, mat=FALSE)))) {
   id_export_rast <- cl_opp
@@ -578,4 +503,3 @@ suppressWarnings(
 gc()
 
 message(paste("🏁 SCENARIO EXPORT VOLLEDIG AFGEROND VOOR:", toupper(soort)))
-

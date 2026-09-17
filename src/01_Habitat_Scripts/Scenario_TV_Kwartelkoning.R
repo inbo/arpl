@@ -276,7 +276,7 @@ moeras_opp       <- lijst_oppervlaktes[["moeras"]]
 zeergeschikt_max <- lijst_matches[["zeergeschikt1"]]
 zeergeschikt_opp <- lijst_oppervlaktes[["zeergeschikt1"]]
 
-rm(vertaal_df, lijst_matches, lijst_oppervlaktes)
+rm(lijst_matches, lijst_oppervlaktes)
 gc()
 
 # ==============================================================================

@@ -13,11 +13,6 @@ conflicted::conflicts_prefer(dplyr::filter)
 conflicted::conflicts_prefer(dplyr::select)
 conflicted::conflicts_prefer(terra::intersect)
 
-  echo =F,
-  message = F,
-  warning = F
-)
-
 calc_ha_exact <- function(r) {
   if(is.null(r)) return(0)
   if(all(is.na(terra::values(r, mat=FALSE)))) return(0)

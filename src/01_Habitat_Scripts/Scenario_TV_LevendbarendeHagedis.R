@@ -13,11 +13,6 @@ conflicted::conflicts_prefer(dplyr::filter)
 conflicted::conflicts_prefer(dplyr::select)
 conflicted::conflicts_prefer(terra::intersect)
 
-  echo = FALSE,
-  message = FALSE,
-  warning = FALSE
-)
-
 # --- FUNCTIES ---
 
 calc_ha_exact <- function(r) {
@@ -67,12 +62,6 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
   
   return(list(raster = r_finaal, clusters = cl_finaal))
 }
-
-terraOptions(
-  memfrac = 0.8,        # Dwing terra om tot max. 80% van het RAM-geheugen te gebruiken
-  tempdir = tempdir(),  # Geef toestemming voor automatische disk-swapping bij zware rasters
-  verbose = FALSE
-)
 
 # Handmatige vastlegging voor Levendbarende hagedis
 soort          <- "levendbarendehagedis"

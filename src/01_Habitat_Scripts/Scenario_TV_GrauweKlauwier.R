@@ -269,7 +269,7 @@ foerageerbiotoop_opp  <- lijst_oppervlaktes[["foerageerbiotoop"]]
 bebouwing_max         <- lijst_matches[["bebouwing"]]
 bebouwing_opp         <- lijst_oppervlaktes[["bebouwing"]]
 
-rm(vertaal_df, lijst_matches, lijst_oppervlaktes)
+rm(lijst_matches, lijst_oppervlaktes)
 gc()
 
 # ==============================================================================

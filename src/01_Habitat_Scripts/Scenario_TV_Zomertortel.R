@@ -259,7 +259,7 @@ foerageer_opp     <- lijst_oppervlaktes[["foerageer"]]
 
 raster_simpel_final <- id_raster_TV
 
-rm(vertaal_df, lijst_matches, lijst_oppervlaktes)
+rm(lijst_matches, lijst_oppervlaktes)
 gc()
 
 # ==============================================================================

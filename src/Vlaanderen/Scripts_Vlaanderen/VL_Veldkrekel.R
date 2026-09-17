@@ -38,72 +38,74 @@ calc_ha_exact <- function(r) {
 }
 
 cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
-  # 1. Controleer of het raster leeg is
   if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
     return(list(raster = masker * NA, clusters = masker * NA))
   }
   
-  # ----------------------------------------------------------------------------
-  # STAP 1: GEHEUGENSTABIELE NETWERKVORMING ZONDER R-SESSION CRASH
-  # ----------------------------------------------------------------------------
+  # 1. Binaire kaart maken
   r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
   
+  # 2. Netwerkvorming via tijdelijke schijfbestanden (voorkomt RAM-volloop)
   if (dist_m > 0) {
-    # Bepaal matrixgrootte (25m buffer = 2.5 cellen rondom -> 5x5 matrix)
     stral_cellen <- ceiling((dist_m / 2) / 10)
-    f_matrix <- matrix(1, nrow = (2 * stral_cellen + 1), ncol = (2 * stral_cellen + 1))
+    f_matrix     <- matrix(1, nrow = (2 * stral_cellen + 1), ncol = (2 * stral_cellen + 1))
     
-    # Gebruik een tijdelijk bestand op schijf voor focal om C++ geheugen vrij te houden
-    tmp_focal <- tempfile(fileext = ".tif")
+    tmp_focal  <- tempfile(fileext = ".tif")
     r_buffered <- terra::focal(r_binair, w = f_matrix, fun = "max", na.rm = TRUE, 
                                filename = tmp_focal, overwrite = TRUE)
     r_buffered <- terra::ifel(r_buffered > 0, 1, NA)
     
-    # Unieke Netwerk-ID's toewijzen
-    tmp_patches <- tempfile(fileext = ".tif")
-    cl_network <- terra::patches(r_buffered, directions = 4, zeroAsNA = TRUE, 
-                                 filename = tmp_patches, overwrite = TRUE)
+    tmp_patch  <- tempfile(fileext = ".tif")
+    cl_network <- terra::patches(r_buffered, directions = 4, zeroAsNA = TRUE,
+                                 filename = tmp_patch, overwrite = TRUE)
     
     cl_biotoop_only <- terra::mask(cl_network, masker)
     
-    # Opruimen van tijdelijke rasterbestanden
-    unlink(c(tmp_focal, tmp_patches))
-    rm(r_binair, r_buffered, cl_network)
-    gc()
+    unlink(c(tmp_focal, tmp_patch))
+    rm(r_buffered, cl_network, r_binair)
   } else {
-    tmp_patches <- tempfile(fileext = ".tif")
-    cl_biotoop_only <- terra::patches(masker, directions = 8, zeroAsNA = TRUE, 
-                                      filename = tmp_patches, overwrite = TRUE)
+    tmp_patch       <- tempfile(fileext = ".tif")
+    cl_biotoop_only <- terra::patches(masker, directions = 8, zeroAsNA = TRUE,
+                                      filename = tmp_patch, overwrite = TRUE)
   }
   
   # ----------------------------------------------------------------------------
-  # STAP 2: OPPERVLAKTE PER NETWERK BEREKENEN VIA DATA.TABLE (SNEL & STABIEL)
+  # STAP 3: SLIMME DATA-EXTRACTIE (ENKEL ACTIEVE PIXELS, GEEN 600 MILJOEN CELLEN)
   # ----------------------------------------------------------------------------
+  # Haal ALLEEN cellen op waar een cluster-ID aanwezig is
+  df_cl <- terra::as.data.frame(cl_biotoop_only, cells = TRUE)
+  
+  if (nrow(df_cl) == 0) {
+    return(list(raster = masker * NA, clusters = masker * NA))
+  }
+  
+  colnames(df_cl) <- c("cell", "ID")
+  
   if (werkelijk) {
-    stats_df <- terra::zonal(opp_laag, cl_biotoop_only, fun = "sum", na.rm = TRUE)
-    colnames(stats_df) <- c("ID", "Waarde")
-    stats_df$Area_m2 <- stats_df$Waarde * 100 
+    # Haal alleen de oppervlaktes op voor die specifieke actieve cel-indexen
+    opp_waarden <- terra::extract(opp_laag, df_cl$cell)[[1]]
+    dt_calc <- data.table(ID = df_cl$ID, Waarde = opp_waarden)
   } else {
-    f <- terra::freq(cl_biotoop_only)
-    stats_df <- data.frame(ID = f$value, Waarde = f$count)
-    stats_df$Area_m2 <- stats_df$Waarde * 100 
+    dt_calc <- data.table(ID = df_cl$ID, Waarde = 1)
   }
   
-  stats_df <- stats_df[!is.na(stats_df$ID), ]
-  if (nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  # Sommeer oppervlakte per ID (in m2)
+  stats_dt <- dt_calc[!is.na(ID) & !is.na(Waarde), .(Area_m2 = sum(Waarde, na.rm = TRUE) * 100), by = ID]
+  
+  voldoet_ids <- stats_dt[Area_m2 >= drempel_m2, ID]
+  
+  if (length(voldoet_ids) == 0) {
+    return(list(raster = masker * NA, clusters = masker * NA))
+  }
   
   # ----------------------------------------------------------------------------
-  # STAP 3: FILTEREN OP TOTALE NETWERK-OPPERVLAKTE >= DREMPEL
+  # STAP 4: FILTEREN EN SNELE RECONSTRUCTIE
   # ----------------------------------------------------------------------------
-  voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
-  if (length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  cl_finaal <- terra::ifel(cl_biotoop_only %in% voldoet_ids, cl_biotoop_only, NA)
+  r_finaal  <- terra::mask(masker, cl_finaal)
   
-  # Filter alleen de goedgekeurde netwerken
-  masker_binair <- cl_biotoop_only %in% voldoet_ids
-  final_network_mask <- terra::ifel(masker_binair == 1, 1, NA)
-  
-  r_finaal  <- terra::mask(masker, final_network_mask)
-  cl_finaal <- terra::mask(cl_biotoop_only, r_finaal) 
+  rm(df_cl, dt_calc, stats_dt, cl_biotoop_only)
+  gc()
   
   return(list(raster = r_finaal, clusters = cl_finaal))
 }
@@ -223,24 +225,28 @@ veldkrekel_clusters_opp <- cluster_filter_compleet(
 rm(r_binair_basis_opp)
 gc()
 
-# 8. METAPOPULATIE STRUCTUUR ANALYSE (RASTER-BASED, ZONDER AS.POLYGONS) ---------
+# 8. METAPOPULATIE STRUCTUUR ANALYSE ------------------------------------------
 message("-> Metapopulatiestructuur berekenen voor Vlaanderen...")
 
-# Sla het analytische ID-raster op VÓÓR verdere bewerkingen en rm()
 id_export_rast <- veldkrekel_clusters_opp$clusters
+r_patches_opp  <- veldkrekel_clusters_opp$clusters
 
-r_patches_opp <- veldkrekel_clusters_opp$clusters
 r_leefgebied_5ha_opp     <- template_Vlaanderen * NA
 r_leefgebied_metapop_opp <- template_Vlaanderen * NA
 
 if (!all(is.na(terra::values(r_patches_opp, mat = FALSE)))) {
-  # Zonal oppervlakteberekening per netwerk
-  stats_ha_opp <- terra::zonal(veldkrekel_basis_opp, r_patches_opp, fun = "sum", na.rm = TRUE)
-  colnames(stats_ha_opp) <- c("ID", "Grootte_ha")
-  stats_ha_opp$Grootte_ha <- stats_ha_opp$Grootte_ha * 0.01
   
-  ids_groot_5ha_opp    <- stats_ha_opp$ID[stats_ha_opp$Grootte_ha >= 5]
-  ids_klein_1to5ha_opp <- stats_ha_opp$ID[stats_ha_opp$Grootte_ha >= 1 & stats_ha_opp$Grootte_ha < 5]
+  # SLIMME EXTRACTIE: Alleen actieve cellen ophalen
+  df_patches <- terra::as.data.frame(r_patches_opp, cells = TRUE)
+  colnames(df_patches) <- c("cell", "ID")
+  
+  opp_val <- terra::extract(veldkrekel_basis_opp, df_patches$cell)[[1]]
+  
+  dt_meta <- data.table(ID = df_patches$ID, Waarde = opp_val)[!is.na(ID) & !is.na(Waarde)]
+  stats_ha_opp <- dt_meta[, .(Grootte_ha = sum(Waarde, na.rm = TRUE) * 0.01), by = ID]
+  
+  ids_groot_5ha_opp    <- stats_ha_opp[Grootte_ha >= 5, ID]
+  ids_klein_1to5ha_opp <- stats_ha_opp[Grootte_ha >= 1 & Grootte_ha < 5, ID]
   
   # A. Grote clusters (>= 5 ha) direct behouden
   if (length(ids_groot_5ha_opp) > 0) {
