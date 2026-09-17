@@ -10,7 +10,7 @@ library(here)
 # ------------------------------------------------------------------------------
 
 input_map <- here("src/01_Habitat_Scripts")
-excel_pad <- here("data/Input/Excel_files/Soortenlijst_Maatwerkgebieden_Gefilterd.xlsx")
+excel_pad <- here("data/Input/Excel_files/Soortenlijst_Maatwerkgebieden.xlsx")
 
 # Sjabloon / Brongegevens
 bron_naam     <- "Turnhouts Vennegebied"
@@ -51,11 +51,10 @@ heeft_waarnemingen_bestand <- function(soort_naam, map_waarnemingen) {
 }
 
 # ------------------------------------------------------------------------------
-# 2. EXCEL INLEZEN EN KOLOMMEN NORMALISEREN
+# 2. EXCEL INLEZEN
 # ------------------------------------------------------------------------------
 
 df_excel <- read_excel(excel_pad)
-colnames(df_excel) <- tolower(colnames(df_excel))
 
 # ------------------------------------------------------------------------------
 # 3. VERWERKINGSFUNCTIE PER GEBIED
@@ -67,7 +66,7 @@ verwerk_gebied <- function(doel_naam, doel_snake, doel_acroniem) {
   cat("Start verwerking voor:", doel_naam, "(", doel_acroniem, ")\n")
   cat("========================================================\n")
   
-  excel_kolom <- tolower(doel_snake)
+  excel_kolom <- doel_snake
   
   if (!excel_kolom %in% colnames(df_excel)) {
     warning("Kolom '", excel_kolom, "' niet gevonden in de Excel! Gebied wordt overgeslagen.")
@@ -76,18 +75,18 @@ verwerk_gebied <- function(doel_naam, doel_snake, doel_acroniem) {
   
   map_waarnemingen_gebied <- here("data/input/Waarnemingen_Soorten", doel_snake)
   
-  # A. Filter handmatige maatwerkscripts (Inclusief Scenario_ prefix!)
+  # A. Filter handmatige maatwerkscripts
   maatwerk_scripts <- df_excel %>%
     filter(
-      tolower(coalesce(model, "")) == "ja",
-      tolower(coalesce(automatisch, "")) == "nee",
+      tolower(coalesce(Model, "")) == "ja",
+      tolower(coalesce(Automatisch, "")) == "nee",
       coalesce(.data[[excel_kolom]], 0) == 1
     ) %>%
-    filter(map_lgl(`nederlandse naam`, ~ heeft_waarnemingen_bestand(.x, map_waarnemingen_gebied))) %>%
+    filter(map_lgl(`Nederlandse naam`, ~ heeft_waarnemingen_bestand(.x, map_waarnemingen_gebied))) %>%
     mutate(
       Script_Naam = paste0(
         "Scenario_", bron_acroniem, "_", 
-        gsub(" ", "", str_to_title(`nederlandse naam`)), 
+        gsub(" ", "", str_to_title(`Nederlandse naam`)), 
         ".R"
       )
     ) %>%
@@ -98,13 +97,13 @@ verwerk_gebied <- function(doel_naam, doel_snake, doel_acroniem) {
   # B. Controleer op automatische soorten in dit gebied MET een CSV-bestand
   heeft_automatische_soorten <- df_excel %>%
     filter(
-      tolower(coalesce(automatisch, "")) == "ja",
+      tolower(coalesce(Automatisch, "")) == "ja",
       coalesce(.data[[excel_kolom]], 0) == 1
     ) %>%
-    filter(map_lgl(`nederlandse naam`, ~ heeft_waarnemingen_bestand(.x, map_waarnemingen_gebied))) %>%
+    filter(map_lgl(`Nederlandse naam`, ~ heeft_waarnemingen_bestand(.x, map_waarnemingen_gebied))) %>%
     nrow() > 0
   
-  # C. Algemeen automatisch script (Inclusief Scenario_ prefix)
+  # C. Algemeen automatisch script
   automatisch_script_naam <- paste0("Scenario_", bron_acroniem, "_Leefgebieden_Simpel.R")
   
   alle_te_verwerken_scripts <- maatwerk_scripts
@@ -116,8 +115,11 @@ verwerk_gebied <- function(doel_naam, doel_snake, doel_acroniem) {
   
   cat("Aantal te verwerken scripts uit Excel (met CSV-check):", length(alle_te_verwerken_scripts), "\n\n")
   
-  # D. Outputmap aanmaken (bijv. src/De_Maten/Scripts_Scenario)
+  # D. Outputmap Schoonmaken & Aanmaken (Dwingt een 100% verse kopie af!)
   output_map <- here("src", doel_snake, "Scripts_Scenario")
+  if (dir_exists(output_map)) {
+    dir_delete(output_map) # Verwijder oude versies
+  }
   dir_create(output_map)
   
   # E. Functie om afzonderlijk R-bestand aan te passen en op te slaan
@@ -126,7 +128,6 @@ verwerk_gebied <- function(doel_naam, doel_snake, doel_acroniem) {
     bron_bestand <- file.path(input_map, script_naam)
     werkelijke_script_naam <- script_naam
     
-    # Check 2: Indien niet direct gevonden, check op '_wv.R' (bijv. Scenario_TV_Bergeend_wv.R)
     if (!file_exists(bron_bestand)) {
       mogelijke_wv_naam <- str_replace(script_naam, "\\.R$", "_wv.R")
       mogelijke_wv_pad  <- file.path(input_map, mogelijke_wv_naam)
@@ -138,32 +139,30 @@ verwerk_gebied <- function(doel_naam, doel_snake, doel_acroniem) {
     }
     
     if (!file_exists(bron_bestand)) {
-      cat("  ⚠️ Overgeslagen (bestand niet gevonden in 01_Habitat_Scripts):", script_naam, "\n")
+      cat("  ⚠️ Overgeslagen (nog geen R-scriptbestand op schijf):", script_naam, "\n")
       return(NULL)
     }
     
-    # 1. Bestandsnaam op schijf aanpassen: Scenario_TV_ -> Scenario_DM_
+    # 1. Bestandsnaam aanpassen
     nieuwe_script_naam <- werkelijke_script_naam %>%
-      str_replace(paste0("^Scenario_", bron_acroniem, "_"), paste0("Scenario_", doel_acroniem, "_"))
+      str_replace(paste0("^Scenario_", bron_acroniem, "_"), paste0("Scenario_", doel_acroniem, "_")) %>%
+      str_replace(paste0("^", bron_acroniem, "_"), paste0(doel_acroniem, "_")) %>%
+      str_replace_all(bron_snake, doel_snake)
     
     doel_bestand <- file.path(output_map, nieuwe_script_naam)
     
-    # 2. Inhoud inlezen en tekst vervangen
+    # 2. Inhoud inlezen en tekst in het R-bestand vervangen
     tekst <- readLines(bron_bestand, encoding = "UTF-8", warn = FALSE)
     
-    # Textuele vervangingen
-    tekst <- str_replace_all(tekst, bron_naam, doel_naam)                         # Turnhouts Vennegebied -> De Maten
-    tekst <- str_replace_all(tekst, bron_snake, doel_snake)                       # Turnhouts_Vennegebied -> De_Maten
-    tekst <- str_replace_all(tekst, "01_Habitat_Scripts", "Scripts_Scenario")  # Mappenreferentie corrigeren
-    
-    # Vervang acroniemen specifiek gekoppeld aan Scenario_ of variabele-prefixes
+    tekst <- str_replace_all(tekst, bron_naam, doel_naam)
+    tekst <- str_replace_all(tekst, bron_snake, doel_snake)
+    tekst <- str_replace_all(tekst, paste0("/", bron_acroniem, "_"), paste0("/", doel_acroniem, "_"))
     tekst <- str_replace_all(tekst, paste0("Scenario_", bron_acroniem, "_"), paste0("Scenario_", doel_acroniem, "_"))
-    tekst <- str_replace_all(tekst, paste0("\\b", bron_acroniem, "_"), paste0(doel_acroniem, "_"))
-    tekst <- str_replace_all(tekst, paste0("_", bron_acroniem, "\\b"), paste0("_", doel_acroniem))
+    tekst <- str_replace_all(tekst, str_c("(?<=\\b|_)", bron_acroniem, "(?=\\b|_)"), doel_acroniem)
     
     # Opslaan
     writeLines(tekst, doel_bestand, useBytes = FALSE)
-    cat("  ✓ Verwerkt en opgeslagen in Scripts_Scenario:", nieuwe_script_naam, "\n")
+    cat("  ✓ Vers gegenereerd in Scripts_Scenario:", nieuwe_script_naam, "\n")
   }
   
   walk(alle_te_verwerken_scripts, verwerk_r)
@@ -184,5 +183,5 @@ pwalk(
 )
 
 cat("========================================================\n")
-cat("ALLE GEBIEDEN SUCCESVOL GEGENERERD IN HUN RESPECTIEVE SCRIPTS_SCENARIO MAPPEN!\n")
+cat("ALLE GEBIEDEN SUCCESVOL HERGENERERD MET DE ALLERNIEUWSTE FIXES!\n")
 cat("========================================================\n")
