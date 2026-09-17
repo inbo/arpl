@@ -206,7 +206,6 @@ rm(globale_ids_vector)
 gc()
 ```
 
-# Biotoopfiltering (BWK-codes)
 ```{r Biotoopfiltering}
 # 1. LAAD DE BRON-CROSSWALK/DICTIONARY IN
 df_nieuw <- read_csv(here("data/input/Excel_files/Resultaten_Totaal_Samengevoegd.csv"), show_col_types = FALSE)
@@ -280,7 +279,8 @@ foerageer_opp     <- lijst_oppervlaktes[["foerageer"]]
 
 raster_simpel_final <- id_raster_TV
 
-rm(vertaal_df, lijst_matches, lijst_oppervlaktes)
+# BEHOUD vertaal_df EN tabel_vlaanderen VOOR HET VERVOLG
+rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
@@ -326,11 +326,24 @@ water_totaal_max <- terra::cover(water_max, water_ext_bin)
 water_totaal_opp <- terra::cover(water_opp, water_ext_opp)
 ```
 
-```{r}
+```{r bebouwing en bosfilter}
 # ==============================================================================
 # OPBOUWEN VAN DE NORMALE BOS- EN BEBOUWINGSFILTER (OPTIES 2 & 4)
 # ==============================================================================
 message("-> Opbouwen van de Groenkaart (Bosfilter) en Dorpskern-bebouwingsfilter...")
+
+# FAILSAFE: Heropbouw vertaal_df en tabel_vlaanderen indien deze ontbreken
+if (!exists("vertaal_df") || !exists("tabel_vlaanderen")) {
+  tabel_vlaanderen <- readRDS(scenario_path)
+  setDT(tabel_vlaanderen)
+  tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
+  
+  globale_ids_vector <- terra::cells(master_grid, terra::ext(id_raster_TV))
+  vertaal_df <- data.table(
+    lokale_id  = 1:terra::ncell(id_raster_TV),
+    globale_id = globale_ids_vector
+  )[!is.na(globale_id)]
+}
 
 # A. GROENKAART / BOSFILTER (OPTIE 2)
 hooggroen_raw         <- rast(here("data/input/ASCI Files/Groenkaart_2021.tif"))
@@ -392,7 +405,8 @@ if (!is.null(r_bebouw_groot) && !terra::global(is.na(r_bebouw_groot), "sum")[[1]
   masker_bebouw_100m_groot <- id_raster_TV * NA
 }
 
-rm(tabel_bebouw_TV, tabel_bebouw_som, tabel_bebouw_mapping, r_bebouwing_raw, res_bebouw_groot, r_bebouw_groot, tabel_vlaanderen)
+# Nu pas veilig opruimen
+rm(tabel_bebouw_TV, tabel_bebouw_som, tabel_bebouw_mapping, r_bebouwing_raw, res_bebouw_groot, r_bebouw_groot, vertaal_df)
 gc()
 ```
 

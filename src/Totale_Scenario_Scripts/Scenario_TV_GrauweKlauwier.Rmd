@@ -290,7 +290,8 @@ foerageerbiotoop_opp  <- lijst_oppervlaktes[["foerageerbiotoop"]]
 bebouwing_max         <- lijst_matches[["bebouwing"]]
 bebouwing_opp         <- lijst_oppervlaktes[["bebouwing"]]
 
-rm(vertaal_df, lijst_matches, lijst_oppervlaktes)
+# BEHOUD vertaal_df EN tabel_vlaanderen VOOR HET VERVOLG
+rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
@@ -299,6 +300,26 @@ gc()
 # STAP 1: BEBOUWINGS- EN WEGENFILTER (RAM-VEILIG)
 # ==============================================================================
 message("-> GDX-specifieke bebouwingslagen isoleren...")
+
+# FAILSAFE: Herinlezen/heropbouwen indien vertaal_df of tabel_vlaanderen ontbreekt
+if (!exists("tabel_vlaanderen")) {
+  tabel_vlaanderen <- readRDS(scenario_path)
+  setDT(tabel_vlaanderen)
+  tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
+}
+
+if (!exists("vertaal_df")) {
+  globale_id_raster <- master_grid
+  values(globale_id_raster) <- 1:ncell(globale_id_raster)
+  id_raster_TV_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
+  id_raster_TV_masked <- mask(id_raster_TV_globale_values, area_buffer_fix)
+  
+  df_extractie <- as.data.frame(id_raster_TV_masked, cells = TRUE)
+  vertaal_df <- as.data.table(df_extractie)
+  setnames(vertaal_df, c(1, 2), c("lokale_id", "globale_id"))
+  vertaal_df <- vertaal_df[!is.na(globale_id)]
+  rm(df_extractie, globale_id_raster, id_raster_TV_globale_values, id_raster_TV_masked)
+}
 
 gdx_bebouw_codes <- c("u", "ua", "ua-", "uc", "ud", "ui", "ui-", "un", "un-", "ur", "ur-", "ur+", "uv", "uv-", "uv+")
 
@@ -363,6 +384,7 @@ message("-> Stoorfactoren toepassen op de bruto voortplantingsbiotoop...")
 voortplanting_gezuiverd_max <- terra::ifel(masker_bebouw_stoor == 1 | masker_weg_stoor == 1, NA, voortplanting_bwk_max)
 voortplanting_gezuiverd_opp <- terra::mask(voortplanting_bwk_opp, voortplanting_gezuiverd_max)
 
+# Schoonmaken zonder 'vertaal_df' of 'tabel_vlaanderen' te wissen!
 rm(tabel_bebouw_TV, tabel_bebouw_som, r_bebouwing_raw)
 gc()
 ```

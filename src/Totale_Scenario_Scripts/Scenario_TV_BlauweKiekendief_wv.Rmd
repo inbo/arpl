@@ -270,7 +270,8 @@ foer_raw_opp <- lijst_oppervlaktes[["foerageer"]]
 
 raster_simpel_final <- id_raster_TV
 
-rm(tabel_vlaanderen, vertaal_df, lijst_matches, lijst_oppervlaktes)
+# BEHOUD tabel_vlaanderen EN vertaal_df VOOR VERVOLGSTAPPEN
+rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
@@ -301,6 +302,22 @@ foer_raw_opp <- terra::cover(foer_raw_opp, r_lgp_bin)
 
 ```{r bebouwingsfilter}
 # --- BEBOUWINGSFILTER (VERSTORINGSZONE ROND BEBOUWING & DORPSKERNEN) ---
+
+# FAILSAFE: Herinlezen indien tabel_vlaanderen of vertaal_df toch ontbreekt
+if (!exists("tabel_vlaanderen")) {
+  tabel_vlaanderen <- readRDS(scenario_path)
+  setDT(tabel_vlaanderen)
+  tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
+}
+
+if (!exists("vertaal_df")) {
+  globale_ids_vector <- terra::cells(master_grid, terra::ext(id_raster_TV))
+  vertaal_df <- data.table(
+    lokale_id  = 1:terra::ncell(id_raster_TV),
+    globale_id = globale_ids_vector
+  )[!is.na(globale_id)]
+}
+
 bebouwings_lagen <- gouden_namenlijst[grepl("^u[a-z0-9]", gouden_namenlijst) | gouden_namenlijst == "u" | gouden_namenlijst == "gh"]
 
 tabel_bebouw_TV  <- tabel_vlaanderen[CODE %in% bebouwings_lagen & cel_id %in% studiegebied_globale_ids]
@@ -337,6 +354,8 @@ if (!is.null(r_bebouw_groot) && !terra::global(is.na(r_bebouw_groot), "sum")[[1]
   masker_bebouw_100m <- id_raster_TV * NA
 }
 
+# Geheugen opschonen zonder tabel_vlaanderen/vertaal_df te slopen
+rm(tabel_bebouw_TV, tabel_bebouw_som, tabel_bebouw_mapping, r_bebouwing_raw, res_bebouw_groot, r_bebouw_groot)
 gc()
 ```
 

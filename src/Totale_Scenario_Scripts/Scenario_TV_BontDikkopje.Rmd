@@ -256,8 +256,8 @@ voortplanting_bwk_max <- lijst_matches[["voortplanting_bwk"]]
 voortplanting_bwk_opp <- lijst_oppervlaktes[["voortplanting_bwk"]]
 bosranden_max         <- lijst_matches[["bosranden"]]
 bosranden_opp         <- lijst_oppervlaktes[["bosranden"]]
-water_bwk_max         <- lijst_matches[["waterbwk"]]
-water_bwk_opp         <- lijst_oppervlaktes[["waterbwk"]]
+water_bwk_max         <- lijst_matches[["water_bwk"]]
+water_bwk_opp         <- lijst_oppervlaktes[["water_bwk"]]
 foerageer_bwk_max     <- lijst_matches[["foerageer_bwk"]]
 foerageer_bwk_opp     <- lijst_oppervlaktes[["foerageer_bwk"]]
 
@@ -512,22 +512,30 @@ message("-> Totale leefgebiedslagen opbouwen via terra::cover...")
 final_max <- terra::cover(voortplanting_finaal_max, foerageer_finaal_max)
 final_opp <- terra::cover(voortplanting_finaal_opp, foerageer_finaal_opp)
 
-if (!all(is.na(terra::values(cl_foerageer_max, mat=FALSE)))) {
-  max_id_voortplanting <- terra::global(cl_voortplanting_max, "max", na.rm = TRUE)[[1]]
-  if(is.na(max_id_voortplanting)) max_id_voortplanting <- 0
+# Veilige verwerking cl_max
+if (!is.null(cl_foerageer_max) && !all(is.na(terra::values(cl_foerageer_max, mat = FALSE)))) {
+  max_id_voortplanting <- 0
+  if (!is.null(cl_voortplanting_max) && !all(is.na(terra::values(cl_voortplanting_max, mat = FALSE)))) {
+    val_max <- terra::global(cl_voortplanting_max, "max", na.rm = TRUE)[[1]]
+    if (!is.na(val_max)) max_id_voortplanting <- val_max
+  }
   
   cl_foerageer_uniek_max <- cl_foerageer_max + (max_id_voortplanting + 1000)
-  cl_max <- terra::cover(cl_voortplanting_max, cl_foerageer_uniek_max)
+  cl_max <- if (!is.null(cl_voortplanting_max)) terra::cover(cl_voortplanting_max, cl_foerageer_uniek_max) else cl_foerageer_uniek_max
 } else {
   cl_max <- cl_voortplanting_max
 }
 
-if (!all(is.na(terra::values(cl_foerageer_opp, mat=FALSE)))) {
-  max_id_voortplanting_opp <- terra::global(cl_voortplanting_opp, "max", na.rm = TRUE)[[1]]
-  if(is.na(max_id_voortplanting_opp)) max_id_voortplanting_opp <- 0
+# Veilige verwerking cl_opp
+if (!is.null(cl_foerageer_opp) && !all(is.na(terra::values(cl_foerageer_opp, mat = FALSE)))) {
+  max_id_voortplanting_opp <- 0
+  if (!is.null(cl_voortplanting_opp) && !all(is.na(terra::values(cl_voortplanting_opp, mat = FALSE)))) {
+    val_opp <- terra::global(cl_voortplanting_opp, "max", na.rm = TRUE)[[1]]
+    if (!is.na(val_opp)) max_id_voortplanting_opp <- val_opp
+  }
   
   cl_foerageer_uniek_opp <- cl_foerageer_opp + (max_id_voortplanting_opp + 1000)
-  cl_opp <- terra::cover(cl_voortplanting_opp, cl_foerageer_uniek_opp)
+  cl_opp <- if (!is.null(cl_voortplanting_opp)) terra::cover(cl_voortplanting_opp, cl_foerageer_uniek_opp) else cl_foerageer_uniek_opp
 } else {
   cl_opp <- cl_voortplanting_opp
 }
@@ -535,7 +543,7 @@ if (!all(is.na(terra::values(cl_foerageer_opp, mat=FALSE)))) {
 grens_merged  <- terra::aggregate(area_shape_proj)
 binnen_masker <- terra::rasterize(grens_merged, template_TV, field = 1)
 
-if (!all(is.na(terra::values(final_max, mat=FALSE)))) {
+if (!is.null(final_max) && !all(is.na(terra::values(final_max, mat = FALSE)))) {
   is_loss   <- !is.na(final_max) & is.na(final_opp)
   is_kept   <- !is.na(final_opp)
   is_inside <- !is.na(binnen_masker)

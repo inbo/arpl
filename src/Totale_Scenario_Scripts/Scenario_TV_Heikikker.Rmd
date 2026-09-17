@@ -270,12 +270,65 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   }
 }
 
-waterbiotoop_bwk_max <- lijst_matches[["waterbiotoop0"]]
-waterbiotoop_bwk_opp <- lijst_oppervlaktes[["waterbiotoop0"]]
-landbiotoop_bwk_max  <- lijst_matches[["landbiotoop1"]]
-landbiotoop_bwk_opp  <- lijst_oppervlaktes[["landbiotoop1"]]
+# Hoofdletter- en sleutel-veilige toewijzing
+w_key <- names(lijst_matches)[tolower(names(lijst_matches)) %in% c("waterbiotoop0", "waterbiotoop")][1]
+l_key <- names(lijst_matches)[tolower(names(lijst_matches)) %in% c("landbiotoop1", "landbiotoop")][1]
+
+waterbiotoop_bwk_max <- if (!is.na(w_key)) lijst_matches[[w_key]] else template_TV * NA
+waterbiotoop_bwk_opp <- if (!is.na(w_key)) lijst_oppervlaktes[[w_key]] else template_TV * NA
+landbiotoop_bwk_max  <- if (!is.na(l_key)) lijst_matches[[l_key]] else template_TV * NA
+landbiotoop_bwk_opp  <- if (!is.na(l_key)) lijst_oppervlaktes[[l_key]] else template_TV * NA
 
 rm(tabel_vlaanderen, vertaal_df, lijst_matches, lijst_oppervlaktes)
+gc()
+```
+
+```{r waterbiotoop}
+message("-> Watervlakken shapefile inlezen en verwerken voor heikikker...")
+
+watervlakken_path <- here("data/input/ASCI Files/watervlakken2024.shp")
+
+if (file.exists(watervlakken_path)) {
+  watervlakken_v    <- vect(watervlakken_path)
+  watervlakken_proj <- project(watervlakken_v, crs(template_TV))
+
+  area_buffer_clean  <- aggregate(makeValid(area_buffer_fix))
+  watervlakken_clean <- makeValid(watervlakken_proj)
+  watervlakken_TV    <- crop(watervlakken_clean, area_buffer_clean)
+
+  # Fuzzy clustering voor kleine waters
+  watervlakken_buffered       <- buffer(watervlakken_TV, width = 5)
+  watervlakken_fuzzy_clusters <- aggregate(watervlakken_buffered, by = NULL)
+  watervlakken_fuzzy_clusters$fuzzy_area_m2 <- terra::expanse(watervlakken_fuzzy_clusters)
+
+  kleine_clusters_v <- watervlakken_fuzzy_clusters[watervlakken_fuzzy_clusters$fuzzy_area_m2 <= 4000, ]
+
+  if (!is.null(kleine_clusters_v) && nrow(kleine_clusters_v) > 0) {
+    kleine_watervlakken_finaal <- crop(watervlakken_TV, kleine_clusters_v)
+    
+    if (!is.null(kleine_watervlakken_finaal) && nrow(kleine_watervlakken_finaal) > 0) {
+      r_hk_kleinwater <- terra::rasterize(kleine_watervlakken_finaal, template_TV, field = 1, background = NA)
+      
+      r_heikikker_waterbiotoop1     <- terra::cover(waterbiotoop_bwk_max, r_hk_kleinwater)
+      r_heikikker_waterbiotoop1_opp <- terra::cover(waterbiotoop_bwk_opp, r_hk_kleinwater)
+    } else {
+      r_heikikker_waterbiotoop1     <- waterbiotoop_bwk_max
+      r_heikikker_waterbiotoop1_opp <- waterbiotoop_bwk_opp
+    }
+  } else {
+    r_heikikker_waterbiotoop1     <- waterbiotoop_bwk_max
+    r_heikikker_waterbiotoop1_opp <- waterbiotoop_bwk_opp
+  }
+} else {
+  message("⚠️ Geen watervlakken shapefile gevonden; waterbiotoop valt terug op BWK.")
+  r_heikikker_waterbiotoop1     <- waterbiotoop_bwk_max
+  r_heikikker_waterbiotoop1_opp <- waterbiotoop_bwk_opp
+  watervlakken_clean            <- NULL
+}
+
+suppressWarnings(
+  rm(watervlakken_v, watervlakken_buffered, watervlakken_fuzzy_clusters, kleine_clusters_v, kleine_watervlakken_finaal, r_hk_kleinwater)
+)
 gc()
 ```
 
@@ -285,7 +338,7 @@ message("-> Landbiotoop filteren op minimale eiland-oppervlakte (>= 10 ha) voor 
 drempel_land_m2 <- opp_land_ha * 10000 # 10 ha = 100.000 m²
 
 # --- SPOOR MAX ---
-if (!all(is.na(terra::values(landbiotoop_bwk_max, mat = FALSE)))) {
+if (!is.null(landbiotoop_bwk_max) && !all(is.na(terra::values(landbiotoop_bwk_max, mat = FALSE)))) {
   land_patches_max <- terra::patches(landbiotoop_bwk_max, directions = 8, zeroAsNA = TRUE)
   land_freq_max    <- as.data.frame(terra::freq(land_patches_max))
   ids_land_ok_max  <- land_freq_max$value[(land_freq_max$count * 100) >= drempel_land_m2]
@@ -299,12 +352,11 @@ if (!all(is.na(terra::values(landbiotoop_bwk_max, mat = FALSE)))) {
   heikikker_land_gefilterd_max <- template_TV * NA
 }
 
-# --- SPOOR OPP (Autonoom op basis van werkelijke bedekking) ---
-if (!all(is.na(terra::values(landbiotoop_bwk_opp, mat = FALSE)))) {
+# --- SPOOR OPP ---
+if (!is.null(landbiotoop_bwk_opp) && !all(is.na(terra::values(landbiotoop_bwk_opp, mat = FALSE)))) {
   r_binair_land_opp <- terra::ifel(!is.na(landbiotoop_bwk_opp) & landbiotoop_bwk_opp > 0, 1, NA)
   land_patches_opp  <- terra::patches(r_binair_land_opp, directions = 8, zeroAsNA = TRUE)
   
-  # Zonal som op reële fracties per eiland
   zonal_land_opp <- terra::zonal(landbiotoop_bwk_opp, land_patches_opp, fun = "sum", na.rm = TRUE)
   colnames(zonal_land_opp) <- c("ID", "Werk_ha")
   ids_land_ok_opp <- zonal_land_opp$ID[(zonal_land_opp$Werk_ha * 100) >= drempel_land_m2]
@@ -323,8 +375,8 @@ if (!all(is.na(terra::values(landbiotoop_bwk_opp, mat = FALSE)))) {
 message("-> Ruimtelijke koppeling land- en waterbiotoop (AfstandBiotopen = 0 m) voor MAX en OPP parallel...")
 
 # --- SPOOR MAX ---
-if (!all(is.na(terra::values(heikikker_land_gefilterd_max, mat = FALSE))) && 
-    !all(is.na(terra::values(r_heikikker_waterbiotoop1, mat = FALSE)))) {
+if (!is.null(heikikker_land_gefilterd_max) && !all(is.na(terra::values(heikikker_land_gefilterd_max, mat = FALSE))) && 
+    !is.null(r_heikikker_waterbiotoop1) && !all(is.na(terra::values(r_heikikker_waterbiotoop1, mat = FALSE)))) {
   
   r_land_mask_max  <- heikikker_land_gefilterd_max
   r_water_mask_max <- r_heikikker_waterbiotoop1
@@ -338,9 +390,9 @@ if (!all(is.na(terra::values(heikikker_land_gefilterd_max, mat = FALSE))) &&
   heikikker_leefgebied1_max <- template_TV * NA
 }
 
-# --- SPOOR OPP (Volledig autonoom) ---
-if (!all(is.na(terra::values(heikikker_land_gefilterd_opp, mat = FALSE))) && 
-    !all(is.na(terra::values(r_heikikker_waterbiotoop1_opp, mat = FALSE)))) {
+# --- SPOOR OPP ---
+if (!is.null(heikikker_land_gefilterd_opp) && !all(is.na(terra::values(heikikker_land_gefilterd_opp, mat = FALSE))) && 
+    !is.null(r_heikikker_waterbiotoop1_opp) && !all(is.na(terra::values(r_heikikker_waterbiotoop1_opp, mat = FALSE)))) {
   
   r_land_mask_opp  <- terra::ifel(!is.na(heikikker_land_gefilterd_opp) & heikikker_land_gefilterd_opp > 0, 1, NA)
   r_water_mask_opp <- terra::ifel(!is.na(r_heikikker_waterbiotoop1_opp) & r_heikikker_waterbiotoop1_opp > 0, 1, NA)
@@ -356,97 +408,6 @@ if (!all(is.na(terra::values(heikikker_land_gefilterd_opp, mat = FALSE))) &&
 } else {
   heikikker_leefgebied1_opp <- template_TV * NA
 }
-```
-
-```{r netwerkvorming}
-message("-> Netwerkvorming binnen 2000m en controle op >= 148 ha EN >= 5 plassen voor MAX en OPP parallel...")
-
-drempel_netwerk_m2 <- min_totale_ha * 10000 # 148 ha = 1.480.000 m²
-
-# ==============================================================================
-# SPOOR MAX (AUTONOOM)
-# ==============================================================================
-res_netwerk_max <- cluster_filter_compleet(
-  masker     = heikikker_leefgebied1_max,
-  opp_laag   = heikikker_leefgebied1_max,
-  drempel_m2 = drempel_netwerk_m2,
-  dist_m     = buffer_m,
-  werkelijk  = FALSE
-)
-
-cl_netwerk_max <- res_netwerk_max$clusters
-r_netwerk_max  <- res_netwerk_max$raster
-
-if (!all(is.na(terra::values(cl_netwerk_max, mat = FALSE)))) {
-  netwerk_poly_max <- terra::as.polygons(cl_netwerk_max, dissolve = TRUE) %>% terra::makeValid()
-  watervlakken_in_netwerk_max <- terra::crop(watervlakken_clean, netwerk_poly_max)
-  
-  if (!is.null(watervlakken_in_netwerk_max) && nrow(watervlakken_in_netwerk_max) > 0) {
-    rel_max <- matrix(terra::is.related(netwerk_poly_max, watervlakken_in_netwerk_max, "intersects"), 
-                      nrow = nrow(netwerk_poly_max), ncol = nrow(watervlakken_in_netwerk_max))
-    netwerk_poly_max$Aantal_Plassen <- rowSums(rel_max)
-    id_col_max <- names(netwerk_poly_max)[1]
-    valid_ids_max <- as.numeric(netwerk_poly_max[[id_col_max]][netwerk_poly_max$Aantal_Plassen >= min_plassen, 1])
-  } else {
-    valid_ids_max <- c()
-  }
-  
-  if (length(na.omit(valid_ids_max)) > 0) {
-    heikikker_leefgebied_max <- terra::mask(r_netwerk_max, cl_netwerk_max %in% valid_ids_max)
-    cl_max                   <- terra::mask(cl_netwerk_max, cl_netwerk_max %in% valid_ids_max)
-  } else {
-    heikikker_leefgebied_max <- template_TV * NA
-    cl_max                   <- template_TV * NA
-  }
-} else {
-  heikikker_leefgebied_max <- template_TV * NA
-  cl_max                   <- template_TV * NA
-}
-
-# ==============================================================================
-# SPOOR OPP (AUTONOOM OP BASIS VAN WERKELIJKE HECTARES)
-# ==============================================================================
-r_binair_leef1_opp <- terra::ifel(!is.na(heikikker_leefgebied1_opp) & heikikker_leefgebied1_opp > 0, 1, NA)
-
-res_netwerk_opp <- cluster_filter_compleet(
-  masker     = r_binair_leef1_opp,
-  opp_laag   = heikikker_leefgebied1_opp,
-  drempel_m2 = drempel_netwerk_m2,
-  dist_m     = buffer_m,
-  werkelijk  = TRUE
-)
-
-cl_netwerk_opp <- res_netwerk_opp$clusters
-r_netwerk_opp  <- res_netwerk_opp$raster
-
-if (!all(is.na(terra::values(cl_netwerk_opp, mat = FALSE)))) {
-  netwerk_poly_opp <- terra::as.polygons(cl_netwerk_opp, dissolve = TRUE) %>% terra::makeValid()
-  watervlakken_in_netwerk_opp <- terra::crop(watervlakken_clean, netwerk_poly_opp)
-  
-  if (!is.null(watervlakken_in_netwerk_opp) && nrow(watervlakken_in_netwerk_opp) > 0) {
-    rel_opp <- matrix(terra::is.related(netwerk_poly_opp, watervlakken_in_netwerk_opp, "intersects"), 
-                      nrow = nrow(netwerk_poly_opp), ncol = nrow(watervlakken_in_netwerk_opp))
-    netwerk_poly_opp$Aantal_Plassen <- rowSums(rel_opp)
-    id_col_opp <- names(netwerk_poly_opp)[1]
-    valid_ids_opp <- as.numeric(netwerk_poly_opp[[id_col_opp]][netwerk_poly_opp$Aantal_Plassen >= min_plassen, 1])
-  } else {
-    valid_ids_opp <- c()
-  }
-  
-  if (length(na.omit(valid_ids_opp)) > 0) {
-    heikikker_leefgebied_opp <- terra::mask(heikikker_leefgebied1_opp, cl_netwerk_opp %in% valid_ids_opp)
-    cl_opp                   <- terra::mask(cl_netwerk_opp, cl_netwerk_opp %in% valid_ids_opp)
-  } else {
-    heikikker_leefgebied_opp <- template_TV * NA
-    cl_opp                   <- template_TV * NA
-  }
-} else {
-  heikikker_leefgebied_opp <- template_TV * NA
-  cl_opp                   <- template_TV * NA
-}
-
-final_max <- heikikker_leefgebied_max
-final_opp <- heikikker_leefgebied_opp
 ```
 
 ```{r waarnemingen inlezen en ARPL}

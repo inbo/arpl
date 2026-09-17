@@ -297,7 +297,8 @@ moeras_opp       <- lijst_oppervlaktes[["moeras"]]
 zeergeschikt_max <- lijst_matches[["zeergeschikt1"]]
 zeergeschikt_opp <- lijst_oppervlaktes[["zeergeschikt1"]]
 
-rm(vertaal_df, lijst_matches, lijst_oppervlaktes)
+# BEHOUD vertaal_df voor de terrils in de volgende chunk
+rm(resultaten_gegroepeerd, df_nieuw, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
@@ -306,7 +307,17 @@ gc()
 # PREPARATIE: AANMAAK HOOGGROEN EN TERRILS (ONBRUIKBARE ELEMENTEN)
 # ==============================================================================
 
-# 1. HOOGGROEN SYNCHRONISEREN
+# FAILSAFE: Heropbouw van vertaal_df als deze door een eerdere stap zou ontbreken
+if (!exists("vertaal_df")) {
+  id_raster_TV_masked <- mask(crop(master_grid, area_buffer_fix, snap = "near"), area_buffer_fix)
+  df_extractie <- as.data.frame(id_raster_TV_masked, cells = TRUE)
+  vertaal_df <- as.data.table(df_extractie)
+  setnames(vertaal_df, c(1, 2), c("lokale_id", "globale_id"))
+  vertaal_df <- vertaal_df[!is.na(globale_id)]
+  rm(df_extractie, id_raster_TV_masked)
+}
+
+# 1. HOOGGROEN SYNCHRONISEREN EN HARD WEGSCHRIJVEN NAAR SCHIJF
 hooggroen_raw         <- rast(here("data/input/ASCI Files/Groenkaart_2021.tif"))
 area_buffer_groen_crs <- project(area_buffer_fix, crs(hooggroen_raw))
 hooggroen_local_raw   <- crop(hooggroen_raw, area_buffer_groen_crs)
@@ -314,8 +325,13 @@ hooggroen_local_raw   <- crop(hooggroen_raw, area_buffer_groen_crs)
 hooggroen_binair  <- terra::classify(hooggroen_local_raw, matrix(c(0.5, 1.5, 1), ncol = 3, byrow = TRUE), others = 0)
 hooggroen_10m_raw <- terra::aggregate(hooggroen_binair, fact = 10, fun = "max")
 
-hooggroen_sync    <- project(hooggroen_10m_raw, crs(template_TV)) %>% 
-                     terra::resample(template_TV, method = "near")
+tf_groen_sync <- tempfile(fileext = ".tif")
+hooggroen_sync <- project(hooggroen_10m_raw, crs(template_TV)) %>% 
+                  terra::resample(template_TV, method = "near")
+hooggroen_sync <- terra::writeRaster(hooggroen_sync, filename = tf_groen_sync, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
+
+rm(hooggroen_raw, hooggroen_local_raw, hooggroen_binair, hooggroen_10m_raw)
+gc()
 
 # 2. TERRILS ISOLEREN (kg%)
 tabel_terril <- tabel_vlaanderen[CODE %like% "^kg"]
@@ -330,13 +346,13 @@ if(nrow(tabel_terril_som) > 0) {
   tabel_terril_mapping <- merge(tabel_terril_som, vertaal_df, by = "globale_id", all.x = TRUE)
   tabel_terril_mapping <- tabel_terril_mapping[!is.na(lokale_id) & Oppervlakte >= 0.01]
   
-  if(nrow(tril_clean <- tabel_terril_mapping) > 0) {
-    r_terril[tril_clean$lokale_id] <- 1
+  if(nrow(tabel_terril_mapping) > 0) {
+    r_terril[tabel_terril_mapping$lokale_id] <- 1
   }
 }
 
 # ==============================================================================
-# STAP 1: PARALLELLE START (BINAIR VS FRACTIE)
+# STAP 1: PARALLELLE START (BINAIR TV FRACTIE)
 # ==============================================================================
 
 # Basisbiotoop Spoor A: Binair
@@ -359,6 +375,10 @@ cat("--- TUSSENTIJDSE CHECK KWARTELKONING (STAP 1) ---\n")
 cat("Spoor A (Maximale Potentie - Binair): ", round(ha_fase1_bin, 2), " ha\n")
 cat("Spoor B (Werkelijke Kwaliteit - Frac): ", round(ha_fase1_frac, 2), " ha\n")
 cat("-------------------------------------------------\n")
+
+# Nu vertaal_df veilig opruimen nadat terrils zijn verwerkt
+rm(vertaal_df, tabel_terril, tabel_terril_TV, tabel_terril_som)
+gc()
 ```
 
 ```{r verdere filter}

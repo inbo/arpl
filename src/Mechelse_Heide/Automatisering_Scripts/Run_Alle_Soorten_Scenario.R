@@ -18,7 +18,6 @@ SCENARIO_RDS_PAD <- here("data/input/Scenario_rds/MH_Scenario_bosbehoudss_ss31fi
 
 # Extraheer de naam van het scenario voor de logboeken en bestandsnamen
 HUIDIG_SCENARIO  <- gsub("^MH_Scenario_|.rds$", "", basename(SCENARIO_RDS_PAD))
-
 MAP_SCRIPTS      <- here("src/Mechelse_Heide/Scripts_Scenario") # Map met de 60 scenario Rmd's
 
 # AANGEPAST: Maak het pad dynamisch door HUIDIG_SCENARIO als submap toe te voegen
@@ -29,12 +28,10 @@ if(!dir.exists(OUTPUT_DIR)) dir.create(OUTPUT_DIR, recursive = TRUE)
 
 # Initialiseer een globale loglijst voor de unieke scripts
 algemeen_logboek <- list()
-
 message("==================================================")
 message(" START MASTER RUN VOOR SCENARIO: ", toupper(HUIDIG_SCENARIO))
 message(" Output map: ", OUTPUT_DIR)
 message("==================================================")
-
 
 # ------------------------------------------------------------------------------
 # 1. DETECTEER EN RUN DE UNIEKE SCRIPTS (Automatisch uit de map)
@@ -56,9 +53,7 @@ message("--------------------------------------------------")
 for(script in unieke_scripts) {
   bestandsnaam <- basename(script)
   output_html  <- paste0("Rapport_", HUIDIG_SCENARIO, "_", sub(".Rmd$", ".html", bestandsnaam))
-  
   message("=> Renderen van script: ", bestandsnaam)
-  
   tryCatch({
     rmarkdown::render(
       input = script,
@@ -84,25 +79,22 @@ for(script in unieke_scripts) {
   gc(verbose = FALSE)
 }
 
-
 # ------------------------------------------------------------------------------
 # 2. OPTIONEEL: SIMPELE SOORTEN VIA GENERIEK SCRIPT (Indien van toepassing)
 # ------------------------------------------------------------------------------
 if (file.exists(soorten_script_pad)) {
   excel_data <- read_excel(here("data/input/Excel_files/Soortenlijst_Maatwerkgebieden_Gefilterd.xlsx"))
-  
+  # Kolomnamen opschonen (lowercase) om hoofdletterfouten te voorkomen
+  colnames(excel_data) <- tolower(colnames(excel_data))
   soorten_lijst <- excel_data %>% 
-    filter(Automatisch == "ja") %>%                 
+    filter(automatisch == "ja") %>%                   
     filter(Mechelse_Heide == 1) %>%        
-    pull(Soort) %>%                                
-    unique() %>%                                   
-    na.omit()                                      
-  
+    pull(soort) %>%                     # Nu altijd kleine letter
+    unique() %>%                                    
+    na.omit()                                       
   message("\n=> Aantal geselecteerde simpele soorten voor ", HUIDIG_SCENARIO, ": ", length(soorten_lijst))
-  
   draai_leefgebied_scenario_model <- function(huidige_soort) {
     output_file_name <- paste0(HUIDIG_SCENARIO, "_MH_", huidige_soort, ".html")
-    
     res_row <- data.frame(
       Item = huidige_soort,
       Type = "Simpele Soort",
@@ -110,14 +102,13 @@ if (file.exists(soorten_script_pad)) {
       Fout = "Geen",
       stringsAsFactors = FALSE
     )
-    
+  
     message("   -> Starten met simulatie voor: ", toupper(HUIDIG_SCENARIO), " - ", toupper(huidige_soort))
-    
     tryCatch({
       rmarkdown::render(
         input = soorten_script_pad, 
         output_file = output_file_name,
-        output_dir = OUTPUT_DIR, # HTML komt in de scenariomap terecht
+        output_dir = OUTPUT_DIR, 
         params = list(
           soort_invoer = huidige_soort, 
           scenario_rds_path = SCENARIO_RDS_PAD 
@@ -145,14 +136,12 @@ if (file.exists(soorten_script_pad)) {
   eind_logboek <- bind_rows(algemeen_logboek)
 }
 
-
 # ------------------------------------------------------------------------------
 # 3. LOGBESTAND WEGSCHRIJVEN & SAMENVATTING
 # ------------------------------------------------------------------------------
 # Logbestand wordt nu ook automatisch in de specifieke scenariomap opgeslagen
 log_file_path <- file.path(OUTPUT_DIR, paste0("Logboek_ScenarioRun_", HUIDIG_SCENARIO, "_", format(Sys.time(), "%Y%m%d_%H%M"), ".csv"))
 readr::write_excel_csv(eind_logboek, log_file_path)
-
 aantal_crashes <- sum(eind_logboek$Status == "CRASH")
 message("\n==================================================")
 message(" MASTER RUN COMPLEET VOOR ", toupper(HUIDIG_SCENARIO))
@@ -160,4 +149,4 @@ message(" Totaal onderdelen gedraaid: ", nrow(eind_logboek))
 message(" Succesvol:                   ", nrow(eind_logboek) - aantal_crashes)
 message(" Gecrasht:                    ", aantal_crashes)
 message(" Logboek opgeslagen als:     ", log_file_path)
-message("==================================================")
+message("==================================================") 

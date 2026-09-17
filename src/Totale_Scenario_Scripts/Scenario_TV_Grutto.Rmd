@@ -296,7 +296,8 @@ c1b_opp          <- lijst_oppervlaktes[["cultuurhooi1b"]]
 
 raster_simpel_final <- id_raster_TV
 
-rm(tabel_vlaanderen, vertaal_df, lijst_matches, lijst_oppervlaktes)
+# BEHOUD tabel_vlaanderen VOOR LATER GEBRUIK (Bebouwingsfilter)
+rm(vertaal_df, lijst_matches, lijst_oppervlaktes)
 gc()
 ```
 
@@ -438,6 +439,13 @@ rm(r_drain_raw, r_drain_local, masker_drainage)
 ```{r Bebouwingsfilter}
 # --- STAP 4: HERSTELDE BEBOUWINGSFILTER (SCHOON & BINAIR) ---
 
+# FAILSAFE: Zorg dat tabel_vlaanderen geladen is als deze door een eerdere stap ontbreekt
+if (!exists("tabel_vlaanderen")) {
+  tabel_vlaanderen <- readRDS(scenario_path)
+  setDT(tabel_vlaanderen)
+  tabel_vlaanderen[, CODE := tolower(trimws(CODE))]
+}
+
 # 1. Bepaal alle relevante bebouwingslagen uit de BWK-crosswalk (codes gestart met 'u', zonder 'ulm')
 bebouwings_lagen <- gouden_namenlijst[grepl("^u[a-z0-9]", gouden_namenlijst) | gouden_namenlijst == "u"]
 bebouwings_lagen <- bebouwings_lagen[bebouwings_lagen != "ulm"]
@@ -493,9 +501,9 @@ if (!is.null(r_bebouw_groot) && !terra::global(is.na(r_bebouw_groot), "sum")[[1]
   masker_bebouw_100m_groot <- id_raster_TV * NA
 }
 
-# 6. SCHOONMAAK VAN HET GEHEUGEN (gouden_namenlijst blijft behouden!)
+# 6. SCHOONMAAK VAN HET GEHEUGEN (tabel_vlaanderen niet verwijderen!)
 rm(tabel_vlaanderen_bebouw, tabel_bebouw_TV, tabel_bebouw_som, tabel_bebouw_mapping, 
-   r_bebouwing_raw, r_bebouwing_schoon, res_bebouw_groot, r_bebouw_groot, tabel_vlaanderen)
+   r_bebouwing_raw, r_bebouwing_schoon, res_bebouw_groot, r_bebouw_groot)
 gc()
 ```
 

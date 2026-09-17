@@ -1,5 +1,5 @@
 ---
-title: "Leefgebiedenscript in R: De_Maten"
+title: "Leefgebiedenscript in R"
 author: "Bert Van Hecke"
 date: "`r Sys.Date()`"
 output: 
@@ -8,7 +8,8 @@ output:
     toc: true
     theme: flatly
 params:
-  soort_invoer: "kleintasjeskruid" # Dit is de standaardwaarde als je handmatig test
+  soort_invoer: "kleintasjeskruid"
+  scenario_rds_path: "data/input/Scenario_rds/DM_Scenario_bosbehoudss_ss31fix_tvg_vrij_2026.rds"
 ---
 
 ```{r setup, include = FALSE}
