@@ -1,7 +1,4 @@
 library(here)
-# CRUCIALE FIX: Dwing R Markdown om te werken vanaf de hoofdmap (arpl/)
-# Hierdoor werken relatieve paden met hier() overal hetzelfde.
-
 library(knitr)
 library(tidyverse)
 library(sf)
@@ -18,7 +15,6 @@ conflicted::conflicts_prefer(dplyr::first)
 conflicted::conflicts_prefer(terra::intersect)
 conflicted::conflicts_prefer(terra::any)
 
-# Exacte hectare-berekening behouden (cellSize voor 100% precisie)
 calc_ha_exact <- function(r) {
   if(is.null(r)) return(0)
   if(all(is.na(terra::values(r, mat=FALSE)))) return(0)
@@ -40,35 +36,20 @@ maak_kaart_laag <- function(res_list) {
 }
 
 cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
-  # 1. Controleer of het raster leeg is
   if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
     return(list(raster = masker * NA, clusters = masker * NA))
   }
   
-  # ----------------------------------------------------------------------------
-  # STAP 1: VEILIGE & SNELLER NETWERKVORMING ZONDER RAM-CRASH
-  # ----------------------------------------------------------------------------
   if (dist_m > 0) {
-    # Maak binaire kaart (1 = biotoop, NA = rest)
     r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
-    
-    # Buffer de BINAIR kaart (dit kost vrijwel geen geheugen!)
-    # Volle afstand dist_m zorgt dat plukjes binnen dist_m gegarandeerd samensmelten
     r_buffered <- terra::buffer(r_binair, width = dist_m / 2)
-    
-    # Maak unieke Netwerk-ID's op de gebufferde zones
     cl_network <- terra::patches(r_buffered, directions = 4, zeroAsNA = TRUE)
-    
-    # Snijd de Netwerk-ID's direct terug naar waar de originele biotooppixels liggen
     cl_biotoop_only <- terra::mask(cl_network, masker)
   } else {
     cl_network <- terra::patches(masker, directions = 8, zeroAsNA = TRUE)
     cl_biotoop_only <- cl_network
   }
   
-  # ----------------------------------------------------------------------------
-  # STAP 2: OPPERVLAKTE-OPTELSOM PER GEKOPPELD NETWERK
-  # ----------------------------------------------------------------------------
   if(werkelijk) {
     stats_df <- terra::zonal(opp_laag, cl_biotoop_only, fun = "sum", na.rm = TRUE)
     colnames(stats_df) <- c("ID", "Waarde")
@@ -82,13 +63,9 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
   stats_df <- stats_df[!is.na(stats_df$ID), ]
   if(nrow(stats_df) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
-  # ----------------------------------------------------------------------------
-  # STAP 3: FILTEREN OP TOTALE NETWERK-OPPERVLAKTE >= DREMPEL
-  # ----------------------------------------------------------------------------
   voldoet_ids <- stats_df$ID[stats_df$Area_m2 >= drempel_m2]
   if(length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
   
-  # Behaal alleen de winnende netwerk-ID's
   masker_binair <- cl_biotoop_only %in% voldoet_ids
   final_network_mask <- terra::ifel(masker_binair == 1, 1, NA)
   
@@ -99,26 +76,25 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
 }
 
 terraOptions(
-  memfrac = 0.8,        # Dwing terra om tot max. 80% van het RAM-geheugen te gebruiken
-  tempdir = tempdir(),  # Geef toestemming voor automatische disk-swapping bij zware rasters
+  memfrac = 0.8,
+  tempdir = tempdir(),
   verbose = FALSE
 )
 
 df <- read_excel(here::here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
 soort <- "wespendief"
 
-# Scenario pad en naam bepalen
-
 # --- DYNAMISCHE SCENARIO PARAMETER CHECK ---
-if (!exists("params") || is.null(params$scenario_rds_path)) {
-  scenario_rds_path <- "data/input/Scenario_rds/MH_Scenario_BWK_2025.rds"
-} else {
+if (exists("SCENARIO_RDS_PAD") && !is.null(SCENARIO_RDS_PAD)) {
+  scenario_rds_path <- SCENARIO_RDS_PAD
+} else if (exists("params") && !is.null(params$scenario_rds_path)) {
   scenario_rds_path <- params$scenario_rds_path
+} else {
+  scenario_rds_path <- "data/input/Scenario_rds/MH_Scenario_BWK_2025.rds"
 }
 
 p_raw <- gsub("^([.][.]/)+", "", scenario_rds_path)
 scenario_path <- here::here(p_raw)
-
 
 if (!file.exists(scenario_path)) {
   stop(paste("❌ FOUT: Scenario RDS bestand NIET gevonden op:", scenario_path))
@@ -133,12 +109,10 @@ resultaat <- df %>%
   filter(tolower(trimws(Soort)) == soort) %>%
   select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
 
-# Variabelen definiëren
 oppervlakte_ha <- resultaat$MinOpp_ha[1]
 afstand_m      <- resultaat$AfstandBiotopen_m[1]
 buffer_m       <- resultaat$Dispersiecap_m[1]
 
-print(resultaat)
 rm(df, resultaat)
 
 area_shape  <- vect(here("data/input/Mechelse_Heide.shp"))
@@ -154,7 +128,7 @@ message("-> Vertaalraster voor globale/lokale cellen opbouwen via snelle MASK me
 id_raster_MH <- crop(master_grid, area_buffer_fix, snap = "near")
 
 globale_id_raster <- master_grid
-values(globale_id_raster) <- 1:ncell(globale_id_raster)
+globale_id_raster <- terra::init(globale_id_raster, fun = "cell")
 
 id_raster_MH_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
 id_raster_MH_masked <- mask(id_raster_MH_globale_values, area_buffer_fix)
@@ -170,8 +144,6 @@ studiegebied_globale_ids <- unique(vertaal_df$globale_id)
 
 values(id_raster_MH) <- NA
 template_MH <- terra::rasterize(area_buffer_fix, id_raster_MH, field = 1, background = 0)
-
-cat("Gecorrigeerd aantal pixels in template_MH: ", sum(terra::values(template_MH) == 1, na.rm=TRUE), "\n")
 
 grens_web <- sf::st_as_sf(terra::project(area_shape, "EPSG:4326"))
 
@@ -250,7 +222,7 @@ rm(vertaal_df, lijst_matches, lijst_oppervlaktes)
 gc()
 
 # ==============================================================================
-# STAP 1: VOORTPLANTINGSGEBIED (MINIMAAL 50 HA, 100M CLUSTERING - PARALLEL)
+# STAP 1: VOORTPLANTINGSGEBIED (MINIMAAL 50 HA, 100M CLUSTERING)
 # ==============================================================================
 message("-> Groenkaart inlezen en synchroniseren als fallback voor oude bossen...")
 
@@ -266,13 +238,13 @@ wespendief_voort_basis_max <- terra::ifel(wespendief_voort_basis_max == 1, 1, NA
 voort_clusters_max <- cluster_filter_compleet(
   masker     = wespendief_voort_basis_max,
   opp_laag   = voortplanting_bwk_opp,
-  drempel_m2 = 500000,   
+  drempel_m2 = 500000,    
   dist_m     = 100,       
   werkelijk  = FALSE      
 )
 r_wespendief_bos_max <- voort_clusters_max$raster
 
-# --- SPOOR B: OPP (Parallel & Autonoom) ---
+# --- SPOOR B: OPP ---
 wespendief_voort_basis_opp_raw <- terra::mask(voortplanting_bwk_opp, wespendief_hooggroen_ok)
 wespendief_voort_basis_opp     <- terra::ifel(!is.na(wespendief_voort_basis_opp_raw) & wespendief_voort_basis_opp_raw > 0, wespendief_voort_basis_opp_raw, NA)
 
@@ -280,7 +252,7 @@ r_binair_voort_opp <- terra::ifel(!is.na(wespendief_voort_basis_opp) & wespendie
 voort_clusters_opp <- cluster_filter_compleet(
   masker     = r_binair_voort_opp,
   opp_laag   = wespendief_voort_basis_opp,
-  drempel_m2 = 500000,   
+  drempel_m2 = 500000,    
   dist_m     = 100,       
   werkelijk  = TRUE      
 )
@@ -291,26 +263,24 @@ rm(r_groen_raw, wespendief_hooggroen_ok, wespendief_voort_basis_max, wespendief_
 gc()
 
 # ==============================================================================
-# STAP 2: OPEN FOERAGEERGEBIED (MINIMAAL 50 HA, 500M CLUSTERING - PARALLEL)
+# STAP 2: OPEN FOERAGEERGEBIED (MINIMAAL 50 HA, 500M CLUSTERING)
 # ==============================================================================
 message("-> Open foerageergebieden groeperen (500m fuzzy) en filteren op min. 50 ha...")
 
-# --- SPOOR A: MAX ---
 open_foer_clusters_max <- cluster_filter_compleet(
   masker     = foerageer_open_max,
   opp_laag   = foerageer_open_opp,
-  drempel_m2 = 500000,   
+  drempel_m2 = 500000,    
   dist_m     = 500,       
   werkelijk  = FALSE      
 )
 r_wespendief_open_max <- open_foer_clusters_max$raster
 
-# --- SPOOR B: OPP (Parallel & Autonoom) ---
 r_binair_open_opp <- terra::ifel(!is.na(foerageer_open_opp) & foerageer_open_opp > 0, 1, NA)
 open_foer_clusters_opp <- cluster_filter_compleet(
   masker     = r_binair_open_opp,
   opp_laag   = foerageer_open_opp,
-  drempel_m2 = 500000,   
+  drempel_m2 = 500000,    
   dist_m     = 500,       
   werkelijk  = TRUE      
 )
@@ -320,11 +290,10 @@ rm(r_binair_open_opp, open_foer_clusters_max, open_foer_clusters_opp)
 gc()
 
 # ==============================================================================
-# STAP 3: OPTIMAAL FOERAGEERCOMPLEX (MINIMAAL 250 HA, 500M - PARALLEL)
+# STAP 3: OPTIMAAL FOERAGEERCOMPLEX (MINIMAAL 250 HA, 500M)
 # ==============================================================================
 message("-> Bos en open gebieden samenvoegen tot gecombineerd foerageerlandschap...")
 
-# --- SPOOR A: MAX ---
 foerageer_basis_max <- !is.na(r_wespendief_bos_max) | !is.na(r_wespendief_open_max)
 foerageer_basis_max <- terra::ifel(foerageer_basis_max == 1, 1, NA)
 
@@ -337,7 +306,6 @@ foerageer_complex_clusters_max <- cluster_filter_compleet(
 )
 r_foerageer2_max <- foerageer_complex_clusters_max$raster
 
-# --- SPOOR B: OPP (Parallel & Autonoom) ---
 b_clean <- terra::ifel(is.na(r_wespendief_bos_opp), 0, r_wespendief_bos_opp)
 o_clean <- terra::ifel(is.na(r_wespendief_open_opp), 0, r_wespendief_open_opp)
 foer_som_raw <- b_clean + o_clean
@@ -360,12 +328,11 @@ rm(foerageer_basis_max, b_clean, o_clean, foer_som_raw, foerageer_basis_opp, r_b
 gc()
 
 # ==============================================================================
-# STAP 4: ACTIERADIUS CHECK (5 KM) EN FINALE BROEDBOS SELECTIE (PARALLEL)
+# STAP 4: ACTIERADIUS CHECK (5 KM) EN FINALE BROEDBOS SELECTIE
 # ==============================================================================
 message("-> Actieradiuskoppeling (5000m) berekenen tussen broedbos en foerageercomplex...")
 
-# --- SPOOR A: MAX ---
-if (!all(is.na(terra::values(r_foerageer2_max, mat=FALSE)))) {
+if (!all(is.na(suppressWarnings(terra::minmax(r_foerageer2_max))))) {
   buffer_5000m_foer_max <- terra::buffer(r_foerageer2_max, width = 5000)
   wespendief_leefgebied_max <- terra::mask(r_wespendief_bos_max, buffer_5000m_foer_max) %>% terra::crop(template_MH)
   suppressWarnings(rm(buffer_5000m_foer_max))
@@ -373,10 +340,9 @@ if (!all(is.na(terra::values(r_foerageer2_max, mat=FALSE)))) {
   wespendief_leefgebied_max <- template_MH * NA
 }
 
-# --- SPOOR B: OPP (Parallel & Autonoom) ---
-if (!all(is.na(terra::values(r_foerageer2_opp, mat=FALSE)))) {
+if (!all(is.na(suppressWarnings(terra::minmax(r_foerageer2_opp))))) {
   r_binair_foer2_opp <- terra::ifel(!is.na(r_foerageer2_opp) & r_foerageer2_opp > 0, 1, NA)
-  buffer_5000m_foer_opp <- terra::buffer(r_binair_foer2_opp, width = 5000)
+  buffer_5000m_foer_opp <- terra::buffer(r_foerageer2_opp, width = 5000)
   
   wespendief_leefgebied_opp <- terra::mask(r_wespendief_bos_opp, buffer_5000m_foer_opp) %>% terra::crop(template_MH)
   suppressWarnings(rm(r_binair_foer2_opp, buffer_5000m_foer_opp))
@@ -384,13 +350,28 @@ if (!all(is.na(terra::values(r_foerageer2_opp, mat=FALSE)))) {
   wespendief_leefgebied_opp <- template_MH * NA
 }
 
-cat("Definitief leefgebied Wespendief MAX (ha):", round(calc_ha_exact(wespendief_leefgebied_max), 2), "\n")
-cat("Definitief leefgebied Wespendief OPP (ha):", round(calc_ha_exact(wespendief_leefgebied_opp), 2), "\n")
-
 rm(r_wespendief_bos_max, r_wespendief_bos_opp, r_wespendief_open_max, r_wespendief_open_opp, 
    r_foerageer2_max, r_foerageer2_opp)
 gc()
 
+# ==============================================================================
+# 5. ESSENTIËLE KOPPELING MET SCHONE EXPORT VARIABELEN (FIX VOOR LEEG RASTER)
+# ==============================================================================
+final_max <- wespendief_leefgebied_max
+final_opp <- wespendief_leefgebied_opp
+
+# Bepaal analytische netwerk-ID raster
+if (!all(is.na(suppressWarnings(terra::minmax(final_max))))) {
+  cl_max <- terra::patches(final_max, directions = 8, zeroAsNA = TRUE)
+} else {
+  cl_max <- template_MH * NA
+}
+
+if (!all(is.na(suppressWarnings(terra::minmax(final_opp))))) {
+  cl_opp <- terra::patches(final_opp, directions = 8, zeroAsNA = TRUE)
+} else {
+  cl_opp <- template_MH * NA
+}
 
 # ==============================================================================
 # SCHONE EXPORT BIOTOOP EN ANALYTISCH ID-RASTER (VOOR SCRIPT 2 / ARPL)
@@ -405,33 +386,24 @@ folders <- list(
 purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, showWarnings = FALSE, recursive = TRUE))
 
 # 1. Bepaal Maximale Potentie Raster
-potentie_export_rast <- if (exists("grutto_kaart_A") && !is.null(grutto_kaart_A) && !all(is.na(terra::values(grutto_kaart_A, mat=FALSE)))) {
-  terra::ifel(grutto_kaart_A > 0, 1, NA)
-} else if (exists("final_max") && !all(is.na(terra::values(final_max, mat=FALSE)))) {
+potentie_export_rast <- if (exists("final_max") && !all(is.na(suppressWarnings(terra::minmax(final_max))))) {
   terra::ifel(!is.na(final_max) & final_max > 0, 1, NA)
 } else {
   terra::rast(template_MH, vals = NA)
 }
 
 # 2. Bepaal Werkelijke Oppervlakte Raster
-werkelijk_export_rast <- if (exists("resB_strikt") && !is.null(resB_strikt) && (!all(is.na(terra::values(resB_strikt$kern, mat=FALSE))) || !all(is.na(terra::values(resB_strikt$bouw, mat=FALSE))))) {
-  r_net_totaal_opp <- terra::cover(resB_strikt$kern, resB_strikt$bouw)
-  terra::ifel(!is.na(r_net_totaal_opp) & r_net_totaal_opp > 0, 1, NA)
-} else if (exists("final_opp") && !all(is.na(terra::values(final_opp, mat=FALSE)))) {
+werkelijk_export_rast <- if (exists("final_opp") && !all(is.na(suppressWarnings(terra::minmax(final_opp))))) {
   terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA)
 } else {
   terra::rast(template_MH, vals = NA)
 }
 
 # 3. Bepaal Analytisch Metacluster ID-raster
-if (exists("resB_strikt") && !is.null(resB_strikt) && (!all(is.na(terra::values(resB_strikt$kern, mat=FALSE))) || !all(is.na(terra::values(resB_strikt$bouw, mat=FALSE))))) {
-  r_net_totaal <- terra::cover(resB_strikt$kern, resB_strikt$bouw)
-  r_buf        <- terra::buffer(r_net_totaal, width = 100)
-  id_export_rast <- terra::mask(terra::patches(r_buf, directions = 8, zeroAsNA = TRUE), r_net_totaal)
-} else if (exists("cl_max") && !all(is.na(terra::values(cl_max, mat=FALSE)))) {
-  id_export_rast <- cl_max
-} else if (exists("cl_opp") && !all(is.na(terra::values(cl_opp, mat=FALSE)))) {
+if (exists("cl_opp") && !is.null(cl_opp) && !all(is.na(suppressWarnings(terra::minmax(cl_opp))))) {
   id_export_rast <- cl_opp
+} else if (exists("final_opp") && !is.null(final_opp) && !all(is.na(suppressWarnings(terra::minmax(final_opp))))) {
+  id_export_rast <- terra::patches(final_opp, directions = 8, zeroAsNA = TRUE)
 } else {
   id_export_rast <- terra::rast(template_MH, vals = NA)
 }
@@ -482,4 +454,3 @@ suppressWarnings(
 gc()
 
 message(paste("🏁 SCENARIO EXPORT VOLLEDIG AFGEROND VOOR:", toupper(soort)))
-

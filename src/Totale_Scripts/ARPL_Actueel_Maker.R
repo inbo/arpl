@@ -1,5 +1,5 @@
 # ==============================================================================
-# ARPL ACTUEEL MAKER - GENERATOR PER GEBIED EN SCENARIO
+# ARPL & ACTUEEL MAKER PER SOORT (INCL. CRASH-PREVENTIE & EXTRA ROBUUST)
 # AUTEUR: Bert Van Hecke
 # ==============================================================================
 
@@ -8,98 +8,271 @@ library(dplyr)
 library(readxl)
 library(readr)
 library(purrr)
+library(sf)
+library(terra)
+library(data.table)
+
+# Dwing terra tot strikt geheugenbeheer
+terra::terraOptions(memfrac = 0.2, tempdir = tempdir(), verbose = FALSE)
 
 # ------------------------------------------------------------------------------
-# 0. CONTROLEER/STEL PARAMETERS IN (MET DEFAULT FALLBACK)
+# 0. INSTELLINGEN & REGIONALE CONFIGURATIE
 # ------------------------------------------------------------------------------
-# Als het script LOS wordt gedraaid, gebruikt het deze DEFAULT scenarioselectie:
 DEFAULT_SCENARIO_SELECTIE <- list(
-  De_Maten              = "DM_Scenario_BWK_2025.rds",
-  Heesbossen            = "HB_Scenario_BWK_2025.rds",
-  Kalmthoutse_Heide     = "KH_Scenario_BWK_2025.rds",
-  Mechelse_Heide        = "MH_Scenario_BWK_2025.rds",
-  Turnhouts_Vennegebied = "TV_Scenario_BWK_2025.rds",
-  Voerstreek            = "VS_Scenario_BWK_2025.rds"
+  Turnhouts_Vennegebied = "TV_Scenario_BWK_2025.rds"
 )
 
-# Gebruik de meegegeven SCENARIO_SELECTIE uit het WorkQueue script,
-# of val terug op de DEFAULT_SCENARIO_SELECTIE als deze los wordt gerund.
 if (!exists("SCENARIO_SELECTIE") || !is.list(SCENARIO_SELECTIE)) {
-  message("ℹ️ Geen meegegeven SCENARIO_SELECTIE gevonden. Default scenario's worden gebruikt.")
   actieve_scenarios <- DEFAULT_SCENARIO_SELECTIE
 } else {
-  message("✅ Dynamische SCENARIO_SELECTIE overgenomen uit WorkQueue script.")
   actieve_scenarios <- SCENARIO_SELECTIE
 }
 
 gebieden_info <- list(
-  De_Maten              = list(code = "DM", col = "De_Maten"),
-  Heesbossen            = list(code = "HB", col = "Heesbossen"),
-  Kalmthoutse_Heide     = list(code = "KH", col = "Kalmthoutse_Heide"),
-  Mechelse_Heide        = list(code = "MH", col = "Mechelse_Heide"),
-  Turnhouts_Vennegebied = list(code = "TV", col = "Turnhouts_Vennegebied"),
-  Voerstreek            = list(code = "VS", col = "Voerstreek")
+  De_Maten             = list(code = "DM"),
+  Heesbossen           = list(code = "HB"),
+  Kalmthoutse_Heide     = list(code = "KH"),
+  Mechelse_Heide       = list(code = "MH"),
+  Turnhouts_Vennegebied = list(code = "TV"),
+  Voerstreek           = list(code = "VS")
 )
 
+broedvogels_lijst <- c(
+  "blauwborst", "boomleeuwerik", "boompieper", "bruinekiekendief", "fluiter",
+  "grauweklauwier", "grutto", "ijsvogel", "kwak", "kwartelkoning", "matkop",
+  "middelstebontespecht", "nachtegaal", "nachtzwaluw", "paapje", "porseleinhoen", 
+  "roerdomp", "tapuit", "watersnip", "wespendief", "wielewaal", "woudaap", 
+  "wulp", "zomertortel", "zwartespecht", "zwartkopmeeuw"
+)
+
+master_grid_pad <- here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif")
+master_grid     <- terra::rast(master_grid_pad)[[1]]
+
+df_afstanden <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx")) %>% 
+  mutate(Soort_clean = tolower(gsub(" ", "", trimws(Soort))))
+
 message("==================================================")
-message(" STARTEN ARPL & ACTUEEL MAKER VOOR ALLE GEBIEDEN")
+message(" STARTEN ARPL & ACTUEEL MAKER PER SOORT")
 message("==================================================")
 
-# ------------------------------------------------------------------------------
-# 1. LUS OVER ALLE GESELECTEERDE GEBIEDEN EN SCENARIO'S
-# ------------------------------------------------------------------------------
 for (gb_naam in names(actieve_scenarios)) {
   rds_naam <- actieve_scenarios[[gb_naam]]
   info     <- gebieden_info[[gb_naam]]
-  
-  if (is.null(info)) {
-    warning("⚠️ Onbekend gebied '", gb_naam, "' overgeslagen.")
-    next
-  }
+  if (is.null(info)) info <- list(code = "TV")
   
   rds_pad <- here("data/input/Scenario_rds", rds_naam)
-  
-  if (!file.exists(rds_pad)) {
-    warning("⚠️ Scenario RDS niet gevonden voor ", gb_naam, ": ", rds_pad)
-    next
-  }
-  
-  # Bepaal de opgeschoonde scenarionaam voor paden (bijv. 'bosbehoudss_ss31fix_tvg_vrij_2026')
-  huidig_scenario <- gsub(paste0("^", info$code, "_Scenario_|.rds$"), "", basename(rds_pad))
+  huidig_scenario <- gsub("^.*_Scenario_|^Scenario_|_wv\\.rds$|\\.rds$", "", basename(rds_pad), ignore.case = TRUE)
   
   message("\n--------------------------------------------------")
   message("-> Verwerken gebied  : ", gb_naam, " (Code: ", info$code, ")")
-  message("   Scenario RDS     : ", basename(rds_pad))
-  message("   Scenario Naam    : ", huidig_scenario)
+  message("   Scenario Naam     : ", huidig_scenario)
   message("--------------------------------------------------")
   
-  # ----------------------------------------------------------------------------
-  # 2. HIER PLAATS JE JE BESTAANDE VERWERKINGSLOGICA PER GEBIED
-  # ----------------------------------------------------------------------------
-  # Voorbeeld van paden die nu dynamisch opgebouwd worden per gebied/scenario:
-  input_dir  <- here("data/output", gb_naam, "Scenario_output", huidig_scenario)
-  output_dir <- here("data/output", gb_naam, "ARPL_Actueel_Kaarten", huidig_scenario)
+  base_rasters_dir <- here("data/output", gb_naam, "Rasters_Soorten", huidig_scenario)
   
-  if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+  map_id        <- file.path(base_rasters_dir, "00_ID_Rasters")
+  map_werkelijk <- file.path(base_rasters_dir, "02_Werkelijke_Oppervlaktes")
+  out_dir_arpl  <- file.path(base_rasters_dir, "03_ARPL")
+  out_dir_act   <- file.path(base_rasters_dir, "04_Actuele_Verspreiding")
   
-  tryCatch({
-    # --- PLAATS HIER DE CORE RUN-LOGICA VAN JE ARPL_Actueel_Maker SCRIPT ---
-    # Je kunt hier gebruik maken van:
-    # - rds_pad          (Volledig pad naar het scenario .rds bestand)
-    # - gb_naam          (bijv. "De_Maten")
-    # - info$code        (bijv. "DM")
-    # - huidig_scenario  (bijv. "bosbehoudss_ss31fix_tvg_vrij_2026")
-    # - input_dir / output_dir
+  if (!dir.exists(out_dir_arpl)) dir.create(out_dir_arpl, recursive = TRUE)
+  if (!dir.exists(out_dir_act))  dir.create(out_dir_act,  recursive = TRUE)
+  
+  werkelijk_tifs <- list.files(map_werkelijk, pattern = "\\.tif$", full.names = TRUE)
+  
+  if (length(werkelijk_tifs) == 0) {
+    warning("⚠️ Geen werkelijke oppervlakte TIFs gevonden in: ", map_werkelijk)
+    next
+  }
+  
+  message("   Aantal te verwerken soortrasters: ", length(werkelijk_tifs))
+  
+  for (f_werkelijk in werkelijk_tifs) {
     
-    message("   ✅ ARPL & Actueel kaarten gegenereerd voor ", gb_naam)
+    # Voorkom dat RStudio's WebView2 volloopt door plots/grafische apparaten te sluiten
+    graphics.off()
     
-  }, error = function(e) {
-    message("   ❌ FOUT bij verwerken van ", gb_naam, ": ", e$message)
-  })
-  
-  gc(verbose = FALSE) # Ruim RAM op per gebied
+    # Geheugen opruimen direct aan het begin van elke iteratie
+    if (requireNamespace("terra", quietly = TRUE)) {
+      terra::tmpFiles(current = TRUE, orphan = TRUE, old = TRUE, remove = TRUE)
+    }
+    gc(verbose = FALSE)
+    
+    is_wintervogel <- grepl("_wv\\.tif$", f_werkelijk, ignore.case = TRUE)
+    
+    soort_clean <- basename(f_werkelijk) %>% 
+      tolower() %>% 
+      gsub("^habitat_werkelijke_oppervlaktes_|_wv\\.tif$|\\.tif$", "", .) %>% 
+      trimws()
+    
+    bestands_suffix <- if (is_wintervogel) paste0(soort_clean, "_wv") else soort_clean
+    
+    f_out_arpl <- file.path(out_dir_arpl, paste0("Habitat_ARPL_", bestands_suffix, ".tif"))
+    f_out_act  <- file.path(out_dir_act,  paste0("Habitat_Actuele_Verspreiding_", bestands_suffix, ".tif"))
+    
+    # Snel overslaan als BEIDE al op schijf staan
+    if (file.exists(f_out_arpl) && file.exists(f_out_act)) {
+      message("   ⏩ Reeds verwerkt (overgeslagen): ", bestands_suffix)
+      next
+    }
+    
+    f_id <- file.path(map_id, paste0("ID_Netwerken_", bestands_suffix, ".tif"))
+    if (!file.exists(f_id)) {
+      f_id <- file.path(map_id, paste0("ID_Netwerken_", soort_clean, ".tif"))
+    }
+    
+    if (!file.exists(f_id)) {
+      message("   ⚠️ ID-raster ontbreekt voor: ", bestands_suffix, " -> Overgeslagen")
+      next
+    }
+    
+    cl_max <- terra::rast(f_id)
+    
+    # --------------------------------------------------------------------------
+    # HULPFUNCTIE VOOR ROBUUST INLEZEN VOOR WAARNEMINGEN/TERRITORIA
+    # --------------------------------------------------------------------------
+    laad_waarnemingen_punten <- function(pad, is_komma) {
+      if (!file.exists(pad)) return(NULL)
+      tryCatch({
+        raw_df <- if (is_komma) {
+          readr::read_csv(pad, show_col_types = FALSE)
+        } else {
+          readr::read_delim(pad, delim = ";", escape_double = FALSE, trim_ws = TRUE, show_col_types = FALSE)
+        }
+        colnames(raw_df) <- tolower(colnames(raw_df))
+        
+        if (all(c("x", "y") %in% colnames(raw_df)) && nrow(raw_df) > 0) {
+          clean_df <- raw_df[!is.na(raw_df$x) & !is.na(raw_df$y), ]
+          if (nrow(clean_df) > 0) {
+            return(terra::vect(as.matrix(clean_df[, c("x", "y")]), type = "points", crs = "EPSG:31370"))
+          }
+        }
+        return(NULL)
+      }, error = function(e) {
+        message("   ⚠️ Fout bij inlezen waarnemingen/territoria file: ", basename(pad), " (", e$message, ")")
+        return(NULL)
+      })
+    }
+    
+    # --------------------------------------------------------------------------
+    # 1. ARPL BEREKENEN
+    # --------------------------------------------------------------------------
+    if (is_wintervogel) {
+      message("   ❄️ Wintervogel gedetecteerd (", bestands_suffix, "): Werkelijke Oppervlakte 1-op-1 overgenomen als ARPL.")
+      r_werkelijk <- terra::rast(f_werkelijk)
+      arpl_export_rast <- terra::ifel(!is.na(r_werkelijk) & r_werkelijk > 0, 1, NA)
+      rm(r_werkelijk)
+    } else {
+      row_dist <- df_afstanden %>% filter(Soort_clean == soort_clean)
+      buffer_m <- if (nrow(row_dist) > 0) row_dist$Dispersiecap_m[1] else 500
+      
+      is_broedvogel <- soort_clean %in% broedvogels_lijst
+      soort_format  <- paste0(toupper(substr(soort_clean, 1, 1)), substr(soort_clean, 2, nchar(soort_clean)))
+      
+      if (is_broedvogel) {
+        waarnemingen_path <- here("data/input/Territoria_Soorten", paste0(info$code, "_Territoria_", soort_format, ".csv"))
+        is_csv_komma <- TRUE
+      } else {
+        waarnemingen_path <- here("data/input/Waarnemingen_Soorten", gb_naam, paste0("Waarnemingen_", soort_format, ".csv"))
+        is_csv_komma <- FALSE
+      }
+      
+      v_pts <- laad_waarnemingen_punten(waarnemingen_path, is_csv_komma)
+      
+      # UNIEKE REGEL VOOR BUFFER >= 250.000m (bijv. Porseleinhoen)
+      if (!is.na(buffer_m) && buffer_m >= 250000) {
+        if (!is.null(v_pts) && length(v_pts) > 0) {
+          message("   💡 Buffer >= 250km met waarnemingen gedetecteerd (", bestands_suffix, "): Werkelijke Oppervlakte 1-op-1 overgenomen als ARPL.")
+          r_werkelijk <- terra::rast(f_werkelijk)
+          arpl_export_rast <- terra::ifel(!is.na(r_werkelijk) & r_werkelijk > 0, 1, NA)
+          rm(r_werkelijk)
+        } else {
+          message("   ⚠️ Buffer >= 250km maar GEEN waarnemingen voor (", bestands_suffix, "): ARPL wordt leeg ingesteld.")
+          arpl_export_rast <- terra::rast(master_grid, vals = NA)
+        }
+        if (!is.null(v_pts)) rm(v_pts)
+      } else {
+        # STANDAARD BUFFER BEREKENING VOOR NORMALE AFSTANDEN
+        v_blobs <- NULL
+        
+        if (!is.null(v_pts)) {
+          tryCatch({
+            v_blobs <- terra::buffer(v_pts, width = buffer_m)
+            v_blobs <- terra::aggregate(v_blobs)
+          }, error = function(e) {
+            v_blobs <<- NULL
+          })
+          rm(v_pts)
+        }
+        
+        if (!is.null(v_blobs) && !all(is.na(suppressWarnings(terra::minmax(cl_max))))) {
+          ext_blobs <- terra::extract(cl_max, v_blobs, ID = FALSE)
+          ids_arpl  <- if (!is.null(ext_blobs) && nrow(ext_blobs) > 0) unique(na.omit(ext_blobs[[1]])) else c()
+          
+          if (length(ids_arpl) > 0) {
+            arpl_export_rast <- cl_max %in% ids_arpl
+            arpl_export_rast <- terra::ifel(arpl_export_rast == 1, 1, NA)
+          } else {
+            arpl_export_rast <- terra::rast(master_grid, vals = NA)
+          }
+          rm(v_blobs)
+        } else {
+          arpl_export_rast <- terra::rast(master_grid, vals = NA)
+        }
+      }
+    }
+    
+    # --------------------------------------------------------------------------
+    # 2. ACTUELE VERSPREIDING BEREKENEN
+    # --------------------------------------------------------------------------
+    is_broedvogel <- soort_clean %in% broedvogels_lijst
+    soort_format  <- paste0(toupper(substr(soort_clean, 1, 1)), substr(soort_clean, 2, nchar(soort_clean)))
+    
+    if (is_broedvogel) {
+      waarnemingen_path <- here("data/input/Territoria_Soorten", paste0(info$code, "_Territoria_", soort_format, ".csv"))
+      is_csv_komma <- TRUE
+    } else {
+      waarnemingen_path <- here("data/input/Waarnemingen_Soorten", gb_naam, paste0("Waarnemingen_", soort_format, ".csv"))
+      is_csv_komma <- FALSE
+    }
+    
+    v_points <- laad_waarnemingen_punten(waarnemingen_path, is_csv_komma)
+    
+    if (!is.null(v_points) && !all(is.na(suppressWarnings(terra::minmax(cl_max))))) {
+      ext_points  <- terra::extract(cl_max, v_points, ID = FALSE)
+      ids_actueel <- if (!is.null(ext_points) && nrow(ext_points) > 0) unique(na.omit(ext_points[[1]])) else c()
+      
+      if (length(ids_actueel) > 0) {
+        actueel_export_rast <- cl_max %in% ids_actueel
+        actueel_export_rast <- terra::ifel(actueel_export_rast == 1, 1, NA)
+      } else {
+        actueel_export_rast <- terra::rast(master_grid, vals = NA)
+      }
+      rm(v_points)
+    } else {
+      actueel_export_rast <- terra::rast(master_grid, vals = NA)
+    }
+    
+    # --------------------------------------------------------------------------
+    # 3. EXPORTEN DIRECT NAAR SCHIJF
+    # --------------------------------------------------------------------------
+    arpl_export_rast    <- terra::extend(arpl_export_rast, master_grid, fill = NA)
+    actueel_export_rast <- terra::extend(actueel_export_rast, master_grid, fill = NA)
+    
+    terra::writeRaster(arpl_export_rast,    f_out_arpl, overwrite = TRUE, gdal = c("COMPRESS=LZW"), datatype = "INT1U", NAflag = 255)
+    terra::writeRaster(actueel_export_rast, f_out_act,  overwrite = TRUE, gdal = c("COMPRESS=LZW"), datatype = "INT1U", NAflag = 255)
+    
+    message("   [OK] Geëxporteerd voor: ", bestands_suffix)
+    
+    # Grondige opruiming
+    rm(cl_max, arpl_export_rast, actueel_export_rast)
+    if (requireNamespace("terra", quietly = TRUE)) {
+      terra::tmpFiles(current = TRUE, orphan = TRUE, old = TRUE, remove = TRUE)
+    }
+    gc(verbose = FALSE)
+  }
 }
 
 message("\n==================================================")
-message(" 🎉 ARPL & ACTUEEL MAKER COMPLEET VOOR ALLE GEBIEDEN")
+message(" 🎉 FASE 2 VOLLEDIG AFGEROND INCLUSIEF WINTERVOGEL SNELKOPPELING & HIGH-BUFFER BYPASS!")
 message("==================================================")

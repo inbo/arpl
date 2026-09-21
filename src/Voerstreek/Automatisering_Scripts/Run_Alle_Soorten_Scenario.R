@@ -1,70 +1,66 @@
 # ==============================================================================
-# MASTER AUTOMATISERINGSSCRIPT MET SCENARIO & DYNAMISCHE SCRIPT-DETECTIE
+# MASTER AUTOMATISERINGSSCRIPT VOOR R-SCRIPTS (.R)
 # AUTEUR: Bert Van Hecke
 # ==============================================================================
 
-library(rmarkdown)
 library(purrr)
 library(readxl)
 library(dplyr)
 library(readr)
-library(here) # Toegevoegd om 'here' fouten te voorkomen
+library(here)
 
 # ------------------------------------------------------------------------------
-# 0. GLOBALE INSTELLINGEN (PAS HIER JE SCENARIO AAN)
+# 0. GLOBALE INSTELLINGEN
 # ------------------------------------------------------------------------------
-# Geef hier het pad op naar het gewenste Scenario RDS-bestand:
-SCENARIO_RDS_PAD <- here("data/input/Scenario_rds/VS_Scenario_bosbehoudss_ss31fix_tvg_vrij_2026.rds")
+SCENARIO_RDS_PAD <- here("data/input/Scenario_rds/VS_Scenario_BWK_2025.rds")
 
-# Extraheer de naam van het scenario voor de logboeken en bestandsnamen
 HUIDIG_SCENARIO  <- gsub("^VS_Scenario_|.rds$", "", basename(SCENARIO_RDS_PAD))
-MAP_SCRIPTS      <- here("src/Voerstreek/Scripts_Scenario") # Map met de 60 scenario Rmd's
+MAP_SCRIPTS      <- here("src/Voerstreek/Scripts_Scenario")
 
-# AANGEPAST: Maak het pad dynamisch door HUIDIG_SCENARIO als submap toe te voegen
 OUTPUT_DIR       <- here("data/output/Voerstreek/HTML_Rapporten_Scenario", HUIDIG_SCENARIO)
 
-# Maak de scenariomap aan indien deze nog niet bestaat
 if(!dir.exists(OUTPUT_DIR)) dir.create(OUTPUT_DIR, recursive = TRUE)
 
-# Initialiseer een globale loglijst voor de unieke scripts
 algemeen_logboek <- list()
 message("==================================================")
 message(" START MASTER RUN VOOR SCENARIO: ", toupper(HUIDIG_SCENARIO))
-message(" Output map: ", OUTPUT_DIR)
 message("==================================================")
 
 # ------------------------------------------------------------------------------
-# 1. DETECTEER EN RUN DE UNIEKE SCRIPTS (Automatisch uit de map)
+# 1. DETECTEER EN RUN DE UNIEKE R-SCRIPTS
 # ------------------------------------------------------------------------------
-# 1a. Zoek alle Rmd bestanden in de map
-alle_scripts <- list.files(path = MAP_SCRIPTS, pattern = "\\.Rmd$", full.names = TRUE)
+# Zoek naar .R bestanden (case-insensitive)
+alle_scripts <- list.files(path = MAP_SCRIPTS, pattern = "\\.r$", full.names = TRUE, ignore.case = TRUE)
 
-# 1b. Definieer welk script GEEN uniek script is (als je nog een apart generiek script hebt)
-soorten_script_pad <- file.path(MAP_SCRIPTS, "Scenario_VS_Leefgebieden_Simpel.Rmd")
+# Filter het generieke script eruit als dat in dezelfde map staat
+soorten_script_pad <- alle_scripts[grep("Scenario_VS_Leefgebieden_Simpel\\.r$", alle_scripts, ignore.case = TRUE)]
 
-# 1c. Trek het soorten-script af van de totale lijst om de unieke scripts over te houden
+if (length(soorten_script_pad) == 0) {
+  soorten_script_pad <- file.path(MAP_SCRIPTS, "Scenario_VS_Leefgebieden_Simpel.R")
+} else {
+  soorten_script_pad <- soorten_script_pad[1]
+}
+
 unieke_scripts <- setdiff(alle_scripts, soorten_script_pad)
 
-message("=> Gedetecteerde unieke scripts om uit te voeren (Aantal: ", length(unieke_scripts), "):")
+message("=> Gedetecteerde unieke R-scripts (Aantal: ", length(unieke_scripts), "):")
 print(basename(unieke_scripts))
 message("--------------------------------------------------")
 
-# 1d. Loop door de unieke scripts en render ze
 for(script in unieke_scripts) {
   bestandsnaam <- basename(script)
-  output_html  <- paste0("Rapport_", HUIDIG_SCENARIO, "_", sub(".Rmd$", ".html", bestandsnaam))
-  message("=> Renderen van script: ", bestandsnaam)
+  message("=> Uitvoeren van script via source(): ", bestandsnaam)
+  
   tryCatch({
-    rmarkdown::render(
-      input = script,
-      output_file = output_html,
-      output_dir = OUTPUT_DIR, # HTML komt in de scenariomap terecht
-      # GEFIXTE PARAMETER: Matcht met wat de 60 gegeneerde scripts verwachten!
-      params = list(scenario_rds_path = SCENARIO_RDS_PAD), 
-      # GEFIXTE SCHONE OMGEVING: Voorkomt vervuiling tussen zware GIS-scripts
-      envir = new.env(parent = globalenv()),
-      quiet = TRUE
-    )
+    # Maak een schone omgeving aan en ken variabelen/parameters toe die het script verwacht
+    script_env <- new.env(parent = globalenv())
+    script_env$scenario_rds_path <- SCENARIO_RDS_PAD
+    script_env$output_dir        <- OUTPUT_DIR
+    script_env$huidig_scenario   <- HUIDIG_SCENARIO
+    
+    # Voer het R-script uit
+    source(script, local = script_env)
+    
     algemeen_logboek[[bestandsnaam]] <- data.frame(
       Item = bestandsnaam, Type = "Soort Script", Status = "SUCCES", Fout = "Geen", stringsAsFactors = FALSE
     )
@@ -75,26 +71,29 @@ for(script in unieke_scripts) {
     )
   })
   
-  # Maak het RAM-geheugen leeg na elk GIS-script om bad_alloc te voorkomen
   gc(verbose = FALSE)
 }
 
 # ------------------------------------------------------------------------------
-# 2. OPTIONEEL: SIMPELE SOORTEN VIA GENERIEK SCRIPT (Indien van toepassing)
+# 2. OPTIONEEL: SIMPELE SOORTEN VIA GENERIEK R-SCRIPT
 # ------------------------------------------------------------------------------
 if (file.exists(soorten_script_pad)) {
   excel_data <- read_excel(here("data/input/Excel_files/Soortenlijst_Maatwerkgebieden_Gefilterd.xlsx"))
-  # Kolomnamen opschonen (lowercase) om hoofdletterfouten te voorkomen
   colnames(excel_data) <- tolower(colnames(excel_data))
+  
+  # Verwacht dat 'nederlandse naam' of 'soort' de soortnaam bevat
+  naam_kolom <- if("soort" %in% colnames(excel_data)) "soort" else "nederlandse naam"
+  
   soorten_lijst <- excel_data %>% 
     filter(automatisch == "ja") %>%                   
-    filter(Voerstreek == 1) %>%        
-    pull(soort) %>%                     # Nu altijd kleine letter
-    unique() %>%                                    
-    na.omit()                                       
+    filter(voerstreek == 1) %>%        
+    pull(!!sym(naam_kolom)) %>%                                   
+    unique() %>%                                     
+    na.omit()                                        
+  
   message("\n=> Aantal geselecteerde simpele soorten voor ", HUIDIG_SCENARIO, ": ", length(soorten_lijst))
+  
   draai_leefgebied_scenario_model <- function(huidige_soort) {
-    output_file_name <- paste0(HUIDIG_SCENARIO, "_VS_", huidige_soort, ".html")
     res_row <- data.frame(
       Item = huidige_soort,
       Type = "Simpele Soort",
@@ -102,22 +101,19 @@ if (file.exists(soorten_script_pad)) {
       Fout = "Geen",
       stringsAsFactors = FALSE
     )
-  
+    
     message("   -> Starten met simulatie voor: ", toupper(HUIDIG_SCENARIO), " - ", toupper(huidige_soort))
     tryCatch({
-      rmarkdown::render(
-        input = soorten_script_pad, 
-        output_file = output_file_name,
-        output_dir = OUTPUT_DIR, 
-        params = list(
-          soort_invoer = huidige_soort, 
-          scenario_rds_path = SCENARIO_RDS_PAD 
-        ), 
-        envir = new.env(parent = globalenv()),
-        quiet = TRUE
-      )
+      script_env <- new.env(parent = globalenv())
+      script_env$soort_invoer      <- huidige_soort
+      script_env$scenario_rds_path <- SCENARIO_RDS_PAD
+      script_env$output_dir        <- OUTPUT_DIR
+      script_env$huidig_scenario   <- HUIDIG_SCENARIO
+      
+      source(soorten_script_pad, local = script_env)
+      
     }, error = function(e) {
-      message("   ❌ FOUTMELDING bij ", huidige_soort)
+      message("   ❌ FOUTMELDING bij ", huidige_soort, ": ", e$message)
       res_row$Status <<- "CRASH"
       res_row$Fout <<- e$message
     })
@@ -139,14 +135,14 @@ if (file.exists(soorten_script_pad)) {
 # ------------------------------------------------------------------------------
 # 3. LOGBESTAND WEGSCHRIJVEN & SAMENVATTING
 # ------------------------------------------------------------------------------
-# Logbestand wordt nu ook automatisch in de specifieke scenariomap opgeslagen
 log_file_path <- file.path(OUTPUT_DIR, paste0("Logboek_ScenarioRun_", HUIDIG_SCENARIO, "_", format(Sys.time(), "%Y%m%d_%H%M"), ".csv"))
 readr::write_excel_csv(eind_logboek, log_file_path)
 aantal_crashes <- sum(eind_logboek$Status == "CRASH")
+
 message("\n==================================================")
 message(" MASTER RUN COMPLEET VOOR ", toupper(HUIDIG_SCENARIO))
 message(" Totaal onderdelen gedraaid: ", nrow(eind_logboek))
 message(" Succesvol:                   ", nrow(eind_logboek) - aantal_crashes)
 message(" Gecrasht:                    ", aantal_crashes)
 message(" Logboek opgeslagen als:     ", log_file_path)
-message("==================================================") 
+message("==================================================")
