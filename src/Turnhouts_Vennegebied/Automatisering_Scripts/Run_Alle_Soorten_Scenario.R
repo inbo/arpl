@@ -51,7 +51,8 @@ schoon_naam_op <- function(x) {
     basename() %>% 
     tolower() %>% 
     # Strippen van bekende extensies
-    gsub("_wv\\.tif$|_wv\\.r$|\\.tif$|\\.rds$|\\.html$|\\.r$", "", .) %>% 
+    # NIEUWE REGEL (behoudt _wv als onderdeel van de unieke naam):
+    gsub("\\.tif$|\\.rds$|\\.html$|\\.r$", "", .) %>%
     # Strippen van bekende prefixen
     gsub("^habitat_werkelijke_oppervlaktes_|^habitat_maximale_potentie_|^id_netwerken_|^rapport_|^scenario_", "", .) %>% 
     gsub("^(tv|dm|hb|kh|mh|vs)_", "", .) %>% 

@@ -9,7 +9,7 @@ library(here)
 # 1. PARAMETERS & GEBIEDSCONFIGURATIE INSTELLEN
 # ------------------------------------------------------------------------------
 
-input_map <- here("src/01_Habitat_Scripts")
+input_map <- here("src/Scenario_R_Scripts")
 excel_pad <- here("data/Input/Excel_files/Soortenlijst_Maatwerkgebieden.xlsx")
 
 # Sjabloon / Brongegevens
@@ -76,22 +76,24 @@ verwerk_gebied <- function(doel_naam, doel_snake, doel_acroniem) {
   map_waarnemingen_gebied <- here("data/input/Waarnemingen_Soorten", doel_snake)
   
   # A. Filter handmatige maatwerkscripts
-  maatwerk_scripts <- df_excel %>%
+  maatwerk_soorten <- df_excel %>%
     filter(
       tolower(coalesce(Model, "")) == "ja",
       tolower(coalesce(Automatisch, "")) == "nee",
       coalesce(.data[[excel_kolom]], 0) == 1
     ) %>%
     filter(map_lgl(`Nederlandse naam`, ~ heeft_waarnemingen_bestand(.x, map_waarnemingen_gebied))) %>%
-    mutate(
-      Script_Naam = paste0(
-        "Scenario_", bron_acroniem, "_", 
-        gsub(" ", "", str_to_title(`Nederlandse naam`)), 
-        ".R"
-      )
-    ) %>%
-    pull(Script_Naam) %>%
-    na.omit() %>%
+    pull(`Nederlandse naam`)
+  
+  # Genereer zowel de reguliere scriptnaam als de optionele _wv variant voor elke soort
+  maatwerk_scripts <- map(maatwerk_soorten, function(naam) {
+    schoon_naam <- gsub(" ", "", str_to_title(naam))
+    c(
+      paste0("Scenario_", bron_acroniem, "_", schoon_naam, ".R"),
+      paste0("Scenario_", bron_acroniem, "_", schoon_naam, "_wv.R")
+    )
+  }) %>%
+    unlist() %>%
     unique()
   
   # B. Controleer op automatische soorten in dit gebied MET een CSV-bestand
