@@ -49,7 +49,15 @@ po/*~
 rsconnect/
 
 # ASCI Files
-/data/input/
+/data/input/ASCI Files
+
+/data/input/Raster_Vlaanderen
+
+/data/input/Scenario_rds
+
+/data/input/Territoria_Soorten
+
+/data/input/Waarnemingen_Soorten
 
 # Shapefiles
 /data/references/Shapefiles
