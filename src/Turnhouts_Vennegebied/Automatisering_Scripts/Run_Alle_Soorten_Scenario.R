@@ -23,7 +23,7 @@ if (requireNamespace("terra", quietly = TRUE)) {
 GEBIED_NAAM      <- "Turnhouts_Vennegebied"
 GEBIED_CODE      <- "TV"
 
-SCENARIO_RDS_PAD <- here("data/input/Scenario_rds/TV_Scenario_streefbeelden_allocatie_tvg_geenmutatie_vrij_20260917_r1_voorsoorten.rds")
+SCENARIO_RDS_PAD <- here("data/input/Scenario_rds/TV_Scenario_BWK_2025.rds")
 HUIDIG_SCENARIO  <- gsub("^TV_Scenario_|.rds$", "", basename(SCENARIO_RDS_PAD), ignore.case = TRUE)
 
 MAP_SCRIPTS      <- here("src", GEBIED_NAAM, "Scripts_Scenario")

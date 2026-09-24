@@ -233,14 +233,10 @@ r_huetzon     <- terra::resample(r_huetzon_raw, id_raster_KH, method = "near") %
 
 r_waterlopen1 <- r_huetzon == 1
 
-bl_path <- here("data/input/ASCI Files/BlauweLaag_Plassen_06042017_20m_.asc")
-if (file.exists(bl_path)) {
-  r_bl_raw <- terra::rast(bl_path)
-  r_bl     <- terra::resample(r_bl_raw, id_raster_KH, method = "near") %>% terra::crop(id_raster_KH)
-  r_plassen <- r_bl == 1
-} else {
-  r_plassen <- id_raster_KH * NA
-}
+bl_path <- here("data/input/Raster_Vlaanderen/vlaanderen_watervlakken_2024_10m.tif")
+r_bl_raw <- terra::rast(bl_path)
+r_bl     <- terra::resample(r_bl_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
+r_plassen <- r_bl == 1
 
 otter_water_max <- (r_waterlopen1 == 1) | (r_plassen == 1)
 otter_water_max <- terra::ifel(otter_water_max == 1, 1, NA)

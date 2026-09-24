@@ -217,8 +217,8 @@ bwkbos_opp <- lijst_oppervlaktes[["bwkbos"]]
 rm(vertaal_df, lijst_matches, lijst_oppervlaktes, tabel_vlaanderen, resultaten_gegroepeerd, df_nieuw)
 gc()
 
-# === STAP 1: BIOTOOP EN BOSLAGEN COMBINEREN ==================================
-message("=== STAP 1: Biotoop en Boslagen combineren ===")
+# === STAP 1: BIOTOOP EN BOSLAGEN COMBINEREN MET BOSDREMPEL (≥ 20 ARE) ==========
+message("=== STAP 1: Biotoop en Boslagen combineren (gefilterd op ≥ 20 are) ===")
 
 groenkaart <- terra::rast(here("data/input/ASCI Files/Groenkaart_2021.tif"))
 groenkaart_TV <- terra::crop(groenkaart, template_TV, snap = "near")
@@ -231,9 +231,21 @@ if(!is.null(bwkbos_max)) {
   bwkbos_gecorrigeerd <- template_TV * NA
 }
 
-paapje_bos <- terra::cover(bwkbos_gecorrigeerd, groenkaart_bos)
+paapje_bos_ruw <- terra::cover(bwkbos_gecorrigeerd, groenkaart_bos)
 
-rm(groenkaart, groenkaart_TV, groenkaart_aligned, groenkaart_bos, bwkbos_gecorrigeerd)
+# --- OPPERVLAKTEFILTER VOOR BOS: 20 ARE = 20 CELLEN VAN 10X10M ---
+drempel_bos_cellen <- 20 
+
+bos_patches <- terra::patches(paapje_bos_ruw, directions = 8, zeroAsNA = TRUE)
+bos_freq <- terra::freq(bos_patches)
+
+# Bewaar uitsluitend bos-patches met een oppervlakte van minstens 20 are
+grote_bos_ids <- bos_freq$value[bos_freq$count >= drempel_bos_cellen]
+
+paapje_bos_gefilterd <- bos_patches %in% grote_bos_ids
+paapje_bos <- terra::ifel(paapje_bos_gefilterd == 1, 1, NA)
+
+rm(groenkaart, groenkaart_TV, groenkaart_aligned, groenkaart_bos, bwkbos_gecorrigeerd, paapje_bos_ruw, bos_patches, bos_freq, paapje_bos_gefilterd)
 gc()
 
 # === STAP 2: 100 METER BOSRAND-BUFFER TOEPASSEN ==============================

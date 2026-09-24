@@ -87,7 +87,7 @@ if (exists("SCENARIO_RDS_PAD") && !is.null(SCENARIO_RDS_PAD)) {
 } else if (exists("params") && !is.null(params$scenario_rds_path)) {
   scenario_rds_path <- params$scenario_rds_path
 } else {
-  scenario_rds_path <- "data/input/Scenario_rds/HB_Scenario_BWK_2025.rds"
+  scenario_rds_path <- "data/input/Scenario_rds/MH_Scenario_BWK_2025.rds"
 }
 
 p_raw <- gsub("^([.][.]/)+", "", scenario_rds_path)
@@ -98,7 +98,7 @@ if (!file.exists(scenario_path)) {
 }
 
 scen_volledig <- basename(scenario_path)
-scenario_naam <- gsub("^HB_Scenario_|^Scenario_|.rds$", "", scen_volledig)
+scenario_naam <- gsub("^MH_Scenario_|^Scenario_|.rds$", "", scen_volledig)
 
 message(paste("Verwerken van soort:", soort, "binnen scenario:", scenario_naam))
 
@@ -113,7 +113,7 @@ buffer_m       <- resultaat$Dispersiecap_m[1]
 
 rm(df, resultaat)
 
-area_shape  <- vect(here("data/input/Heesbossen.shp"))
+area_shape  <- vect(here("data/input/Mechelse_Heide.shp"))
 master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
 
 df_namen_sleutel <- read_csv(here("data/input/Excel_files/BWK_Laag_Namen_2025.csv"), show_col_types = FALSE)
@@ -123,27 +123,27 @@ area_shape_proj <- project(area_shape, crs(master_grid))
 area_buffer_fix <- buffer(area_shape_proj, width = buffer_m)
 
 message("-> Vertaalraster voor globale/lokale cellen opbouwen via snelle MASK methode...")
-id_raster_HB <- crop(master_grid, area_buffer_fix, snap = "near")
+id_raster_MH <- crop(master_grid, area_buffer_fix, snap = "near")
 
 globale_id_raster <- master_grid
 globale_id_raster <- terra::init(globale_id_raster, fun = "cell")
 
-id_raster_HB_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
-id_raster_HB_masked <- mask(id_raster_HB_globale_values, area_buffer_fix)
+id_raster_MH_globale_values <- crop(globale_id_raster, area_buffer_fix, snap = "near")
+id_raster_MH_masked <- mask(id_raster_MH_globale_values, area_buffer_fix)
 
 message("-> Vertaaltabel bliksemsnel opbouwen via C++ dataframe extractie...")
 
-df_extractie <- as.data.frame(id_raster_HB_masked, cells = TRUE)
+df_extractie <- as.data.frame(id_raster_MH_masked, cells = TRUE)
 vertaal_df <- as.data.table(df_extractie)
 setnames(vertaal_df, c(1, 2), c("lokale_id", "globale_id"))
 
 vertaal_df <- vertaal_df[!is.na(globale_id)]
 studiegebied_globale_ids <- unique(vertaal_df$globale_id)
 
-values(id_raster_HB) <- NA
-template_HB <- terra::rasterize(area_buffer_fix, id_raster_HB, field = 1, background = 0)
+values(id_raster_MH) <- NA
+template_MH <- terra::rasterize(area_buffer_fix, id_raster_MH, field = 1, background = 0)
 
-rm(globale_id_raster, id_raster_HB_globale_values, id_raster_HB_masked, df_extractie)
+rm(globale_id_raster, id_raster_MH_globale_values, id_raster_MH_masked, df_extractie)
 gc()
 
 # 1. LAAD DE BRON-CROSSWALK/DICTIONARY IN
@@ -180,13 +180,13 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
     tabel_gefilterd <- tabel_vlaanderen[CODE %in% exact_codes]
   }
   
-  tabel_HB <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
-  tabel_HB_unique <- unique(tabel_HB, by = c("cel_id", "CODE"))
+  tabel_MH <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
+  tabel_MH_unique <- unique(tabel_MH, by = c("cel_id", "CODE"))
   
-  tabel_cel_som <- tabel_HB_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)), by = .(cel_id)]
+  tabel_cel_som <- tabel_MH_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)), by = .(cel_id)]
   
-  r_match_type <- id_raster_HB * NA
-  r_opp_type   <- id_raster_HB * NA
+  r_match_type <- id_raster_MH * NA
+  r_opp_type   <- id_raster_MH * NA
   
   if(nrow(tabel_cel_som) > 0) {
     tabel_cel_som[, Oppervlakte := pmin(Oppervlakte, 1)]
@@ -221,14 +221,14 @@ gc()
 message("=== STAP 1: Biotoop en Boslagen combineren (gefilterd op ≥ 20 are) ===")
 
 groenkaart <- terra::rast(here("data/input/ASCI Files/Groenkaart_2021.tif"))
-groenkaart_HB <- terra::crop(groenkaart, template_HB, snap = "near")
-groenkaart_aligned <- terra::resample(groenkaart_HB, template_HB, method = "near")
+groenkaart_MH <- terra::crop(groenkaart, template_MH, snap = "near")
+groenkaart_aligned <- terra::resample(groenkaart_MH, template_MH, method = "near")
 groenkaart_bos <- terra::ifel(groenkaart_aligned == 1, 1, NA)
 
 if(!is.null(bwkbos_max)) {
   bwkbos_gecorrigeerd <- terra::ifel(!is.na(bwk_max), NA, bwkbos_max)
 } else {
-  bwkbos_gecorrigeerd <- template_HB * NA
+  bwkbos_gecorrigeerd <- template_MH * NA
 }
 
 paapje_bos_ruw <- terra::cover(bwkbos_gecorrigeerd, groenkaart_bos)
@@ -245,7 +245,7 @@ grote_bos_ids <- bos_freq$value[bos_freq$count >= drempel_bos_cellen]
 paapje_bos_gefilterd <- bos_patches %in% grote_bos_ids
 paapje_bos <- terra::ifel(paapje_bos_gefilterd == 1, 1, NA)
 
-rm(groenkaart, groenkaart_HB, groenkaart_aligned, groenkaart_bos, bwkbos_gecorrigeerd, paapje_bos_ruw, bos_patches, bos_freq, paapje_bos_gefilterd)
+rm(groenkaart, groenkaart_MH, groenkaart_aligned, groenkaart_bos, bwkbos_gecorrigeerd, paapje_bos_ruw, bos_patches, bos_freq, paapje_bos_gefilterd)
 gc()
 
 # === STAP 2: 100 METER BOSRAND-BUFFER TOEPASSEN ==============================
@@ -298,13 +298,13 @@ final_opp <- paapje_finaal_opp
 if (!all(is.na(suppressWarnings(terra::minmax(final_opp))))) {
   cl_opp <- cluster_output_opp$clusters
 } else {
-  cl_opp <- template_HB * NA
+  cl_opp <- template_MH * NA
 }
 
 if (!all(is.na(suppressWarnings(terra::minmax(final_max))))) {
   cl_max <- cluster_output_max$clusters
 } else {
-  cl_max <- template_HB * NA
+  cl_max <- template_MH * NA
 }
 
 rm(cluster_output_max, cluster_output_opp, r_binair_leef1_opp, paapje_leefgebied1_max, paapje_leefgebied1_opp)
@@ -313,7 +313,7 @@ gc()
 # ==============================================================================
 # SCHONE EXPORT BIOTOOP EN ANALYTISCH ID-RASTER (VOOR SCRIPT 2 / ARPL)
 # ==============================================================================
-base_dir <- here::here("data/output/Heesbossen/Rasters_Soorten", scenario_naam)
+base_dir <- here::here("data/output/Mechelse_Heide/Rasters_Soorten", scenario_naam)
 
 folders <- list(
   potentie  = file.path(base_dir, "01_Maximale_Potentie"),
@@ -326,14 +326,14 @@ purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, showWarnings = FALSE, 
 potentie_export_rast <- if (exists("final_max") && !is.null(final_max) && !all(is.na(suppressWarnings(terra::minmax(final_max))))) {
   terra::ifel(!is.na(final_max) & final_max > 0, 1, NA)
 } else {
-  terra::rast(template_HB, vals = NA)
+  terra::rast(template_MH, vals = NA)
 }
 
 # 2. Bepaal Werkelijke Oppervlakte Raster
 werkelijk_export_rast <- if (exists("final_opp") && !is.null(final_opp) && !all(is.na(suppressWarnings(terra::minmax(final_opp))))) {
   terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA)
 } else {
-  terra::rast(template_HB, vals = NA)
+  terra::rast(template_MH, vals = NA)
 }
 
 # 3. Bepaal Analytisch Metacluster ID-raster (EXCLUSIEF OP BASIS VAN WERKELIJKE OPPERVLAKTES)
@@ -342,7 +342,7 @@ if (exists("cl_opp") && !is.null(cl_opp) && !all(is.na(suppressWarnings(terra::m
 } else if (exists("final_opp") && !is.null(final_opp) && !all(is.na(suppressWarnings(terra::minmax(final_opp))))) {
   id_export_rast <- terra::patches(final_opp, directions = 8, zeroAsNA = TRUE)
 } else {
-  id_export_rast <- template_HB * NA
+  id_export_rast <- template_MH * NA
 }
 
 # --- EXPORT LUS VOOR VISUELE BINAIR RASTERS ---

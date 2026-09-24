@@ -78,7 +78,7 @@ if (exists("huidige_soort") && !is.null(huidige_soort)) {
 } else if (exists("params") && !is.null(params$soort_invoer)) {
   soort <- tolower(trimws(params$soort_invoer))
 } else {
-  soort <- "kleintasjeskruid"
+  soort <- "aardbeivlinder"
 }
 
 # --- DYNAMISCHE SCENARIO PARAMETER CHECK ---

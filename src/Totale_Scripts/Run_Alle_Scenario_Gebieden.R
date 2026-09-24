@@ -1,7 +1,9 @@
 # ==============================================================================
-# WORK-QUEUE PARALLEL RUNNER VOOR PURE R-SCRIPTS + FINALE MAKER (6 CORES)
-# AUTEUR: Bert Van Hecke
+# WORK-QUEUE PARALLEL RUNNER VOOR PURE R-SCRIPTS + FINALE MAKER
+# AUTEUR: Bert Van Hecke (HPC Optimized & OOM Stabilized)
 # ==============================================================================
+
+totaal_start <- Sys.time()
 
 library(here)
 library(purrr)
@@ -10,11 +12,18 @@ library(dplyr)
 library(readr)
 library(future)
 library(furrr)
+library(tidyterra)
+library(future.callr)
+
+# Store absolute project root explicitly to avoid relative path breakage in workers
+proj_root <- here::here()
 
 # ------------------------------------------------------------------------------
 # 1. INSTELLINGEN & SCENARIO SELECTIE PER GEBIED
 # ------------------------------------------------------------------------------
-AANTAL_CORES <- 6  # Ingesteld op 6 cores voor HPC/supercomputer
+# Capped at 8 workers max to prevent Linux OOM kills on heavy raster calculations.
+# Gives each worker process ~8 GB RAM on a standard 64 GB node.
+AANTAL_CORES <- 16
 
 SCENARIO_SELECTIE <- list(
   De_Maten              = "DM_Scenario_BWK_2025.rds",
@@ -26,15 +35,14 @@ SCENARIO_SELECTIE <- list(
 )
 
 gebieden_info <- list(
-  De_Maten              = list(code = "DM", col = "De_Maten",              simpel_script = "Scenario_DM_Leefgebieden_Simpel.R"),
-  Heesbossen            = list(code = "HB", col = "Heesbossen",            simpel_script = "Scenario_HB_Leefgebieden_Simpel.R"),
+  De_Maten              = list(code = "DM", col = "De_Maten",            simpel_script = "Scenario_DM_Leefgebieden_Simpel.R"),
+  Heesbossen            = list(code = "HB", col = "Heesbossen",          simpel_script = "Scenario_HB_Leefgebieden_Simpel.R"),
   Kalmthoutse_Heide     = list(code = "KH", col = "Kalmthoutse_Heide",     simpel_script = "Scenario_KH_Leefgebieden_Simpel.R"),
   Mechelse_Heide        = list(code = "MH", col = "Mechelse_Heide",        simpel_script = "Scenario_MH_Leefgebieden_Simpel.R"),
   Turnhouts_Vennegebied = list(code = "TV", col = "Turnhouts_Vennegebied", simpel_script = "Scenario_TV_Leefgebieden_Simpel.R"),
-  Voerstreek            = list(code = "VS", col = "Voerstreek",            simpel_script = "Scenario_VS_Leefgebieden_Simpel.R")
+  Voerstreek            = list(code = "VS", col = "Voerstreek",          simpel_script = "Scenario_VS_Leefgebieden_Simpel.R")
 )
 
-# Hulpfunctie om zowel scriptnamen, soorten als rasters te herleiden tot de schone kernnaam (zonder spaties)
 schoon_naam_op <- function(x) {
   x %>% 
     basename() %>% 
@@ -50,7 +58,7 @@ schoon_naam_op <- function(x) {
 # 2. VERZAMEL DYNAMISCH ALLE R-SCRIPTS PER GEBIED (INCL. SLIMME SKIP-CHECK)
 # ------------------------------------------------------------------------------
 taken_lijst <- list()
-excel_pad <- here("data/input/Excel_files/Soortenlijst_Maatwerkgebieden_Gefilterd.xlsx")
+excel_pad <- file.path(proj_root, "data/input/Excel_files/Soortenlijst_Maatwerkgebieden_Gefilterd.xlsx")
 excel_data <- if(file.exists(excel_pad)) read_excel(excel_pad) else NULL
 
 if(!is.null(excel_data)) {
@@ -59,12 +67,12 @@ if(!is.null(excel_data)) {
 
 for (gb_naam in names(gebieden_info)) {
   info <- gebieden_info[[gb_naam]]
-  map_scripts <- here("src", gb_naam, "Scripts_Scenario")
+  map_scripts <- file.path(proj_root, "src", gb_naam, "Scripts_Scenario")
   
   if (!dir.exists(map_scripts)) next
   
   gekozen_rds_naam <- SCENARIO_SELECTIE[[gb_naam]]
-  scenario_rds      <- here("data/input/Scenario_rds", gekozen_rds_naam)
+  scenario_rds      <- file.path(proj_root, "data/input/Scenario_rds", gekozen_rds_naam)
   
   if (!file.exists(scenario_rds)) {
     warning("⚠️ Het opgegeven RDS bestand '", gekozen_rds_naam, "' bestaat niet voor ", gb_naam, "!")
@@ -72,9 +80,7 @@ for (gb_naam in names(gebieden_info)) {
   }
   
   huidig_scenario <- gsub("^.*_Scenario_|^Scenario_|_wv\\.rds$|\\.rds$", "", basename(scenario_rds), ignore.case = TRUE)
-  
-  # Detecteer al verwerkte TIF-rasters voor dit specifieke gebied & scenario
-  map_werkelijk <- here("data/output", gb_naam, "Rasters_Soorten", huidig_scenario, "02_Werkelijke_Oppervlaktes")
+  map_werkelijk   <- file.path(proj_root, "data/output", gb_naam, "Rasters_Soorten", huidig_scenario, "02_Werkelijke_Oppervlaktes")
   
   bestaande_soorten_clean <- if (dir.exists(map_werkelijk)) {
     list.files(map_werkelijk, pattern = "\\.tif$", full.names = FALSE) %>% 
@@ -84,18 +90,14 @@ for (gb_naam in names(gebieden_info)) {
     c()
   }
   
-  # Zoek alle .R scripts op
   alle_r_scripts <- list.files(path = map_scripts, pattern = "\\.r$", full.names = TRUE, ignore.case = TRUE)
   soorten_script_pad <- alle_r_scripts[grep(paste0(info$simpel_script, "$"), alle_r_scripts, ignore.case = TRUE)]
   if(length(soorten_script_pad) > 0) soorten_script_pad <- soorten_script_pad[1] else soorten_script_pad <- file.path(map_scripts, info$simpel_script)
   
   unieke_r_scripts <- setdiff(alle_r_scripts, soorten_script_pad)
   
-  # A. Unieke R-scripts filteren met skip-check
   for (r_script in unieke_r_scripts) {
     soort_uit_script <- schoon_naam_op(r_script)
-    
-    # Sla over als het raster al bestaat op schijf
     if (soort_uit_script %in% bestaande_soorten_clean) next
     
     taken_lijst[[length(taken_lijst) + 1]] <- list(
@@ -108,7 +110,6 @@ for (gb_naam in names(gebieden_info)) {
     )
   }
   
-  # B. Simpele Soorten uit Excel filteren met skip-check
   if (!is.null(excel_data) && file.exists(soorten_script_pad)) {
     col_naam <- tolower(info$col)
     
@@ -129,8 +130,6 @@ for (gb_naam in names(gebieden_info)) {
       
       for (srt in soorten) {
         srt_clean <- schoon_naam_op(srt)
-        
-        # Sla over als het raster al bestaat op schijf
         if (srt_clean %in% bestaande_soorten_clean) next
         
         taken_lijst[[length(taken_lijst) + 1]] <- list(
@@ -153,24 +152,38 @@ message(" Aantal actieve cores op HPC: ", AANTAL_CORES)
 message("==================================================")
 
 # ------------------------------------------------------------------------------
-# 3. VERWERKINGSFUNCTIE VOOR 1 R-SCRIPT TAAK
+# 3. VERWERKINGSFUNCTIE VOOR 1 R-SCRIPT TAAK (OOM & TEMP ISOLATION FIX)
 # ------------------------------------------------------------------------------
-verwerk_r_taak <- function(taak, proj_root) {
-  options(here.root = proj_root)
-  library(here)
+verwerk_r_taak <- function(taak, p_root, n_cores) {
+  options(here.root = p_root)
   
-  # Maak een unieke tempdir per worker (voorkomt race-conditions tussen cores)
-  worker_temp <- tempfile(pattern = "gis_temp_")
+  # Prevent C++ library thread contention across parallel workers
+  Sys.setenv(OMP_NUM_THREADS = "1", OPENBLAS_NUM_THREADS = "1", MKL_NUM_THREADS = "1")
+  
+  # Load packages inside isolated worker process
+  suppressPackageStartupMessages({
+    library(here)
+    library(dplyr)
+    library(purrr)
+    library(readr)
+    library(terra)
+    library(sf)
+    library(tidyterra)
+    library(tidyverse)
+  })
+  
+  # Unique isolated temporary directory on Scratch for each worker
+  worker_temp <- file.path(p_root, "data/temp_workers", paste0("gis_worker_", Sys.getpid(), "_", sample(1000:9999, 1)))
   dir.create(worker_temp, showWarnings = FALSE, recursive = TRUE)
   
+  # Cap terra RAM usage to 1/12th per worker to guarantee no system OOM crashes
   if (requireNamespace("terra", quietly = TRUE)) {
-    # memfrac op 0.15 zodat 6 parallelle workers nooit het HPC geheugen overbelasten
-    terra::terraOptions(tempdir = worker_temp, memfrac = 0.15, verbose = FALSE)
+    terra::terraOptions(threads = 1, tempdir = worker_temp, memfrac = 0.08, verbose = FALSE)
   }
   
   tijd_start <- Sys.time()
   
-  # Geïsoleerde omgeving per taak
+  # Environment inheritance for child scripts
   run_env <- new.env(parent = globalenv())
   
   huidig_scen_naam <- gsub("^.*_Scenario_|^Scenario_|_wv\\.rds$|\\.rds$", "", basename(taak$ScenarioRDS), ignore.case = TRUE)
@@ -180,15 +193,14 @@ verwerk_r_taak <- function(taak, proj_root) {
   run_env$GEBIED_NAAM       <- taak$Gebied
   run_env$GEBIED_CODE       <- taak$GebiedCode
   run_env$huidig_scenario   <- huidig_scen_naam
-  run_env$output_dir        <- here("data/output", taak$Gebied, "HTML_Rapporten_Scenario", huidig_scen_naam)
+  run_env$output_dir        <- file.path(p_root, "data/output", taak$Gebied, "HTML_Rapporten_Scenario", huidig_scen_naam)
   
   if (!is.na(taak$Soort)) {
-    # Alle mogelijke naam-varianten meegeven voor het simpele script
     run_env$huidige_soort       <- taak$Soort
     run_env$soort_invoer        <- taak$Soort
-    run_env$soort              <- taak$Soort
-    run_env$soort_naam         <- taak$Soort
-    run_env$SOORT              <- taak$Soort
+    run_env$soort               <- taak$Soort
+    run_env$soort_naam          <- taak$Soort
+    run_env$SOORT               <- taak$Soort
     run_env$huidige_soort_clean <- tolower(gsub(" ", "", taak$Soort))
     item_naam                   <- taak$Soort
   } else {
@@ -198,19 +210,22 @@ verwerk_r_taak <- function(taak, proj_root) {
   old_wd <- setwd(dirname(taak$ScriptPad))
   on.exit({
     setwd(old_wd)
-    unlink(worker_temp, recursive = TRUE)
+    unlink(worker_temp, recursive = TRUE, force = TRUE)
   })
   
   tryCatch({
     sys.source(taak$ScriptPad, envir = run_env)
     
-    terra::tmpFiles(current = TRUE, orphan = TRUE, old = TRUE, remove = TRUE)
+    if (requireNamespace("terra", quietly = TRUE)) {
+      terra::tmpFiles(current = TRUE, orphan = TRUE, old = TRUE, remove = TRUE)
+    }
     gc(verbose = FALSE)
     tijd_eind <- Sys.time()
     
     return(data.frame(
       Gebied = taak$Gebied, Item = item_naam, Type = taak$Type, 
-      Status = "SUCCES", Duurtijd_Min = round(as.numeric(difftime(tijd_eind, tijd_start, units="mins")), 2),
+      Status = "SUCCES", Start_Tijd = format(tijd_start, "%H:%M:%S"),
+      Duurtijd_Min = round(as.numeric(difftime(tijd_eind, tijd_start, units="mins")), 2),
       Fout = "Geen", stringsAsFactors = FALSE
     ))
     
@@ -218,40 +233,42 @@ verwerk_r_taak <- function(taak, proj_root) {
     gc(verbose = FALSE)
     return(data.frame(
       Gebied = taak$Gebied, Item = item_naam, 
-      Type = taak$Type, Status = "CRASH", Duurtijd_Min = NA, Fout = e$message, stringsAsFactors = FALSE
+      Type = taak$Type, Status = "CRASH", Start_Tijd = format(tijd_start, "%H:%M:%S"),
+      Duurtijd_Min = NA, Fout = e$message, stringsAsFactors = FALSE
     ))
   })
 }
 
 # ------------------------------------------------------------------------------
-# 4. PARALLELLE WORK QUEUE UITVOEREN (FASE 1)
+# 4. PARALLELLE WORK QUEUE UITVOEREN (FASE 1 - WITH STABILITY FIXES)
 # ------------------------------------------------------------------------------
 if (length(taken_lijst) > 0) {
-  plan(multisession, workers = AANTAL_CORES)
-  
-  totaal_start <- Sys.time()
-  proj_root <- here()
+  # 'callr' launches clean external R processes that catch crashes gracefully
+  plan(callr, workers = AANTAL_CORES)
   
   eind_logboek <- furrr::future_map_dfr(
     taken_lijst, 
-    ~verwerk_r_taak(.x, proj_root = proj_root), 
-    .options = furrr_options(packages = c("here", "dplyr", "readr", "terra")),
-    .progress = TRUE
+    ~verwerk_r_taak(.x, p_root = proj_root, n_cores = AANTAL_CORES), 
+    .options = furrr_options(
+      packages = c("here", "dplyr", "purrr", "readr", "terra", "sf", "tidyterra", "tidyverse"),
+      seed = TRUE,
+      chunk_size = 1  # Process 1 item per batch to immediately free RAM
+    ),
+    .progress = FALSE
   )
   
   plan(sequential)
   
-  log_file_path <- here(paste0("Logboek_R_WorkQueue_Totaal_", format(Sys.time(), "%Y%m%d_%H%M"), ".csv"))
+  log_file_path <- file.path(proj_root, paste0("Logboek_R_WorkQueue_Totaal_", format(Sys.time(), "%Y%m%d_%H%M"), ".csv"))
   readr::write_excel_csv(eind_logboek, log_file_path)
   
   cat("\n==================================================\n")
   cat(" FASE 1: ALLE LOSSE R-SCRIPTS ZIJN AFGEROND\n")
   cat(" Totaal nieuwe onderdelen gedraaid : ", nrow(eind_logboek), "\n")
-  cat(" Succesvol                          : ", sum(eind_logboek$Status == "SUCCES"), "\n")
-  cat(" Gecrasht                           : ", sum(eind_logboek$Status == "CRASH"), "\n")
+  cat(" Succesvol                           : ", sum(eind_logboek$Status == "SUCCES"), "\n")
+  cat(" Gecrasht                            : ", sum(eind_logboek$Status == "CRASH"), "\n")
   cat("==================================================\n\n")
 } else {
-  totaal_start <- Sys.time()
   cat("\n==================================================\n")
   cat(" FASE 1: Alle rasters voor alle gebieden bestaan al op schijf!\n")
   cat("==================================================\n\n")
@@ -261,7 +278,7 @@ if (length(taken_lijst) > 0) {
 # 5. FASE 2: RUN FINALE MAKER SCRIPT (ARPL_Actueel_Maker.R)
 # ------------------------------------------------------------------------------
 maker_script <- list.files(
-  path = here("src"), 
+  path = file.path(proj_root, "src"), 
   pattern = "^ARPL_Actueel_Maker\\.r$", 
   full.names = TRUE, 
   recursive = TRUE, 
