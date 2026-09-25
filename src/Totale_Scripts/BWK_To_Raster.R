@@ -9,9 +9,9 @@ library(here)
 # CONFIGURATIE & CONFIG-FUNCTIES
 # =========================================================================
 totale_tijd_start <- Sys.time()
-epsilon <- 0.00001 # Klein getal voor 'aanwezigheid' (indices > 4)
+epsilon <- 0.00001 # Voor EENH5-8 en HAB5 aanwezigheid
 
-# Percentage-toewijzing voor de eerste 4 EENH-kolommen
+# EXPERTE VERDEELSLEUTEL INBO / BWK
 get_eenh_pct <- function(n, index) {
   case_when(
     n == 1 & index == 1 ~ 1.00,
@@ -23,36 +23,27 @@ get_eenh_pct <- function(n, index) {
 }
 
 # =========================================================================
-# STAP 1: INPUT BESTANDEN LADEN (VOLLEDIG VLAANDEREN - GEEN CLIPPING)
+# STAP 1 & 2: DATA PREPARATIE & VECTOR LONG FORMAT
 # =========================================================================
-message("=== STAP 1: GEOMETRIEËN EN REFERENCE-RASTER LADEN ===")
+message("=== STAP 1 & 2: GEOMETRIEËN EN DATA PREPARATIE ===")
 
-# 1. Master grid (10m x 10m Vlaanderen)
+# Master grid (10m x 10m Vlaanderen)
 master_grid_vlaanderen <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))
 
-# 2. De originele BWK Basiskaart (BWK_2025.shp)
-message("-> BWK basiskaart voor héél Vlaanderen inladen en valideren...")
-bwk_sf <- st_read(here("data/references/Shapefiles/BWK_2025.shp"), quiet = TRUE) %>% 
+message("-> BWK basiskaart inladen en valideren...")
+bwk_sf <- st_read(here("data/input/ASCI Files/BwkHab.shp"), quiet = TRUE) %>% 
   st_transform(31370) %>% 
-  st_make_valid()
+  st_make_valid() %>% 
+  mutate(poly_id = row_number())
 
-# =========================================================================
-# STAP 2: HERSTRUCTUREREN NAAR LONG FORMAT (8 EENH EN 5 HAB CODES)
-# =========================================================================
-message("=== STAP 2: HET HERSTRUCTUREREN VAN EENH (1-8) EN HAB (1-5) CODES ===")
-
-bwk_sf <- bwk_sf %>% mutate(poly_id = row_number())
-
-# 2A. Bereken HAB oppervlakte fracties (PHAB1 - PHAB4, PHAB5 bestaat niet in shape -> 0/epsilon)
+# HAB1 t/m HAB5 (PHAB1 - PHAB4 / 100)
 for(i in 1:5) {
   phab_col       <- paste0("PHAB", i)
   target_opp_col <- paste0("OPP_HAB", i)
-  bwk_sf[[target_opp_col]] <- if(phab_col %in% names(bwk_sf)) {
-    (replace_na(as.numeric(bwk_sf[[phab_col]]), 0) / 100)
-  } else 0
+  bwk_sf[[target_opp_col]] <- if(phab_col %in% names(bwk_sf)) (replace_na(as.numeric(bwk_sf[[phab_col]]), 0) / 100) else 0
 }
 
-# 2B. Bereken EENH oppervlakte fracties (EENH1 - EENH4 gebruiken verdeelsleutel)
+# EENH1 t/m EENH4 (Oppervlaktes via verdeelsleutel op basis van ingevulde EENH1-4)
 exist_eenh_first4 <- intersect(c("EENH1", "EENH2", "EENH3", "EENH4"), names(bwk_sf))
 if(length(exist_eenh_first4) > 0) {
   eenh_matrix <- as.matrix(st_drop_geometry(bwk_sf[, exist_eenh_first4]))
@@ -60,11 +51,10 @@ if(length(exist_eenh_first4) > 0) {
   for(i in 1:4) bwk_sf[[paste0("OPP_EENH", i)]] <- get_eenh_pct(bwk_sf$n_filled, i)
 }
 
-# Zoek alle beschikbare EENH (1-8) en HAB (1-5) kolommen in het shapefile
 exist_eenh_all <- intersect(paste0("EENH", 1:8), names(bwk_sf))
 exist_hab_all  <- intersect(paste0("HAB", 1:5), names(bwk_sf))
 
-# Pivot EENH codes (1 t/m 8) naar long format
+# Pivot EENH (1-8)
 df_eenh_finaal <- bwk_sf %>% 
   st_drop_geometry() %>% 
   select(poly_id, any_of(exist_eenh_all)) %>% 
@@ -78,14 +68,9 @@ df_eenh_finaal <- bwk_sf %>%
       select(poly_id, idx, OPP_VAL), 
     by = c("poly_id", "idx")
   ) %>% 
-  # EENH 1-4 krijgen de berekende oppervlaktes, EENH 5-8 krijgen epsilon
-  mutate(BWK_FRAC = case_when(
-    idx <= 4 ~ coalesce(as.numeric(OPP_VAL), 0.00), 
-    idx >= 5 ~ epsilon, 
-    TRUE ~ 0.00
-  ))
+  mutate(BWK_FRAC = case_when(idx <= 4 ~ coalesce(as.numeric(OPP_VAL), 0.00), idx >= 5 ~ epsilon, TRUE ~ 0.00))
 
-# Pivot HAB codes (1 t/m 5) naar long format
+# Pivot HAB (1-5)
 df_hab_finaal <- bwk_sf %>% 
   st_drop_geometry() %>% 
   select(poly_id, any_of(exist_hab_all)) %>% 
@@ -99,21 +84,15 @@ df_hab_finaal <- bwk_sf %>%
       select(poly_id, idx, OPP_VAL), 
     by = c("poly_id", "idx")
   ) %>% 
-  # HAB 1-4 krijgen PHAB% / 100, HAB 5 krijgt epsilon
-  mutate(BWK_FRAC = case_when(
-    idx <= 4 ~ coalesce(as.numeric(OPP_VAL), 0.00), 
-    idx >= 5 ~ epsilon, 
-    TRUE ~ 0.00
-  ))
+  mutate(BWK_FRAC = case_when(idx <= 4 ~ coalesce(as.numeric(OPP_VAL), 0.00), idx >= 5 ~ epsilon, TRUE ~ 0.00))
 
-# Combineer, filter ongeldige codes en neem de maximale fractie per polygoon & code
+# OPTEL-AGGREGATIE: sum() voor dubbele codes binnen dezelfde polygoon
 df_bwk_clean <- bind_rows(df_eenh_finaal, df_hab_finaal) %>% 
   filter(!is.na(CODE) & CODE != "" & CODE != " " & CODE != "NA") %>% 
   mutate(CODE = tolower(trimws(as.character(CODE)))) %>% 
   group_by(poly_id, CODE) %>% 
-  summarise(BWK_FRAC = max(BWK_FRAC, na.rm = TRUE), .groups = "drop")
+  summarise(BWK_FRAC = sum(BWK_FRAC, na.rm = TRUE), .groups = "drop")
 
-# Koppel opgeschoonde attributes terug aan sf object
 vec_bwk_sf <- bwk_sf %>% 
   select(poly_id) %>% 
   inner_join(df_bwk_clean, by = "poly_id") %>% 
@@ -125,14 +104,14 @@ vec_bwk_sf   <- vec_bwk_sf[vlakken_index, ]
 vec_bwk_sf   <- st_cast(vec_bwk_sf, "MULTIPOLYGON")
 vec_bwk_sf   <- vec_bwk_sf %>% filter(as.numeric(st_area(.)) > 0.001)
 
-# Schoon het RAM-geheugen op voor de zware exact_extract loop
+# Schoon het RAM-geheugen op
 rm(bwk_sf, df_eenh_finaal, df_hab_finaal, df_bwk_clean)
 gc()
 
 # =========================================================================
-# STAP 3: RASTER EXTRACTIE WASSTRAAT (EXACT_EXTRACT VLAANDEREN-BREED)
+# STAP 3: SEQUENTIËLE RASTER EXTRACTIE (ENKELE CORE)
 # =========================================================================
-message("=== STAP 3: START VERRASTERING EN DEKKINGSFRACTIE BEREKENING ===")
+message("=== STAP 3: START SEQUENTIËLE VERRASTERING (ENKELE CORE) ===")
 
 unieke_codes <- sort(unique(vec_bwk_sf$CODE))
 n_codes      <- length(unieke_codes)
@@ -160,6 +139,9 @@ for(i in 1:n_codes) {
       }
     }
   }
+  
+  # Maak periodiek het geheugen schoon tijdens de lange loop
+  if(i %% 100 == 0) gc()
 }
 
 # =========================================================================
