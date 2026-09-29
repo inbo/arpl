@@ -1,6 +1,6 @@
 # ==============================================================================
-# WORK-QUEUE PARALLEL RUNNER VOOR PURE R-SCRIPTS + FINALE MAKER
-# AUTEUR: Bert Van Hecke (HPC Optimized & OOM Stabilized)
+# WORK-QUEUE PARALLEL RUNNER VOOR LOKALE WORKSTATION (30 CORES OPTIMIZED)
+# AUTEUR: Bert Van Hecke (Local High-Performance Edition)
 # ==============================================================================
 
 totaal_start <- Sys.time()
@@ -15,15 +15,15 @@ library(furrr)
 library(tidyterra)
 library(future.callr)
 
-# Store absolute project root explicitly to avoid relative path breakage in workers
+# Expliciet absolute project root vastleggen
 proj_root <- here::here()
 
 # ------------------------------------------------------------------------------
 # 1. INSTELLINGEN & SCENARIO SELECTIE PER GEBIED
 # ------------------------------------------------------------------------------
-# Capped at 8 workers max to prevent Linux OOM kills on heavy raster calculations.
-# Gives each worker process ~8 GB RAM on a standard 64 GB node.
-AANTAL_CORES <- 16
+# Ingesteld op 16 parallelle workers voor maximale snelheid zonder RAM-saturatie.
+# Heb je bijvoorbeeld 128 GB RAM op je pc? Dan kun je dit gerust verhogen naar 20-24.
+AANTAL_CORES <- 4
 
 SCENARIO_SELECTIE <- list(
   De_Maten              = "DM_Scenario_BWK_2025.rds",
@@ -37,7 +37,7 @@ SCENARIO_SELECTIE <- list(
 gebieden_info <- list(
   De_Maten              = list(code = "DM", col = "De_Maten",            simpel_script = "Scenario_DM_Leefgebieden_Simpel.R"),
   Heesbossen            = list(code = "HB", col = "Heesbossen",          simpel_script = "Scenario_HB_Leefgebieden_Simpel.R"),
-  Kalmthoutse_Heide     = list(code = "KH", col = "Kalmthoutse_Heide",     simpel_script = "Scenario_KH_Leefgebieden_Simpel.R"),
+  Kalmthoutse_Heide     = list(code = "KH", col = "Kalmthoutse_Heide",      simpel_script = "Scenario_KH_Leefgebieden_Simpel.R"),
   Mechelse_Heide        = list(code = "MH", col = "Mechelse_Heide",        simpel_script = "Scenario_MH_Leefgebieden_Simpel.R"),
   Turnhouts_Vennegebied = list(code = "TV", col = "Turnhouts_Vennegebied", simpel_script = "Scenario_TV_Leefgebieden_Simpel.R"),
   Voerstreek            = list(code = "VS", col = "Voerstreek",          simpel_script = "Scenario_VS_Leefgebieden_Simpel.R")
@@ -146,21 +146,20 @@ for (gb_naam in names(gebieden_info)) {
 }
 
 message("==================================================")
-message(" WORK-QUEUE KLAARGEZET")
+message(" WORK-QUEUE KLAARGEZET VOOR LOKALE PC")
 message(" Totaal te verwerken taken na skip-check: ", length(taken_lijst))
-message(" Aantal actieve cores op HPC: ", AANTAL_CORES)
+message(" Aantal actieve parallelle workers     : ", AANTAL_CORES)
 message("==================================================")
 
 # ------------------------------------------------------------------------------
-# 3. VERWERKINGSFUNCTIE VOOR 1 R-SCRIPT TAAK (OOM & TEMP ISOLATION FIX)
+# 3. VERWERKINGSFUNCTIE VOOR 1 R-SCRIPT TAAK
 # ------------------------------------------------------------------------------
 verwerk_r_taak <- function(taak, p_root, n_cores) {
   options(here.root = p_root)
   
-  # Prevent C++ library thread contention across parallel workers
+  # Voorkom dat C++ bibliotheken op de achtergrond extra threads claimen
   Sys.setenv(OMP_NUM_THREADS = "1", OPENBLAS_NUM_THREADS = "1", MKL_NUM_THREADS = "1")
   
-  # Load packages inside isolated worker process
   suppressPackageStartupMessages({
     library(here)
     library(dplyr)
@@ -172,18 +171,17 @@ verwerk_r_taak <- function(taak, p_root, n_cores) {
     library(tidyverse)
   })
   
-  # Unique isolated temporary directory on Scratch for each worker
+  # Unieke tijdelijke map per worker om file-locks te voorkomen
   worker_temp <- file.path(p_root, "data/temp_workers", paste0("gis_worker_", Sys.getpid(), "_", sample(1000:9999, 1)))
   dir.create(worker_temp, showWarnings = FALSE, recursive = TRUE)
   
-  # Cap terra RAM usage to 1/12th per worker to guarantee no system OOM crashes
+  # Beperk het geheugengebruik van terra per worker tot max 20% (ca. 5.6 GB)
   if (requireNamespace("terra", quietly = TRUE)) {
-    terra::terraOptions(threads = 1, tempdir = worker_temp, memfrac = 0.08, verbose = FALSE)
+    terra::terraOptions(threads = 1, tempdir = worker_temp, memfrac = 0.20, verbose = FALSE)
   }
   
   tijd_start <- Sys.time()
   
-  # Environment inheritance for child scripts
   run_env <- new.env(parent = globalenv())
   
   huidig_scen_naam <- gsub("^.*_Scenario_|^Scenario_|_wv\\.rds$|\\.rds$", "", basename(taak$ScenarioRDS), ignore.case = TRUE)
@@ -240,10 +238,10 @@ verwerk_r_taak <- function(taak, p_root, n_cores) {
 }
 
 # ------------------------------------------------------------------------------
-# 4. PARALLELLE WORK QUEUE UITVOEREN (FASE 1 - WITH STABILITY FIXES)
+# 4. PARALLELLE WORK QUEUE UITVOEREN (FASE 1)
 # ------------------------------------------------------------------------------
 if (length(taken_lijst) > 0) {
-  # 'callr' launches clean external R processes that catch crashes gracefully
+  # Start schone R-processen
   plan(callr, workers = AANTAL_CORES)
   
   eind_logboek <- furrr::future_map_dfr(
@@ -252,9 +250,9 @@ if (length(taken_lijst) > 0) {
     .options = furrr_options(
       packages = c("here", "dplyr", "purrr", "readr", "terra", "sf", "tidyterra", "tidyverse"),
       seed = TRUE,
-      chunk_size = 1  # Process 1 item per batch to immediately free RAM
+      chunk_size = 1  # Verwerk 1 taak per batch om het RAM direct vrij te geven
     ),
-    .progress = FALSE
+    .progress = TRUE  # Toont voortgangsbalk op je lokale scherm!
   )
   
   plan(sequential)
@@ -265,8 +263,8 @@ if (length(taken_lijst) > 0) {
   cat("\n==================================================\n")
   cat(" FASE 1: ALLE LOSSE R-SCRIPTS ZIJN AFGEROND\n")
   cat(" Totaal nieuwe onderdelen gedraaid : ", nrow(eind_logboek), "\n")
-  cat(" Succesvol                           : ", sum(eind_logboek$Status == "SUCCES"), "\n")
-  cat(" Gecrasht                            : ", sum(eind_logboek$Status == "CRASH"), "\n")
+  cat(" Succesvol                            : ", sum(eind_logboek$Status == "SUCCES"), "\n")
+  cat(" Gecrasht                             : ", sum(eind_logboek$Status == "CRASH"), "\n")
   cat("==================================================\n\n")
 } else {
   cat("\n==================================================\n")
@@ -278,7 +276,7 @@ if (length(taken_lijst) > 0) {
 # 5. FASE 2: RUN FINALE MAKER SCRIPT (ARPL_Actueel_Maker.R)
 # ------------------------------------------------------------------------------
 maker_script <- list.files(
-  path = file.path(proj_root, "src"), 
+  path = file.path(proj_root, "src/Totale_Scripts"), 
   pattern = "^ARPL_Actueel_Maker\\.r$", 
   full.names = TRUE, 
   recursive = TRUE, 
@@ -307,7 +305,7 @@ if (!is.null(maker_script) && file.exists(maker_script)) {
   })
   
 } else {
-  warning("⚠️ Het script 'ARPL_Actueel_Maker.R' kon niet automatisch gevonden worden in src/.")
+  warning("⚠️ Het script 'ARPL_Actueel_Maker.R' kon niet automatisch gevonden worden in src/Totale_Scripts.")
 }
 
 totaal_eind <- Sys.time()
