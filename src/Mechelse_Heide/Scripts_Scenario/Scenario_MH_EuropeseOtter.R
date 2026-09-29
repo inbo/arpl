@@ -235,7 +235,7 @@ r_waterlopen1 <- r_huetzon == 1
 
 bl_path <- here("data/input/Raster_Vlaanderen/vlaanderen_watervlakken_2024_10m.tif")
 r_bl_raw <- terra::rast(bl_path)
-r_bl     <- terra::resample(r_bl_raw, id_raster_TV, method = "near") %>% terra::crop(id_raster_TV)
+r_bl     <- terra::resample(r_bl_raw, id_raster_MH, method = "near") %>% terra::crop(id_raster_MH)
 r_plassen <- r_bl == 1
 
 otter_water_max <- (r_waterlopen1 == 1) | (r_plassen == 1)
