@@ -1,5 +1,5 @@
 # ==============================================================================
-# ARPL & ACTUEEL MAKER PER SOORT (MET AUTOMATISCHE OVERSLAG VAN BESTAANDE OUTPUT)
+# ARPL & ACTUEEL MAKER PER SOORT (MET GEBIEDSLOGGING & AUTOMATISCHE OVERZICHTEN)
 # ==============================================================================
 
 library(here)
@@ -13,17 +13,16 @@ library(data.table)
 
 terra::terraOptions(memfrac = 0.2, tempdir = tempdir(), verbose = FALSE)
 
-# ------------------------------------------------------------------------------
-# INSTELLINGEN:
-#   - FORCE_OVERWRITE: Zet op FALSE zodat bestaande TIFs NETJES WORDEN OVERSLAGEN.
-#                      Zet op TRUE als je toch een herberekening wilt afdwingen.
-#   - SPECIFIEKE_SOORT: Vul een soortnaam in (bijv. "bruinekiekendief") of zet op NULL voor ALLE soorten.
-# ------------------------------------------------------------------------------
 FORCE_OVERWRITE  <- FALSE  
 SPECIFIEKE_SOORT <- NULL 
 
 DEFAULT_SCENARIO_SELECTIE <- list(
-  Turnhouts_Vennegebied = "TV_Scenario_BWK_2025.rds"
+  Turnhouts_Vennegebied = "TV_Scenario_BWK_2025.rds",
+  De_Maten              = "DM_Scenario_BWK_2025.rds",
+  Mechelse_Heide        = "MH_Scenario_BWK_2025.rds",
+  Heesbossen            = "HB_Scenario_BWK_2025.rds",
+  Kalmthoutse_Heide      = "KH_Scenario_BWK_2025.rds",
+  Voerstreek            = "VS_Scenario_BWK_2025.rds"
 )
 
 actieve_scenarios <- if (exists("SCENARIO_SELECTIE") && is.list(SCENARIO_SELECTIE)) SCENARIO_SELECTIE else DEFAULT_SCENARIO_SELECTIE
@@ -51,7 +50,6 @@ master_grid      <- terra::rast(master_grid_pad)[[1]]
 df_afstanden <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx")) %>% 
   mutate(Soort_clean = tolower(gsub(" ", "", trimws(Soort))))
 
-# HULPFUNCTIE: Zoekt flexibel naar bestanden (negeert hoofdletters, spaties en underscores)
 vind_waarnemingen_bestand <- function(map_pad, patroon_zoek) {
   if (!dir.exists(map_pad)) return(NULL)
   alle_bestanden <- list.files(map_pad, full.names = TRUE)
@@ -87,6 +85,10 @@ laad_waarnemingen_punten <- function(pad, is_komma) {
   })
 }
 
+# Lijsten om problemen op te slaan per gebied
+corrupte_bestanden_lijst <- list()
+ontbrekende_id_lijst     <- list()
+
 message("==================================================")
 message(" STARTEN ARPL & ACTUEEL MAKER PER SOORT")
 if (!is.null(SPECIFIEKE_SOORT)) {
@@ -105,6 +107,11 @@ for (gb_naam in names(actieve_scenarios)) {
   rds_pad <- here("data/input/Scenario_rds", rds_naam)
   huidig_scenario <- gsub("^.*_Scenario_|^Scenario_|_wv\\.rds$|\\.rds$", "", basename(rds_pad), ignore.case = TRUE)
   
+  # --- GEBIED HEADER ---
+  message("\n--------------------------------------------------")
+  message(" 📍 GEBIED: ", gb_naam, " (Scenario: ", huidig_scenario, ")")
+  message("--------------------------------------------------")
+  
   base_rasters_dir <- here("data/output", gb_naam, "Rasters_Soorten", huidig_scenario)
   
   map_id        <- file.path(base_rasters_dir, "00_ID_Rasters")
@@ -116,7 +123,10 @@ for (gb_naam in names(actieve_scenarios)) {
   if (!dir.exists(out_dir_act))  dir.create(out_dir_act,  recursive = TRUE)
   
   werkelijk_tifs <- list.files(map_werkelijk, pattern = "\\.tif$", full.names = TRUE)
-  if (length(werkelijk_tifs) == 0) next
+  if (length(werkelijk_tifs) == 0) {
+    message("    ℹ️ Geen werkelijke oppervlaktes gevonden in dit gebied.")
+    next
+  }
   
   for (f_werkelijk in werkelijk_tifs) {
     graphics.off()
@@ -131,7 +141,7 @@ for (gb_naam in names(actieve_scenarios)) {
       gsub("^habitat_werkelijke_oppervlaktes_|_wv\\.tif$|\\.tif$", "", .) %>% 
       trimws()
     
-    # --- 1. FILTER OP SPECIFIEKE SOORT ---
+    # 1. FILTER OP SPECIFIEKE SOORT
     if (!is.null(SPECIFIEKE_SOORT) && tolower(trimws(SPECIFIEKE_SOORT)) != soort_clean) {
       next
     }
@@ -141,21 +151,33 @@ for (gb_naam in names(actieve_scenarios)) {
     f_out_arpl <- file.path(out_dir_arpl, paste0("Habitat_ARPL_", bestands_suffix, ".tif"))
     f_out_act  <- file.path(out_dir_act,  paste0("Habitat_Actuele_Verspreiding_", bestands_suffix, ".tif"))
     
-    # --- 2. CONTROLE OF BESTANDEN AL BESTAAN ---
+    # 2. CONTROLE OF OUTPUT AL BESTAAT
     if (!FORCE_OVERWRITE && file.exists(f_out_arpl) && file.exists(f_out_act)) {
       message("    ⏩ Reeds verwerkt (overgeslagen): ", bestands_suffix)
       next
     }
     
+    # 3. CONTROLEREN OF ID-RASTER BESTAAT
     f_id <- file.path(map_id, paste0("ID_Netwerken_", bestands_suffix, ".tif"))
     if (!file.exists(f_id)) f_id <- file.path(map_id, paste0("ID_Netwerken_", soort_clean, ".tif"))
     
     if (!file.exists(f_id)) {
       message("    ⚠️ ID-raster ontbreekt voor: ", bestands_suffix)
+      ontbrekende_id_lijst[[gb_naam]] <- c(ontbrekende_id_lijst[[gb_naam]], bestands_suffix)
       next
     }
     
-    cl_max <- terra::rast(f_id)
+    # CONTROLEREN OF ID-RASTER CORRUPT IS
+    cl_max <- tryCatch({
+      terra::rast(f_id)
+    }, error = function(e) {
+      message("    ❌ Fout bij openen ID-raster voor ", bestands_suffix, ": bestand is corrupt of in gebruik.")
+      corrupte_bestanden_lijst[[gb_naam]] <<- c(corrupte_bestanden_lijst[[gb_naam]], f_id)
+      return(NULL)
+    })
+    
+    if (is.null(cl_max)) next
+    
     id_col_naam <- names(cl_max)[1]
     
     # --- LOCATIE WAARNEMINGEN BEPALEN ---
@@ -235,3 +257,68 @@ for (gb_naam in names(actieve_scenarios)) {
     message("    [OK] Herberekend en geëxporteerd voor: ", bestands_suffix)
   }
 }
+
+# ==============================================================================
+# STAP: SCHOONMAAK VAN GEFLAGDE CORRUPTE BESTANDEN
+# ==============================================================================
+message("\n==================================================")
+message(" 🛠️ HERSTELSTEP: CORRUPTE BESTANDEN OPSTUIMEN")
+message("==================================================")
+
+totaal_verwijderd <- 0
+for (gb in names(corrupte_bestanden_lijst)) {
+  bestanden <- corrupte_bestanden_lijst[[gb]]
+  if (length(bestanden) > 0) {
+    message("🧹 Opschonen in gebied: ", gb)
+    for (f in unique(bestanden)) {
+      if (file.exists(f)) {
+        file.remove(f)
+        message("   └─ Verwijderd (corrupt): ", basename(f))
+        totaal_verwijderd <- totaal_verwijderd + 1
+      }
+    }
+  }
+}
+
+if (totaal_verwijderd == 0) {
+  message("  ✅ Geen corrupte bestanden gedetecteerd of verwijderd.")
+} else {
+  message("  ✅ In totaal ", totaal_verwijderd, " corrupte ID-raster(s) verwijderd. Herbereken het netwerk-script om ze te herstellen.")
+}
+
+# ==============================================================================
+# STAP: OVERZICHT GEFLAGDE BESTANDEN & ONTBREKENDE RASTERS PER GEBIED
+# ==============================================================================
+message("\n==================================================")
+message(" 📊 SAMENVATTINGSRAPPORT GEVLAGDE SOORTEN PER GEBIED: Potentiëel Leefgebied opnieuw runnen")
+message("==================================================")
+
+message("\n1️⃣ CORRUPTE BESTANDEN (GEGROEPEERD PER GEBIED):")
+if (length(corrupte_bestanden_lijst) == 0) {
+  message("   Geen corrupte bestanden gevonden.")
+} else {
+  for (gb in names(corrupte_bestanden_lijst)) {
+    soorten <- unique(basename(corrupte_bestanden_lijst[[gb]]))
+    message("   📍 ", gb, ":")
+    for (s in soorten) {
+      message("      • ", s)
+    }
+  }
+}
+
+message("\n2️⃣ ONTBREKENDE ID-RASTERS (GEGROEPEERD PER GEBIED):")
+if (length(ontbrekende_id_lijst) == 0) {
+  message("   Geen ontbrekende ID-rasters gevonden.")
+} else {
+  for (gb in names(ontbrekende_id_lijst)) {
+    soorten <- unique(ontbrekende_id_lijst[[gb]])
+    message("   📍 ", gb, ":")
+    for (s in soorten) {
+      message("      • ", s)
+    }
+  }
+}
+
+message("\n==================================================")
+message(" VERWERKING EN RAPPORTAGE VOLTOOID")
+message("==================================================")
