@@ -1,0 +1,24 @@
+{
+  "adder": {
+    "pipeline_type": "standaard",
+    "min_opp_ha": 20,
+    "min_totale_opp_ha": 760,
+    "afstand_m": 0,
+    "buffer_m": 500,
+    "hoofd_laag": "adder"
+  },
+  "grutto": {
+    "pipeline_type": "grutto_complex",
+    "min_opp_ha": 10,
+    "min_totale_opp_ha": 25,
+    "afstand_m": 200,
+    "buffer_m": 500,
+    "drempel_kern_ha": 10,
+    "drempel_totaal_ha": 25,
+    "extra_rasters": {
+      "grb_water": "data/input/Raster_Vlaanderen/vlaanderen_grb_water_10m.tif",
+      "groenkaart": "data/input/ASCI Files/Groenkaart_2021.tif",
+      "drainage": "data/input/Raster_Vlaanderen/vlaanderen_drainage_n2khab_10m.tif"
+    }
+  }
+}
