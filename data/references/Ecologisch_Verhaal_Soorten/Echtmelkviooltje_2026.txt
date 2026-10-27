@@ -1,0 +1,5 @@
+biotoop: hmo%, 6230_hmo, ce%, 7150, 7140_oli
+
+MinOpp_ha: 0.16
+AfstandBiotopen_m:  20
+Dispersiecap_m: 100

@@ -1,0 +1,102 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: BRUINE EIKENPAGE
+Soort: Satyrium ilicis (dagvlinder / zonnige eikenopslag & heideranden)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Bruine eikenpage is een xerothermofiele bosrandsoort van zandgronden. De 
+ecologie vereist een nauwe ruimtelijke koppeling tussen warme, lage eikenopslag 
+voor de eiafzet (waardplant: jonge Zomereik/Wintereik) en bloemrijke heiden en 
+schraallanden voor volwassen nectarvoorziening.
+
+A. Waardplant & Eiafzethabitat ('eiafzet_bwk' + 'eiafzet_lineair'):
+   - Vlakvormige BWK-eiafzet: cmb%, cgb%, hab%, hrb% 
+     (Heide- en schraalgraslandvegetaties met verstruweling van eik/berk)
+   - Lineaire BWK-eiafzet: khq, khq-, khq+, khwqr, khwqr-, khwqr+, kh(qb%
+     (Houtkanten, struwelen en heggen gedomineerd door eik)
+   - Fusie: Additieve optelling (clamp op max 1.0) van vlak- en lijnvormige 
+     eiafzetlagen.
+
+B. Nectar- en Foerageerhabitat ('nectar_bwk'):
+   - BWK-selectie: cd%, 2310%, 4030%, ce%, 4010%, 7150%, cg%, cm%, ha%, 
+     2330%, 6230_ha%
+     (Droge en vochtige heiden, heischrale graslanden en struikheidetypen; 
+     belangrijke bron van zomerse nectarplanten zoals Struikhei en Braam)
+
+C. Bosrandvegetaties ('bosranden'):
+   - BWK-selectie: pa%, pi%, pmb%, pmh%, pms%, ppmb%, ppmh%, ppms%, ppa%, 
+     ppi%, qb%, 9120%, qe%, se%
+     (Zure eikenbossen, berken-eikenbossen, Corsicaanse/grove dennenbossen en 
+     droge struwelen op voedselarme zandbodem)
+
+
+2. TOPOLOGISCHE BOSRANDCONDITIE (DE 50 M RAAKLIJNEIS)
+--------------------------------------------------------------------------------
+Zowel het samengestelde eiafzethabitat als het nectarhabitat moet voldoen aan 
+de functionele bosrand-inbedding:
+
+1. Primaire clustering & oppervlakte:
+   - Cellen worden geclusterd met zoekstraal afstand_m.
+   - Oppervlaktedrempel: >= 5 ha (50.000 m2) werkelijke habitatoppervlakte.
+2. Aaneengesloten bosrandcontact (50 m):
+   - Het habitatcluster (>= 5 ha) moet over een aaneengesloten lengte van 
+     minstens 50 m (>= 5 cellen) direct grenzen aan (of binnen 10 m liggen van) 
+     geschikt bosrandbiotoop.
+3. Bosrand-integratie (20 m buffer):
+   - Indien goedgekeurd, wordt aangrenzend bos tot 20 m diepte meegenomen 
+     als integraal onderdeel van de functionele zoom- en luwtestructuur.
+   - Ecologische functie: De vlinders benutten de zonnige, windluwe overgang 
+     tussen bos en open terrein; solitaire struiken in open veld zonder 
+     luwtebiedend bos worden gemeden.
+
+
+3. WEDERZIJDSE ASYMMETRISCHE AFSTANDSFILTERS (250 M / 500 M)
+--------------------------------------------------------------------------------
+Vrouwtjes en mannetjes pendelen dagelijks tussen de opwarmende eikenstruiken 
+(balts, paring, eiafzet) en open heidevegetaties (nectarbehoefte):
+
+- Eiafzet naar Nectar (<= 250 m):
+    * Goedgekeurd eiafzethabitat moet binnen een straal van <= 250 m van 
+      goedgekeurd nectarhabitat liggen.
+    * Ecologische functie: Vrouwtjes zetten hun eieren uitsluitend af op lage 
+      eikjes die op zeer korte vliegafstand van rijke nectarbronnen liggen 
+      om energiekosten te beperken.
+- Nectar naar Eiafzet (<= 500 m):
+    * Goedgekeurd nectarhabitat moet binnen een straal van <= 500 m van 
+      goedgekeurd eiafzethabitat liggen.
+    * Ecologische functie: Nectarsnippers die verder dan 500 m van geschikte 
+      voortplantingslocaties liggen, worden afgekapt omdat ze buiten de 
+      normale dagelijkse foerageerstraal van de populatie vallen.
+
+
+4. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Cover van het wederzijds gefilterde eiafzetcomplex 
+  en nectarcomplex.
+- Analytische netwerken: ID-toekenning via 8-richtingen rasterconnectiviteit 
+  op het gecombineerde geheel.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dispersiecap_m (uit Excel)
+    * Toepassing: ARPL / metapopulatie-analyses.
+    * Ecologische functie: De Bruine eikenpage is een honkvaste soort met 
+      een doorgaans lage dispersiebereidheid; de dispersiecapaciteit modelleert 
+      de zeldzame uitwisseling tussen heidekernen via brede bosrandcorridors.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Bruine eikenpage (Satyrium ilicis)
+Eiafzethabitat            : Eikrijke verstruweling (vlakvormig + houtkanten)
+Nectarhabitat             : Droge/vochtige heide en heischraal grasland
+Minimale clustergrootte   : >= 5 ha werkelijk habitat (zowel voor ei als nectar)
+Bosrand raaklijneis       : Minstens 50 m aaneengesloten contact met bosrand
+Bosrand meeneemdiepte     : 20 m aangrenzend bos
+Afstand Eiafzet -> Nectar : <= 250 m
+Afstand Nectar -> Eiafzet : <= 500 m
+Dispersieradius (ARPL)    : 5000 m
+================================================================================

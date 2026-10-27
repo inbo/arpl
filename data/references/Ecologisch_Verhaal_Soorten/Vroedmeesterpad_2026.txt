@@ -1,0 +1,96 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: VROEDMEESTERPAD
+Soort: Alytes obstetricans (amfibie / groeven, stapelmuren, holle wegen & poelen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Vroedmeesterpad is een warmteminnend, nachtactief amfibie met een uitzonderlijke 
+voortplantingsbiologie: het mannetje draagt de bevruchte eiersnoeren op het land 
+rond de achterpoten tot de larven op het punt staan uit te komen, waarna hij ze 
+afzet in water. De soort is strikt gebonden aan zonbeschenen, stenige of losse 
+hellingen met veel holtes (kalksteengroeven, mergelgroeven, grind- en zandgroeven, 
+droge stapelmuurtjes, kerkhoven, holle wegen, spoorwegtaluds en kalkgraslanden) 
+waarin de volwassen dieren overdag diep kunnen wegkruipen tegen uitdroging. 
+Als voortplantingswater fungeren zonnige, permanente tot langlevende poelen, 
+veedrinkpoelen of groevenplassen die voldoende diep zijn, omdat de larven vaak 
+in het water moeten overwinteren om hun metamorfose te voltooien.
+
+A. Waterbiotoop ('waterbiotoop_bwk' + Watervlakken):
+   - BWK-selectie:
+       ae%, 3140%, 3150%, aer%, aev%, ao%, aom%, aoo%, kn%, ur%
+       (Mesotrofe tot eutrofe plassen, poelen, vennen, sloten en ruderale 
+       waterpartijen 'ur%')
+   - Externe data (watervlakken2024.shp):
+       * Vaste filter op kleine wateren: Watervlakken worden met 5 m gebufferd 
+         en samengevoegd; alleen clusters <= 4.000 m2 (0,4 ha) worden geselecteerd.
+       * Ecologische functie: Grote plassen herbergen vispopulaties die de grote 
+         en opvallende vroedmeesterpadlarven prederen. De soort prefereert kleinere, 
+         visarme tot visvrije, zonnige wateren.
+   - Fusie: Directe cover van BWK-waterfracties en geselecteerde kleine watervlakken.
+
+B. Landbiotoop ('landbiotoop_bwk'):
+   - BWK-selectie:
+       ha%, 2330%, 6230_ha%, 6410%, hk%, 6210%, 6230%, hn%, hp%, hp+%, 
+       hpr%, hu%, 6120%, 6510%, kb%, kc%, kh%, khw%, kj%, kp%, kr%, kt%, 
+       kw%, sg%, 2310%, 4030%, rbbsg%, sk%, sp%, rbbsp%, sz%, ur%
+       (Kalkgraslanden, heischrale graslanden, pioniervegetaties, groeven, 
+       spoorwegterreinen, steenachtige biotopen, ruderale terreinen 'ur%' en 
+       droge heide-/struweelranden)
+   - Noot habitatstatus: Zoals afgesproken blijft 'hg' (en varianten) 
+     consequent uitgesloten als habitat.
+
+
+2. LANDBIOTOOP FILTERING OP EILANDGROOTTE (>= 5 HA)
+--------------------------------------------------------------------------------
+- Minimale eilandoppervlakte landbiotoop (opp_land_ha = 5 ha):
+    * Samengestelde landclusters worden gevormd via 8-richtingen rasterbuur 
+      (zonder overbruggingsafstand, afstand_m = 0 m).
+    * Drempelwaarde: >= 5 ha (50.000 m2) werkelijke habitatoppervlakte per landeiland.
+    * Ecologische functie: Een aaneengesloten terrestrische matrix van minstens 
+      5 ha met voldoende rotsspleten, grind, losse aarde en stenige structuren 
+      is noodzakelijk voor dagholen, foerageeractiviteit en vorstvrije overwintering.
+
+
+3. RUIMTELIJKE KOPPELING WATER EN LAND (AFSTAND = 0 M)
+--------------------------------------------------------------------------------
+- Directe overlap / aansluiting:
+    * Het goedgekeurde landbiotoop (>= 5 ha) en het geschikte waterbiotoop worden 
+      wederzijds op elkaar gemaskerd (landbiotoop maskeert water en vice versa).
+    * Ecologische functie: De eierdragende mannetjes leggen te voet slechts korte 
+      afstanden af tussen hun schuilholen en het water. Voortplantingswateren 
+      moeten direct aansluiten op of ingebed liggen in het geschikte landbiotoop 
+      (afstand_m = 0 m).
+
+
+4. BOVENLOKALE METAPOPULATIE-EISEN (120 HA & 5 PLASSEN BINNEN 500 M)
+--------------------------------------------------------------------------------
+De Vroedmeesterpad heeft een geringe dispersiecapaciteit en is sterk afhankelijk 
+van een lokaal netwerk van poelen:
+
+- Dispersie- en clusterafstand (buffer_m): 500 m
+    * Gekoppelde leefgebieden worden samengevoegd over tussenafstanden tot 
+      500 m via focal moving window buffering (directions = 4).
+- Criterium 1: Minimale netwerkgrootte (min_totale_ha): >= 120 ha
+    * Het geaccumuleerde werkelijke leefgebied (water + land) binnen het 
+      500 m-netwerk moet minstens 120 ha (1.200.000 m2) bedragen.
+- Criterium 2: Minimale poelendichtheid (min_plassen): >= 5 plassen
+    * Binnen de polygooncontour van het 500 m-netwerk moeten minstens 5 
+      afzonderlijke watervlakken (uit de watervlakkenkaart) liggen.
+- Ecologische functie: Omdat Vroedmeesterpadden honkvast zijn en zich zelden verder 
+  dan 500 m verplaatsen, vereist een duurzame metapopulatie een cluster van minstens 
+  5 poelen binnen deze afstand om periodieke uitval (droogval, predatie, visuitzet) 
+  op te vangen en genetische verarming te voorkomen.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Vroedmeesterpad (Alytes obstetricans)
+Waterbiotoop drempel      : Poelen/clusters <= 4.000 m2 (visarme, permanente wateren)
+Landbiotoop drempel       : >= 5 ha werkelijk habitat (8-richtingen patches)
+Koppeling water-land      : Directe ruimtelijke aansluiting (afstand_m = 0 m)
+Metapopulatie zoekstraal  : 500 m (dispersiecapaciteit)
+Drempelwaarde netwerk     : >= 120 ha totaal habitat EN >= 5 geschikte plassen
+Dispersieradius (ARPL)    : 500 m
+================================================================================

@@ -1,0 +1,5 @@
+bwk: fa%, 3130%, aom%, 9120%, 9130%, fe%, fm%, fs%, qa%, 9160%, qb%, 9190%, qe%, qk%, 9150%, qs%, so%, rbbso%, va%, 91E0%, vc%, vf%, vm%, vn%, vo%
+
+MinOpp_ha: 5
+AfstandBiotopen_m:  50
+Dispersiecap_m: 10000

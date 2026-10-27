@@ -1,0 +1,138 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: SPEERWATERJUFFER
+Soort: Coenagrion hastulatum (boreo-alpiene juffer / heidevennen, vennen & hoogveen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Speerwaterjuffer is een uiterst zeldzame, boreo-alpiene relictsoort en een 
+uitgesproken habitatspecialist van koude, oligotrofe tot mesotrofe heidevennen, 
+veenplassen en hoogveenslenken met een continue waterstand. Cruciaal voor de 
+voortplanting is de aanwezigheid van drijvende veenmosdekens (Sphagnum), 
+snavelzeggen (Carex rostrata) en veenpluis/wollegras, waarin paring en eiafzet 
+plaatsvinden. De soort mijdt visrijke, eutrofe of te open wateren en is strikt 
+afhankelijk van een luwe, bosrijke heidematrix (vooral vochtige berkenbroekbossen, 
+gagelstruwelen en zandige eikenbossen) die beschutting biedt tegen harde wind 
+en gunstige microklimatologische opwarmingscondities levert voor de volwassen imago's.
+
+A. Voortplantingsbiotoop ('waterbiotoop_bwk1' geschoond met 'waterbiotoop_notbwk'):
+   - BWK-selectie (positief): 
+       3130, 3160%
+       (Oligotrofe tot mesotrofe stilstaande wateren, heidevennen en zure plassen)
+   - Negatieve selectie ('waterbiotoop_notbwk'):
+       ad%, aer, aer-, aer+, 2190%, 3140%, 3150%, ap%, kn%
+       (Eutrofe en alkalische plassen, visvijvers, verstoorde sloten en duinpannen 
+       worden integraal afgetrokken via: clamp(water1 - not_water, 0, 1)).
+
+B. Aanpalend Landbiotoop ('landbiotoop_nabij_bwk' geschoond met 'notbwk'):
+   - BWK-selectie (positief):
+       qb%, vm%, vo%, vt%, so%, rbbso%, sf%, rbbsf%, sm%, rbbsm%, ceb%, ce%, cm%, t%
+       (Zandige loofbossen, berkenbroekbossen, veenbossen, gagelstruwelen, 
+       vochtige heiden en overgangs- en hoogvenen)
+   - Negatieve selectie ('landbiotoop_nabij_notbwk'):
+       cd%, 2310%, 4030%, cg%, cp%, cv%, dm%, 2330%, ha%, 6230_ha%, hr%, 6430%, ku%, 3270%
+       (Droge zandverstuivingen, open struikheiden, heischrale graslanden en 
+       ruderale vegetaties worden afgetrokken via: clamp(land - not_land, 0, 1)).
+   - Noot habitatstatus: Zoals afgesproken wordt 'hg' (en varianten) 
+     consequent uitgesloten als habitat.
+
+C. Boscomponenten & Ruime Schil:
+   - Boscomponent nabij ('landbiotoop_nabij_bos_bwk'):
+       qb%, vm%, vo%, vt%, so%, rbbso%, sf%, rbbsf%, sm%, rbbsm%, ceb%
+   - Ruim landbiotoop ('landbiotoop_bwk_ruim'):
+       Bovenstaande typen aangevuld met vn%, ppm%, rbbppm%, mr%, mk%, mm%, ms%, cg%, ce%, cm%
+   - Ruime boscomponent ('landbiotoop_bwk_ruim_bos'):
+       qb%, vm%, vn%, vo%, vt%, so%, rbbso%, ppm%, rbbppm%, sf%, rbbsf%, sm%, rbbsm%, ceb%
+
+
+2. WATERBIOTOOP BEREKENEN & CLUSTEREN (MIN. 0.02 HA OP 10 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (dist_m): 10 m
+- Oppervlaktedrempel water: >= 200 m2 (0.02 ha werkelijk voortplantingshabitat)
+- Ecologische functie: Speerwaterjuffers planten zich succesvol voort in kleine, 
+  luwe veenpoelen en plasjes vanaf 200 m2 met drijvend veenmos, mits deze 
+  permanent waterhoudend en visvrij zijn.
+
+
+3. AANPALEND LANDBIOTOOP: CLUSTERING & BOS-MOZAÏEKTOETS (>= 10 HA & >= 60% BOS)
+--------------------------------------------------------------------------------
+Het directe landhabitat rond de venoevers moet aan strikte omvangs- en luwte-eisen voldoen:
+
+1. Nabije landclustering (dist_m = 20 m):
+   - Het gezuiverde nabije landbiotoop wordt geclusterd op een drempel van minstens 
+     10 ha (100.000 m2) werkelijk habitat.
+2. 60% Bos-mozaïektoets (circulaire focal buffer 50 m):
+   - Rond elk landcluster wordt binnen een 50 m straal de oppervlakte van houtige 
+     en beschutte opstanden ('landbiotoop_nabij_bos_bwk') geanalyseerd.
+   - Filtervoorwaarde: Het bosaandeel moet minstens 60% van het landcluster beslaan 
+     (Percentage_Bos >= 60).
+   - Ecologische functie: Garandeert een windbeschutte micro-omgeving direct 
+     grenzend aan het water; open, winderige heidevlaktes zonder dichte bos- of 
+     struweelranden veroorzaken te hoge mortaliteit bij uitsluipende juffers.
+
+
+4. RUIM LANDBIOTOOP: LANDSCHAPPELIJKE CONTEXT (>= 50 HA & >= 70% BOS)
+--------------------------------------------------------------------------------
+Op landschapsniveau wordt de robuustheid van de leefomgeving geëvalueerd:
+
+1. Ruime clustering (dist_m = 50 m):
+   - Clustering van het ruime landbiotoop op minimaal 50 ha (500.000 m2) 
+     werkelijk habitat.
+2. Landschappelijke bosdrempel (>= 70% bos):
+   - Binnen het 50 ha-complex moet minstens 70% bestaan uit bos- en struweel- 
+     vegetaties ('landbiotoop_bwk_ruim_bos').
+   - Ecologische functie: Sluit relictvennen uit die geïsoleerd liggen in een 
+     agrarische of open verstedelijkte matrix; de soort vereist een aaneengesloten, 
+     bosrijk heide- en veenlandschap.
+
+
+5. RUIMTELIJKE INTERACTIES & WATER-FIRST 500 M AFSNIJDING
+--------------------------------------------------------------------------------
+De finale functionele eenheid ontstaat uit gerichte ruimtelijke intersecties:
+
+1. 10 m Oeverinteractie:
+   - Landbiotoop wordt gemaskerd met een buffer van 10 m rond het goedgekeurde water; 
+     alleen land direct verbonden met geschikt water blijft over.
+2. Inbedding in het 50 ha boscomplex (500 m buffer):
+   - Zowel water als landbiotoop moeten binnen een zone van 500 m rond het 
+     goedgekeurde ruime boscomplex (>= 50 ha met >= 70% bos) liggen.
+3. Water-First afsnijding (straal_water_m = 500 m):
+   - Het landbiotoop wordt STRIKT begrensd tot maximaal 500 m vanaf de goedgekeurde 
+     voortplantingswateren.
+   - Ecologische functie: Beperkt het terrestrische leefgebied tot de effectieve 
+     dagelijkse vlieg- en foerageerzone van de volwassen juffers rond hun 
+     geboorteven.
+
+
+6. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Additieve samenvoeging (clamp max. 1.0) van het 
+  goedgekeurde waterbiotoop en het gekoppelde, binnen 500 m afgesneden landbiotoop.
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (export naar '00_ID_Rasters' en 
+  '01_Werkelijke_Oppervlaktes').
+
+
+7. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses op Vlaams niveau.
+    * Ecologische functie: De Speerwaterjuffer is een zeer honkvaste soort met 
+      zwakke vliegprestaties die vrijwel niet over open landbouwgebied migreert; 
+      de dispersieradius toont de zeldzame corridor- en uitwisselingsmogelijkheden 
+      tussen beschermde heide- en vencomplexen (zoals in de Antwerpse en Limburgse Kempen).
+
+
+8. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Speerwaterjuffer (Coenagrion hastulatum)
+Waterbiotoop drempel      : >= 200 m2 (0.02 ha) oligotroof heideven (clustering: 10 m)
+Negatieve selectie water  : Eutrofe plassen, visvijvers en sloten (notbwk) uitgesloten
+Aanpalend landbiotoop     : >= 10 ha binnen 10 m van water (clustering: 20 m)
+Bosaandeel aanpalend land : Minimaal 60% bos/struweel (50 m focal analyse)
+Ruime landschapseis       : Complex >= 50 ha met >= 70% bos (clustering: 50 m)
+Landschapsinbedding       : Water en land binnen <= 500 m van ruim boscomplex
+Water-First begrenzing    : Landbiotoop strikt afgesneden op <= 500 m van geschikt water
+Dispersieradius (ARPL)    : 5000 m
+================================================================================

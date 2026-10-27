@@ -1,0 +1,123 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: WULP
+Soort: Numenius arquata (steltloper / weidevogel van valleigraslanden & heiden)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Wulp is Europa's grootste steltloper en in Vlaanderen een ernstig bedreigde 
+broedvogel (alsook talrijke doortrekker en wintergast). Als broedvogel vereist 
+de Wulp zeer uitgestrekte, open en onversnipperde landschappen met een weidse 
+horizon en lage vegetatiestructuur. De soort broedt hoofdzakelijk in vochtige tot 
+natte alluviale graslandcomplexen in beek- en riviervalleien, en secundair in 
+uitgestrekte, natte tot droge heide- en hoogveengebieden. Essentieel zijn zachte, 
+doordringbare bodems waar de oudervogels met hun lange, omlaag gebogen snavel 
+kunnen boren naar regenwormen en bodeminvertebraten, afgewisseld met structuurrijke 
+pollen voor nestverberging. Bomenrijen, bosopstanden en intensieve akkerbouw 
+worden strikt gemeden wegens predatiedruk.
+
+A. Nat Graslandbiotoop ('biotoop_grasland_nat'):
+   - BWK-selectie:
+       hpr, 1310%, 1330%, hpr+, hp+, 2190%, rbbkam%, rbbzil%, rbbvos%
+       (Vochtige en soortenrijke graslanden, zilte graslanden, kamgrasweiden, 
+       overstroomde weilanden en dotterbloemgraslanden)
+   - Akker-exclusie: Cellen met akkerbouw ('b%' uit Parquet) worden direct via 
+     inverse maskering uit het graslandbiotoop gefilterd.
+   - Noot habitatstatus: Zoals afgesproken blijft 'hg' (en afgeleiden) 
+     consequent uitgesloten als habitat.
+
+B. Overig Biotoop / Heide & Kust/Slik ('biotoop_overig'):
+   - BWK-selectie:
+       ah%, rbbah%, ao%, 3160%, 3110%, 3130%, 7140%, 7150%, ce%, 4010%, 
+       cg%, 2310%, 4030%, da%, 1310%, 1320%, 1330%, dm%, 2330%, ds%, 
+       1130%, 1140%, 3270%, ha%, 6230_ha%, 2130%, 2130_had%, 2150%, 
+       t, t+, 7110%
+       (Oligotrofe vennen, natte en droge heiden, duinvalleien, grijze duinen, 
+       pioniergraslanden, slikken, schorren en hoogvenen)
+   - Verwerking: Deze biotoopcomponent is vrijgesteld van de valleifilter 
+     omdat heide-, veen- en schorrebiotopen van nature reeds aan de openheids- 
+     en bodemeisen voldoen.
+
+
+2. COMPOSIETE VALLEIFILTER OP HET GRASLANDBIOTOOP
+--------------------------------------------------------------------------------
+Graslanden worden uitsluitend als geschikt habitat beschouwd indien ze deel 
+uitmaken van een functioneel, vochtig rivier- of beekdalsysteem. Dit wordt 
+bepaald aan de hand van drie fysisch-geografische indicatoren:
+
+1. Overstromingsgevoeligheid ('vlaanderen_ovstrg_10m.tif'):
+   - Klassen: 1 en 2 (effectief overstroomde of overstromingsgevoelige zones).
+2. Natte Bodemdrainage ('vlaanderen_drainage_n2khab_10m.tif'):
+   - Klassen: "d", "e", "f", "g", "h", "i", "e-f", "h-i", "e-i" (matig natte 
+     tot zeer natte bodems met hoge grondwaterstanden).
+3. Bodemprofieltype ('Vlaanderen_profiel_10m.tif'):
+   - Klassen: "p" en "p+x" (alluviale bodems en gronden met een duidelijke 
+     hydro-morfische valleigenese).
+- Logica: Een logische OR (overstroming | drainage | profiel) definieert het 
+  valleimasker (vallei_masker). Alleen het akker-vrije grasland binnen deze 
+  valleicontour blijft behouden.
+- Ecologische functie: Sluit intensieve, droge en kunstmatig ontwaterde 
+  agrarische graslanden op plateaus en zandruggen uit; enkel vochtige, 
+  bodemfaunarijke valleigronden blijven geselecteerd.
+
+
+3. VERBOSSINGSFILTER: BOSCOMPLEXEN GROTER DAN 20 ARE
+--------------------------------------------------------------------------------
+De Wulp vertoont extreme vrees voor opgaand hout en bosranden:
+
+1. Bosclusterdetectie (>= 20 are):
+   - Hooggroen (Groenkaart 2021 = 1) wordt via 8-richtingen buurcellen geclusterd.
+   - Bomenrijen en bospercelen van minstens 20 cellen (>= 20 are / 2.000 m2) 
+     worden geselecteerd als functionele storingsbron (r_verbossing_masker).
+2. Inverse Maskering:
+   - Alle biotoopcellen die samenvallen met deze opgaande bomencomplexen 
+     worden integraal uitgesloten.
+   - Ecologische functie: Sluit beboste percelen, populierenaanplanten en 
+     bosuitlopers uit die het open horizonzicht breken en uitvalsbasissen vormen 
+     voor predatoren (zoals Zwarte kraai, Vos en Buizerd).
+
+
+4. FINALE LANDSCHAPPELIJKE CLUSTERING (MIN. 100 HA OP 100 M)
+--------------------------------------------------------------------------------
+Het samengevoegde, ontboste en aan de vallei gekoppelde leefgebied (valleigrasland + 
+heide/slik) wordt onderworpen aan een zware oppervlakte- en isolatietoets:
+
+- Overbruggingsafstand (dist_m): 100 m
+    * Cellen worden via een focal moving window (directions = 4) ruimtelijk 
+      verbonden over afstanden tot 100 m.
+    * Ecologische functie: Overbrugt sloten, lage dijken, onverharde veldwegen 
+      en smalle niet-habitatstroken binnen een open landschap.
+- Minimale clusteroppervlakte: >= 100 ha (1.000.000 m2) werkelijk habitatoppervlak 
+  (drempel_100ha_m2 = 1.000.000).
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (export naar '00_ID_Rasters' en 
+  '01_Werkelijke_Oppervlaktes').
+- Ecologische functie: Een levensvatbare Wulpenpopulatie vestigt zich enkel in 
+  grootschalige weidevogel- of heidekernen van minimaal 100 ha. Versnipperde 
+  valleigraslandjes van enkele hectaren worden verlaten wegens te hoge predatiedruk 
+  en gebrek aan sociaal territoriumverband.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses op Vlaams niveau.
+    * Ecologische functie: Buiten het broedseizoen pendelen Wulpen over grote 
+      afstanden tussen estuaria (Zeeschelde, Westerschelde, Zwin) en foerageer- 
+      gronden in de polders en zandleemstreek. Als broedvogel toont de dispersie- 
+      straal de samenhang tussen relictpopulaties in de Kempen (o.a. Groot Schietveld, 
+      Militair Domein Meeuwen-Gruitrode) en de grote valleigebieden.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Wulp (Numenius arquata) - broed- en weidevogel
+Valleigrasland            : Natte graslanden (hpr, hp+, kamgras, zilt) zonder akkers (b%)
+Valleicriteria            : Overstromingsgevoelig OF natte drainage (d t/m i) OF alluviaal profiel (p)
+Overig biotoop            : Heiden, hoogvenen, duinen en slikken (vrijgesteld van valleifilter)
+Verbossingsfilter         : Uitsluiting van alle hooggroencomplexen >= 20 are (Groenkaart 2021)
+Landschappelijke clustering: 100 m aggregatiestraal
+Minimale leefgebiedsomvang: >= 100 ha werkelijk habitat per complex
+Dispersieradius (ARPL)    : 5000 m
+================================================================================

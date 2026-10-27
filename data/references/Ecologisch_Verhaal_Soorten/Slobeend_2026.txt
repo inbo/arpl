@@ -1,0 +1,74 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: SLOBEEND (WINTERVOGEL)
+Soort: Spatula clypeata (grondelende eend / overwinteraar op ondiepe wateren & plas-dras)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+In het winterhalfjaar is de Slobeend een karakteristieke, gespecialiseerde 
+grondel- en slobbereend. De soort foerageert hoofdzakelijk door met de spatelvormige 
+snavel het wateroppervlak en de bovenste modderlaag te zeven (filterfeeden) op 
+zoöplankton (watervlooien, roeipootkreeftjes), kleine ongewervelden, kroos en 
+zaden. Ze prefereert voedselrijke, ondiepe stilstaande wateren, veedrinkpoelen, 
+draslanden, overstroomde graslanden en luwe rietbaaien.
+
+A. Vlakvormig Foerageerhabitat ('foerageer_bwk'):
+   - BWK-selectie:
+       ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, aom%, 3110%, 
+       3130%, ap%, hp+%, rbbkam%, rbbzil%, hpr%, hpr+%, kn%, hp%
+       (Eutrofe en mesotrofe plassen, zand- en leemputten, spaarbekkens, 
+       visvijvers, duinpannen, sloten, veedrinkpoelen en vochtige, 
+       overstroomde polder- en kamgraslanden)
+   - Noot overige habitatcodes: Zoals afgesproken blijft 'hg' (en afgeleiden) 
+     consequent uitgesloten als habitat.
+   - Verwerking: Directe sommatie van de werkelijke fracties (BWK_FRAC) per 10 m 
+     cel via Arrow en Parquet tot een maximale dekkingsgraad van 1.0 (100%).
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS (MIN. 5 HA OP 50 M)
+--------------------------------------------------------------------------------
+Slobeenden benutten vaak waterpartijen in combinatie met omliggende overstroomde 
+oever- en graslandzones, maar vereisen wel een minimale functionele clustergrootte:
+
+- Overbruggingsafstand (dist_m): 50 m
+    * Cellen binnen een afstand van 50 m worden via een focal moving window 
+      (directions = 4) ruimtelijk met elkaar verbonden.
+    * Ecologische functie: Overbrugt sloten, dammen, lage dijken en smalle 
+      perceelgrenzen tussen waterpartijen en geïnundeerde graslandpercelen.
+- Minimale clusteroppervlakte: Dynamisch via Excel (MinOpp_ha; standaard 5 ha)
+    * Drempelwaarde: drempel_m2 = MinOpp_ha * 10.000 m2 (standaard 50.000 m2 
+      werkelijke habitatoppervlakte per geaggregeerd cluster).
+    * Ecologische functie: Filtert geïsoleerde, te kleine sloten en poelen 
+      weg die onvoldoende biomassa aan zoöplankton produceren of te veel 
+      verstoring kennen om een functionele pleisterplaats voor groepen te bieden.
+
+
+3. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Aaneengesloten foerageercomplexen (water + nat grasland) 
+  die voldoen aan de >= 5 ha oppervlaktedrempel binnen de 50 m zoekstraal.
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (bestandsnaamconventie met '_wv' suffix, 
+  geëxporteerd naar '00_ID_Rasters' en '01_Werkelijke_Oppervlaktes').
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses op Vlaams niveau.
+    * Ecologische functie: Als uiterst mobiele watervogel verplaatst de Slobeend 
+      zich tijdens het winterseizoen flexibel tussen slaapplaatsen op grote 
+      wateroppervlakken en tijdelijke foerageerlocaties in ondergelopen polders 
+      (o.a. IJzervallei, Uitkerkse Polder, Antwerpse havengebieden, Schelde- en 
+      Maasvallei).
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Slobeend (Spatula clypeata) - wintervogel (_wv)
+Foerageerbiotoop          : Ondiepe eutrofe plassen, poelen, grachten & natte graslanden
+Overbruggingsafstand      : 50 m (zoekafstand_m)
+Minimale clusteroppervlak : MinOpp_ha (standaard 5 ha werkelijk habitat)
+Dispersieradius (ARPL)    : 250 km (niet relevant)
+================================================================================

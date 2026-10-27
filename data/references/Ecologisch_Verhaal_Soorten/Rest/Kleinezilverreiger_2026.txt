@@ -1,0 +1,4 @@
+moerassen: 3260%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, dz%, hc%, 2190%, rbbhc%, hcb%, hj%, hjb%, hp+%, hpr%, hpr+%, rbbkam%, rbbzil%, hu%, hub%, kc%, kn%, 3140%, 3150%, ku%, 3270%, kub%, kz%, mc%, rbbmc%, mcb%, md%, 91E0%, mdb%, mr%, 1130%, 1330%, 2190%, 6430_mr%, 7140_mrd%, rbbmr%, mrb%, mru%, mz%, 1330_da%, 1330_hpr%
+not_eikenbos: f%, 9110%, 9120%, 9130%, 9150%, q%, 2180%, 9160%, 9190%
+openwater0: ae%, 2190%, 3140%, 3150%, ah%, rbbah%, apo%, app, app+
+voortplanting1: ru%, 2180%, 91E0%, 91F0%, rud%, sf%, rbbsf%, so%, rbbso%, va%, vc%, vf%, vm%, vn%, vo%, vt%, 91D0%

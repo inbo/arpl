@@ -1,0 +1,98 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: BOOMKIKKER
+Soort: Hyla arborea (amfibie / metapopulatiestructuur kleinschalig cultuurlandschap)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Boomkikker stelt hoge eisen aan de wisselwerking tussen visvrije, zonbeschenen 
+voortplantingspoelen en een warm, structuurrijk landhabitat (struwelen, ruigten).
+
+A. Waterbiotoop (Voortplantingspoelen & vennen):
+   - BWK-selectie (waterbiotoop_bwk):
+       3150%, ae%, 2190%, 3140%, aom%, 3110%, 3130%, kn%, mp%
+       (Voedselarme tot matig voedselrijke plassen, vennen, duinpannen, 
+       sloten en waterpartijen met water- of oevervegetatie)
+   - Externe data (watervlakken2024.shp):
+       * Vaste filter op kleine wateren: Watervlakken worden met 5 m gebufferd 
+         en samengevoegd; alleen geaggregeerde clusters <= 4.000 m2 (0,4 ha) 
+         worden geselecteerd.
+       * Ecologische functie: Grote plassen en meren herbergen predatieve vis 
+         die de larven decimeren. De soort is strikt afhankelijk van kleinere, 
+         snel opwarmende, bij voorkeur visvrije wateren en veedrinkpoelen.
+   - Fusie: Cover van BWK-waterfracties en geselecteerde kleine watervlakken.
+
+B. Landbiotoop (Struwelen, zomen en kruidenrijke vegetaties):
+   - Graslanden, zomen en heiden (landbiotoop_hms):
+       hc%, 2190%, 6410%, rbbhc%, hd%, 2130%, 2130_hd%, hf%, 6430%, hj%, mp%, 
+       mr%, 7140%, rbbmr%, sd%, sf%, sp%, sz%, 2160%, 2170%, 2180%
+   - Houtige elementen en struwelen (landbiotoop_k):
+       k(ae%, k(ao%, k(hc%, k(hd%, k(hf%, k(hj%, k(ku%, k(mr%, kt(hc%, kt(hd%, 
+       kt(hf%, kt(hj%, kt(ku%, kt(mr%, kb%, kh%, khw%, kn%, ku%, mp%, mr%
+       (Braamstruwelen, meidoornheggen, wilgenstruweel en bosrandstruwelen)
+
+C. Negatieve landschapsfilter (Akkers):
+   - BWK-selectie (akkers): b% (akkerland / intensieve landbouw)
+   - Exclusie: Akkers vormen ecologische sinks en migratiebarrières en worden 
+     integraal uit het landbiotoop geknipt (inverse mask).
+
+
+2. COMPLEXVORMING LANDBIOTOOP & EILANDOPPERVLAKTE
+--------------------------------------------------------------------------------
+- Functionele koppeling struweel - kruidenlaag (500 m afstandsregel):
+    * landbiotoop_hms telt enkel mee indien op <= 500 m van struweel (landbiotoop_k).
+    * landbiotoop_k telt enkel mee indien op <= 500 m van landbiotoop_hms.
+    * Ecologische functie: Boomkikkers vereisen braam- en doornstruwelen om in 
+      te zonnen en te rusten, in directe nabijheid van kruidenrijke vegetaties 
+      waar ze jagen op insecten. Beide componenten moeten binnen 500 m van 
+      elkaar liggen.
+- Minimale eilandoppervlakte landbiotoop (opp_land_ha = 5 ha):
+    * Samengestelde landclusters worden gevormd via 8-richtingen rasterbuur.
+    * Drempelwaarde: >= 5 ha werkelijke habitatoppervlakte per landeiland.
+    * Ecologische functie: Snippers struweel < 5 ha bieden onvoldoende 
+      buffer tegen predatie, verdroging en microklimatologische schommelingen.
+
+
+3. RUIMTELIJKE KOPPELING WATER EN LAND (AFSTAND = 0 M)
+--------------------------------------------------------------------------------
+- Directe overlap / aansluiting:
+    * Het goedgekeurde landbiotoop (>= 5 ha) en het geschikte waterbiotoop worden 
+      op elkaar gemaskerd (landbiotoop maskeert water en vice versa).
+    * Ecologische functie: Een voortplantingspoel moet direct grenzen aan of 
+      ingebed liggen in het goedgekeurde landbiotoop (afstand_m = 0 m). Poelen 
+      die geïsoleerd in het akkerland liggen zonder direct aansluitend 
+      zomerbiotoop, vallen af.
+
+
+4. BOVENLOKALE METAPOPULATIE-EISEN (160 HA & 10 PLASSEN)
+--------------------------------------------------------------------------------
+De overleving van de Boomkikker hangt af van een robuuste metapopulatiestructuur 
+die bestand is tegen het periodiek droogvallen of mislukken van voortplanting 
+in individuele poelen:
+
+- Dispersie- en clusterafstand (buffer_m): 4.000 m (4 km)
+    * Gekoppelde water- en landkernen worden samengevoegd over tussenafstanden 
+      tot 4.000 m via focal buffering (directions = 4).
+- Criterium 1: Minimale netwerkgrootte (min_totale_ha): >= 160 ha
+    * Het geaccumuleerde werkelijke leefgebied (water + land) binnen het 
+      4 km-netwerk moet minstens 160 ha bedragen.
+- Criterium 2: Minimale poelendichtheid (min_plassen): >= 10 plassen
+    * Binnen de polygooncontour van het 4 km-netwerk moeten minstens 10 
+      afzonderlijke watervlakken (uit de watervlakkenkaart) aanwezig zijn.
+- Ecologische functie: Garandeert een duurzame metapopulatie (minimaal 10 
+  voortplantingswateren over 160 ha geschikt landschap binnen de 4 km 
+  dispersiestraal) die demografische dips kan opvangen.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Boomkikker (Hyla arborea)
+Waterbiotoop drempel      : Poelen/clusters <= 4.000 m2 (visvrij/snel opwarmend)
+Landbiotoop componenten   : Struwelen (k) en kruiden/grasland (hms) binnen 500 m van elkaar
+Exclusiezone              : Akkers (b%) volledig uitgesloten uit landbiotoop
+Minimale eilandoppervlak  : >= 5 ha werkelijk landbiotoop (8-richtingen patches)
+Koppeling water-land      : Directe ruimtelijke interactie (afstand_m = 0 m)
+Metapopulatie zoekstraal  : 4.000 m (4 km dispersiecapaciteit)
+Drempelwaarde netwerk     : >= 160 ha totaal habitat EN >= 10 geschikte plassen
+================================================================================

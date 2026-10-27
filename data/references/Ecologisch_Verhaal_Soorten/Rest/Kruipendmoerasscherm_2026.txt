@@ -1,0 +1,2 @@
+voortplanting_duin: hd%, 2130%, hpr, hpr+, 2190%, kn, 3140%, 3150%, mp, mp+, mp-, 2190_mp%
+voortplanting_rest1: hpr, hpr+, 2190%

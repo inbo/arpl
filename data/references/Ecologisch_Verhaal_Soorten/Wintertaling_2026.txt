@@ -1,0 +1,84 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: WINTERTALING (WINTERVOGEL)
+Soort: Anas crecca (kleinste grondeleend / wintergast op ondiepe wateren & slikken)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+In het winterhalfjaar is de Wintertaling een talrijke, zeer wendbare en schuwe 
+grondeleend. Als kleinste inheemse eend foerageert de soort bij voorkeur in zeer 
+ondiep water (enkele centimeters diep), op slikken, modderplaten, plas-dras 
+overstroomde graslanden en langs luwe rietkanten en broekstruwelen. Met haar fijne 
+snavellamellen grondelt en lebbert ze naar kleine zaden van water- en 
+moerasplanten (o.a. zegges, biezen, zeekraal, grasachtigen) en kleine ongewervelden 
+(slik- en wadslakjes, wormen, insectenlarven). Rust- en slaapplaatsen worden 
+gevonden op open wateren, afgesloten getijdengeulen en overstroomde polders.
+
+A. Vlakvormig Foerageer- en Rustbiotoop ('foerageer_bwk'):
+   - BWK-selectie:
+       ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, aom%, 3110%, 
+       3130%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, hp%, 
+       hp+%, hpr%, hpr+%, rbbkam%, rbbzil%, mr%, 6430_hw%, 6430_mr%, 7140%, 
+       7140_mrd%, rbbmr%, sf%, 2180%, 91E0%, rbbsf%, vm%, vn%, 3160%, 
+       ao%, kn%, hj%, rbbms%, md%
+       (Ondiepe eutrofe en mesotrofe plassen, zandputten, duinpannen, oligotrofe 
+       vennen, slikken, schorren, getijdenbekkens, overstroomde polderweiden, 
+       rietkragen, gagel- en wilgenbroekstruwelen en veenbossen)
+   - Noot habitatstatus: Zoals afgesproken blijft 'hg' (en afgeleiden) 
+     consequent uitgesloten als habitat.
+
+B. Hydrografische data (Huet-zones waterlopen):
+   - Bron: vlaanderen_huetzon_10m.tif
+   - Selectieklassen: "Mlz", "O1brak", "O1o", "O2zout", "Rg", "Rk"
+     (Estuariene brakke/zilte getijdenwateren, grote en kleine laaglandrivieren; 
+     toekenning dekkingsfractie 1.0)
+   - Ecologische functie: Brakke getijdenrivieren (Zeeschelde, Rupel, Durme) en 
+     riviervakken (o.a. IJzer, Maas) fungeren als energierijke slikkige 
+     foerageerzones en bieden tevens vorstvrij uitwijkhabitat tijdens vrieskou.
+
+C. INBO Watervlakkenkaart:
+   - Bron: vlaanderen_watervlakken_2024_10m.tif (alle geregistreerde open wateren, 
+     dekkingsfractie 1.0).
+
+
+2. FUSIE & DIRECTE HABITATVORMING (ZONDER HARDE CLUSTERDREMPEL)
+--------------------------------------------------------------------------------
+In tegenstelling tot de Tafeleend (die een strikte 5 ha drempel eist voor 
+aanloop en diepte) of de Smient (met een 100 m bufferkoppeling tussen water en grasland):
+
+- Directe Additieve Fusie:
+    * De BWK-fracties, Huet-waterlopen en Watervlakken worden bij elkaar 
+      opgeteld en geclamped op een maximale dekkingsgraad van 1.0 (100%).
+- Geen Minimum Oppervlaktedrempel:
+    * Door hun kleine formaat en vermogen om vrijwel loodrecht uit het water op te 
+      vliegen, kunnen Wintertalingen reeds functioneren op zeer kleine 
+      slikrandjes, sloten, grachten, inundatieplasjes en smalle kreekarmen. 
+      Het model hanteert daarom geen uitsluitende oppervlakte- of afstandsfilter.
+- Analytische Netwerken:
+    * De samengestelde cellen worden via 8-richtingen buurcellen gegroepeerd tot 
+      unieke netwerk-ID's (export met '_wv' suffix naar '00_ID_Rasters' en 
+      '01_Werkelijke_Oppervlaktes').
+
+
+3. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses op Vlaams niveau.
+    * Ecologische functie: Wintertalingen zijn uiterst dynamische zwervers en 
+      trekvogels die bij waterpeilschommelingen en vorst snel pendelen tussen de 
+      kust- en poldergebieden (IJzervallei, Zwin, Uitkerkse Polder), het estuarium 
+      van de Zeeschelde en slikrijke bekkens in het binnenland (Demerbroeken, 
+      Midden-Limburgse vijverregio).
+
+
+4. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Wintertaling (Anas crecca) - wintervogel (_wv)
+Doelbiotoop               : Ondiepe wateren, slikken, natte graslanden, broeken & riet
+Hydrografie               : Huet-klassen Mlz, O1brak, O1o, O2zout, Rg, Rk
+Watervlakken              : INBO Watervlakkenkaart 2024 integraal ingesloten
+Ruimtelijke filter        : Geen drempels (benut ook kleinschalige plas-dras laagtes)
+Netwerkvorming            : 8-richtingen buurcellen op gecombineerde werkelijke fracties
+Dispersieradius (ARPL)    : 250 km (niet relevant)
+================================================================================

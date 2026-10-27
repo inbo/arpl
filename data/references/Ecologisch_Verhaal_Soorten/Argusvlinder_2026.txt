@@ -1,0 +1,5 @@
+bwk: had%, had+, 2130%, hd%, hk, hk+, hkb, hkb+, 6210%, hn, hn+, hnb, hnb+, 6230%, hp+, hpr, hpr+, 2190%, hr, hr+, hu, hu+, 6510%, kd, kd+, ks, ks+, kt, kt+, ku, ku+, kub, kub+, 3270%, kw, kw+, kz, kz+
+
+MinOpp_ha: 5
+AfstandBiotopen_m:  100
+Dispersiecap_m: 10000

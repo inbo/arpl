@@ -1,0 +1,5 @@
+foerageer_bwk: hj, hj+, mc, rbbmc%, mc+, mr, 1130%, 1330%, 2190%, 6430_hw%, 6430_mr%, rbbmr%, mr+, k(mc%, k(mr%
+
+MinOpp_ha: 5
+AfstandBiotopen_m:  50
+Dispersiecap_m: 1000

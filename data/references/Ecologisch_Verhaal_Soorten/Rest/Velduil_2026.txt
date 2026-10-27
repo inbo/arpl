@@ -1,0 +1,7 @@
+akker: bc%, bg%, bk%, bl%, bs%, bu%
+cultuur0a: hc, hc+, 6410%, rbbhc%, hj+, hj, hm, hm+, hme, hme+, hmo, hmo+, 6410%, 6230%, hp+, rbbkam%, rbbzil%, hpr+, hpr, hu, 6510%, hu+
+cultuurhooi1b: hx%, hp, hr+, 6430%, hr-, hr
+hooiland: hc, hc+, 2190%, 6410%, rbbhc%, hm, hm+, hme, hme+, hmm, hmm+, hmo, hmo+, 6230%, hu, hu+, 6120%, 6510%
+kern1: hj+, hp+, rbbkam%, rbbzil%, hpr, hpr+, 2190%, 1330_hpr%, rbbvos%, rbbah%
+kern2: hp, hj, 2190%
+kleinwater_bwk: ae, 2190%, 3140%, 3150%, ae+, ae-, aer%, aev%, kn%

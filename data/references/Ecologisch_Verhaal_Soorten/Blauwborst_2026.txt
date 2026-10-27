@@ -1,0 +1,61 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: BLAUWBORST
+Soort: Luscinia svecica (broedvogel)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITAT & SELECTIE
+--------------------------------------------------------------------------------
+- Type habitat: Moerasvegetaties, rietlanden, ruigten, wilgenstruwelen, 
+  verruigde slootkanten en natte, structuurrijke overgangszones.
+- BWK-selectie:
+    app, app+, 7150%, rbbso%, so%, rbbsm%, sm%, hj%, k(hj%, hf%, 2190%, 6430%, 
+    rbbhf%, hfb%, hfc%, hft%, hr%, hrb%, ka%, kbs%, ku%, 3270%, kub%, kz%, 
+    mc%, rbbmc%, 7140%, mdb%, mk%, 7230%, mr%, 1130%, 1330%, 6430_hw%, 
+    6430_mr%, 7140_mrd%, rbbmr%, mru%, ms%, rbbms%, msb%, mz%, 1130%, 
+    1330_da%, 91F0%, rbbsf%, 7230%, sz%, k(ce%, k(cm%, k(cmb%, k(hf%, k(hr%, 
+    k(mc%, k(md%, k(mk%, k(mr%, k(ms%, k(mz%, k(ru%, k(se%, k(sf%, k(sm%, 
+    k(sz%, rbbvos%
+    (Rietkragen en rietmoerassen, natte ruigten, wilgenopslag en struwelen 'k(...)', 
+    slib- en getijdenoevers, moerasbossen en verlandingsvegetaties)
+- Fusie / Brondata: Enkelvoudige BWK-laag met werkelijke oppervlaktefracties 
+  (0.0 - 1.0) per 10m-cel via Parquet.
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+- Overbruggingsafstand (dist_m): Dynamisch via Excel (afstand_m / AfstandBiotopen_m)
+    * Historische referentie: 20 m.
+    * Cellen binnen deze afstand worden via een buffer- en patch-analyse 
+      (directions = 4) geaggregeerd tot functionele clusters.
+    * Ecologische functie: Verbindt smalle rietkragen langs grachten, sloten 
+      en waterlopen die door kleine onderbrekingen gescheiden zijn.
+- Minimale oppervlakte (oppervlakte_ha): 0 ha (geen drempelwaarde)
+    * Drempel in script: drempel_m2 = 0 m2 (elke habitatpixel blijft behouden).
+    * Ecologische achtergrond: Blauwborsten zijn plastisch en vestigen 
+      succesvol territoria in lineaire structuren (grachtkanten, overhoekjes) 
+      zonder de noodzaak van een aaneengesloten groot moerasblok.
+    * Historische referentie / Toekomstige verfijning: Vroeger werd gewerkt met 
+      15 ha (algemeen) en 5 ha (Polders en Zandstreek). Indien opnieuw een 
+      oppervlaktebeperking gewenst is, dient dit regionaal gedifferentieerd te 
+      worden via ecoregio's.
+
+
+3. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses op landschapsniveau.
+    * Ecologische functie: Vormt de zoekstraal om functionele samenhang tussen 
+      geïsoleerde beekvalleien, poldergrachten en grotere moeraskernen in kaart 
+      te brengen.
+
+
+4. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Blauwborst (Luscinia svecica) - broedvogel
+Doelbiotoop               : Rietmoerassen, struwelen, natte ruigten & slootkanten
+Bronlagen                 : BWK (werkelijke fracties)
+Minimale clusteroppervlak : 0 ha (geen restrictie; historisch 5 tot 15 ha)
+Functionele zoekstraal    : AfstandBiotopen_m (historisch 20 m)
+Dispersieradius (ARPL)    : 5000 m
+================================================================================

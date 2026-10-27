@@ -1,0 +1,82 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: BLAUVWLEUGELSPRINKHAAN
+Soort: Oedipoda caerulescens (sprinkhaan / droge pionier- & heidehabitats)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITAT & SELECTIE
+--------------------------------------------------------------------------------
+- Type habitat: Zeer droge, schrale, zandige pioniervegetaties, open duinen, 
+  droge heiden, schraalgraslanden en spoorwegzaten met een hoog aandeel 
+  kale bodem en microklimatologische opwarming.
+- BWK-selectie:
+    2120%, 2130%, 2150%, 2310%, 4030%, 5130%, cg%, dd%, ha%, 2330%, 
+    6230_ha%, hd%, hn%, 6230%, hv%, kc%, kd%, kg%, ks%, ku, ku+, 3270%, 
+    6430%, k(ha%, k(hn%, k(hv%, k(cg%, spoor%, 6120%
+    (Stuifzanden, open grijze en witte duinen, droge heide, heischrale 
+    graslanden, pionierbegroeiingen, spoorwegterreinen en kapvlaktes)
+- Omgevingslaag (Bodemdrainage):
+    * Bron: Drainagekaart Vlaanderen (vlaanderen_drainage_n2khab_10m.tif)
+    * Selectieklassen: "a", "b", "c", "a-b" (uitsluitend droge tot zeer droge, 
+      goed drainerende bodems).
+- Fusiemethode: Maskering van de BWK-laag met de droge drainageklassen. 
+  Alleen BWK-vegetaties op effectief droge bodems worden behouden.
+
+
+2. PRIMAIRE LANDSCHAPSCLUSTERING (PATCH-VORMING)
+--------------------------------------------------------------------------------
+- Overbruggingsafstand (dist_m): 50 m
+    * Cellen binnen 50 m worden gegroepeerd tot afzonderlijke leefgebiedpatches 
+      (directions = 4, via 50 m focal buffer).
+- Minimale patchgrootte: >= 1 ha (10.000 m2) werkelijke oppervlakte.
+    * Patches kleiner dan 1 ha vallen af, tenzij ze deel uitmaken van een 
+      groter netwerk (zie stap 3).
+
+
+3. METAPOPULATIESTRUCTUUR & NETWERKEISEN (STAP 3)
+--------------------------------------------------------------------------------
+Omdat Blauwvleugelsprinkhanen een beperkte dispersiecapaciteit hebben, hanteert 
+het model een tweesporenbeleid: zelfstandig duurzame kernen versus onderling 
+afhankelijke netwerkpopulaties.
+
+A. Grote, zelfstandige kernen (>= 5 ha):
+   - Patches met een geaccumuleerde werkelijke habitatoppervlakte >= 5 ha.
+   - Ecologische functie: Voldoende groot om een autonome, levenskrachtige 
+     populatie duurzaam in stand te houden zonder immigratie. Worden direct 
+     goedgekeurd als leefgebied.
+
+B. Kleine metapopulatiepatches (1 tot 5 ha) met netwerkeis:
+   - Patches met een werkelijke habitatoppervlakte tussen 1 ha en 5 ha.
+   - Koppelafstand (buffer_m / Dispersiecap_m): 250 m
+     * Elke patch wordt gebufferd met 250 m.
+   - Netwerkeis: Minimaal 3 unieke 'buren' binnen 250 m afstand 
+     (unieke_buren_count >= 3; de patch zelf + minstens 2 naburige patches).
+   - Ecologische functie: Een patch van 1-5 ha is te klein voor langdurige 
+     overleving op eigen kracht. Alleen wanneer minstens 3 van zulke 
+     stapstenen op korte vliegafstand (<= 250 m) van elkaar liggen, kan 
+     genetische uitwisseling plaatsvinden en lokale uitsterving via 
+     rekolonisatie (rescue effect) worden opgevangen.
+
+
+4. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Het definitieve leefgebied ontstaat door de optelling van:
+    1. Alle grote kernen (>= 5 ha)
+    2. Alle goedgekeurde kleine netwerkpatches (1-5 ha met >= 3 buren binnen 250 m)
+- Afgetopt op maximaal 1.0 (werkelijke habitatoppervlakte).
+- Netwerk-ID's worden toegekend via 8-connectiviteit op de samengevoegde laag.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Blauwvleugelsprinkhaan (Oedipoda caerulescens)
+Habitattype               : Droge pionier-, duin- en heidevegetaties
+Bodemfilter               : Drainageklassen a, b, c, a-b (droog/zeer droog)
+Primaire patchvorming     : 50 m zoekstraal, minimum 1 ha drempel
+Zelfstandige kernen       : Patches >= 5 ha (direct goedgekeurd)
+Metapopulatienetwerk      : Patches 1-5 ha
+Netwerk koppelafstand     : 250 m
+Drempelwaarde netwerk     : Minstens 3 patches binnen 250 m van elkaar
+Analytische netwerken     : Patches samengevoegd via 8-richtingen rasterbuur
+Dispersiecap_m: 5000 m
+================================================================================

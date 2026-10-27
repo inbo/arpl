@@ -1,0 +1,3 @@
+moeras: ae%, 3140%, 3150%, aev%, ad%, ah%, rbbah%, aom%, 3110%, 3130%, hc%, rbbhc%, 6410%, hf%, 6430%, rbbhf%, hj%, kn%, ku%, 3270%, kub%, k(mr%, mc%, rbbmc%, mcb%, mdb%, 91E0%, mr%, 6430_mr%, 7140%, 7140_mrd%, rbbmr%, mrb%, mru%
+not_eikenbos: 9110%, 9120%, 9130%, 9150%, 9160%, 2180%, 9190%, q%, f%
+voortplanting_bwk: mc%, rbbmc%, mcb%, mdb%, 7140%, 91E0%, mr%, 6430_mr%, 7140_mrd%, rbbmr%, mrb%, mru%, ru%, 2180%, 9160%, 91F0%, rud%, sf%, rbbsf%, 7230%, so%, rbbso%, va%, vc%, vf%, vm%, vn%, vo%, vt%, 91D0%

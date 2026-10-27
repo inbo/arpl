@@ -1,0 +1,3 @@
+not_openwater: 1110%, ad%, ae%, 2190%, 3140%, 3150%, aer%, aes%, aev%, ah%, am%, ao%, 3160%, 7140%, 7150%, 3110%, 3130%, aom%, aoo%, ap%, apo%, app%, ku%, 3270%, 6430%, mz%, 1330%
+openwater: ad%, ae%, 3140%, 3150%, 2190%, ah%, rbbah%, ap%, zee%
+voortplanting1: dd%, 2120%, dl%, 2110%, ds%, 1130%, 1140%, 1310%, 3270%, dz%

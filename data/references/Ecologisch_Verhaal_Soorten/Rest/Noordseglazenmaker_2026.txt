@@ -1,0 +1,6 @@
+landbiotoop_bos: so%, sf%, vm%, vn%, vo%, vt%, qb%, qs%, pa%, pi%, pm%, pp%
+landbiotoop_bwk1: so%, sf%, vm%, vn%, vo%, vt%, qb%, qs%, pa%, pi%, pm%, pp%, ceb%, cmb%, ct%, t%, ms%, mk%, mm%, sm%, 4010%
+landbiotoop_bwk_ruim: qb%, qs%, vn%, vm%, vo%, vt%, so%, ppm%, pm%, n, n-, n+, sf%, sm%, ceb%, mr%, mc%, mk%, mm%, ms%, hf%, cg%, ce%, cm%
+landbiotoop_notbwk: cg%, cp%, cd%, cv%, dm%, ha%, ku%, hr%
+waterbiotoop_bwk1: ao, ao+, aoo, aoo+, 7110%, 3160%
+waterbiotoop_notbwk: ae%, aer%, ap%, ad%, kn%

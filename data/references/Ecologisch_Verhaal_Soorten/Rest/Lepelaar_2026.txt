@@ -1,0 +1,3 @@
+moeras: 1320%, ae%, 2190%, 3140%, 3150%, ah%, rbbah%, ds%, 1130%, 1140%, 1310%, 3270%, hpr%, 1330%, hpr+%, rbbkam%, rbbzil%, ku%, 6430%, kz%
+openwater: ae%, 2190%, 3140%, 3150%, ah%, rbbah%
+voortplanting_bwk: ru%, rud%, va%, vc%, vf%, vm%, vn%, vo%, vt%, 2130%, 2190%

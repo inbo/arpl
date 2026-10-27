@@ -1,0 +1,97 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: BONT DIKKOPJE
+Soort: Carterocephalus palaemon (dagvlinder / bosranden & vochtige overgangen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+Het Bont dikkopje is een kritische zoom- en mantelvegetatiesoort die gebonden 
+is aan warme, beschutte, vochtige bosranden, kapvlaktes en bosweiden.
+
+A. Voortplantings- en Foerageerhabitat (BWK-vegetatie):
+   - Typen: ce%, 4010%, 7150%, cg%, 2310%, 4030%, cm%, hj%, ms%, 7140%, se%, 
+     sf%, 2180%, 91E0%, rbbsf%, sm%, 7230%, so%, rbbso%, vo%, k(ce%, k(cg%, 
+     k(cm%, k(hj%, k(ms%, k(se%, k(sm%, k(so%, k(sf%, k(vo%, k(ppmh%, k(pmh%, 
+     k(pmb%, k(ppmb%, k(qb%
+     (Vochtige en heischrale heiden, natte schraallanden, dotterbloemgraslanden, 
+     moerasbossen, alluviale bossen en struweelstadia 'k(...)')
+   - Onderscheid in model:
+     * Voortplanting: Bovenstaande BWK-selectie ONDERWORPEN aan bodemdrainage- 
+       en waterfilters (zie punt 2).
+     * Foerageerhabitat: Bovenstaande BWK-selectie ZONDER de strikte drainage- 
+       en waterbeperkingen.
+
+B. Bosrandvegetaties ('bosranden'):
+   - BWK-selectie: pmb%, pmh%, ppmb%, ppmh%, rbbppm%, qb%, 9190%
+     (Eiken-berkenbossen, naaldbossen met heide-opslag, zure eikenbossen)
+
+C. Waterlagen ('water_bwk' + GRB-water):
+   - BWK-selectie: ae, ae+, ae-, aev, aev+, aev-, ao% (stilstaand/open water)
+   - Externe data: vlaanderen_grb_water_10m.tif (GRB-wateroppervlakken)
+
+
+2. SPECIFIEKE MILIEUCONDITIES VOOR VOORTPLANTING
+--------------------------------------------------------------------------------
+De rupsen ontwikkelen zich op grassen (m.n. Pijpenstrootje, Boskortsteel) in 
+zeer vochtige microklimaten:
+
+- Bodemdrainagefilter:
+    * Bron: Drainagekaart Vlaanderen (vlaanderen_drainage_n2khab_10m.tif)
+    * Selectie: "d", "e", "f", "h", "i", "g", "e-f", "h-i", "e-i" 
+      (uitsluitend matig natte tot zeer natte bodems met grondwatertrap).
+- Nabijheid van open water (200 m afstandsfilter):
+    * Voortplantingshabitat moet binnen een afstand van <= 200 m van open water 
+      (BWK-water of GRB-oppervlaktewater) liggen.
+    * Ecologische functie: Garandeert voldoende hoge luchtvochtigheid en 
+      constante waterverzadiging in de randzones.
+
+
+3. TOPOLOGISCHE BOSRANDCONDITIE (DE 50 M RAAKLIJNEIS)
+--------------------------------------------------------------------------------
+Zowel voor voortplanting als foerageren geldt een strikte bosrandafhankelijkheid:
+
+- Primaire clustering: Patches worden geclusterd met zoekstraal afstand_m.
+- Oppervlaktedrempel: >= MinOpp_ha werkelijke habitatoppervlakte per cluster.
+- Bosrand-contactvoorwaarde (50 m aaneengesloten raaklijn):
+    1. Er wordt berekend waar het goedgekeurde habitatcluster direct raakt 
+       aan (of binnen 10 m ligt van) geschikt bosrandbiotoop.
+    2. Het habitatcluster wordt ALLEEN goedgekeurd als deze raaklijn met het 
+       bos een minimale aaneengesloten lengte heeft van minstens 50 m 
+       (>= 5 aaneengesloten contactcellen).
+    3. Indien goedgekeurd, wordt aangrenzend bos tot 20 m diepte meegenomen 
+       als integraal onderdeel van het functionele zoomcomplex.
+- Ecologische functie: Het Bont dikkopje vereist windluwte en warmtestuwing 
+  langsheen structureel ontwikkelde bosranden. Een geïsoleerd graslandje dat 
+  slechts puntsgewijs (op 1 cel) een bosje raakt, is ongeschikt.
+
+
+4. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Max-fusie (cover) van:
+    1. Goedgekeurd voortplantingshabitat (vochtig + waternabij + 50 m bosrand)
+    2. Goedgekeurd foerageerhabitat (50 m bosrand)
+- Netwerk ID-toekenning:
+    * Foerageerclusters krijgen een offset (+1000 boven max ID voortplanting) 
+      om unieke netwerken te waarborgen.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dispersiecap_m (uit Excel)
+    * Toepassing: ARPL / netwerkanalyses.
+    * Ecologische functie: Bepaalt de connectiviteit tussen verschillende 
+      boscomplexen en beekdalflanken op metapopulatieschaal.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Bont dikkopje (Carterocephalus palaemon)
+Doelbiotoop               : Vochtige bosranden, zomen en bloemrijke graslanden
+Bodemdrainage (voortpl.)  : Klassen d, e, f, h, i, g, e-f, h-i, e-i (nat/zeer nat)
+Afstand tot water (voortpl): <= 200 m tot BWK-water of GRB-water
+Minimale clusteroppervlak : MinOpp_ha (uit Excel)
+Bosrand raaklijneis       : Minstens 50 m aaneengesloten contact met bosrand
+Bosrand meeneemdiepte     : 20 m bosrand grenzend aan habitat
+Dispersieradius (ARPL)    : 5000
+================================================================================

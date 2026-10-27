@@ -1,0 +1,98 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: KAMSALAMANDER
+Soort: Triturus cristatus (amfibie / kleinschalig cultuurlandschap & poelencomplexen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Kamsalamander is een amfibie van kleinschalige, structuurrijke cultuur- en 
+natuurlandschappen (zoals coulisselandschappen, beekdalen en bocages). De soort 
+vereist diepere, visvrije of visarme poelen met een rijke onderwatervegetatie 
+voor de balts en eiafzet, in combinatie met een dekkingrijk terrestrisch 
+zomer- en overwinteringshabitat (loofbos, struwelen, houtkanten en extensieve 
+graslanden) in de directe nabijheid.
+
+A. Waterbiotoop ('waterbiotoop_bwk' + Watervlakken):
+   - BWK-selectie:
+       ae%, aer%, aev%, 3140%, 3150%, aom%, 3130%, kn%, mp%, mr%
+       (Mesotrofe en eutrofe plassen, veedrinkpoelen, duinpannen, sloten met 
+       onderwatervegetatie en rietkragen)
+   - Externe data (watervlakken2024.shp):
+       * Vaste filter op kleine wateren: Watervlakken worden met 5 m gebufferd 
+         en samengevoegd; alleen geaggregeerde clusters <= 4.000 m2 (0,4 ha) 
+         worden geselecteerd.
+       * Ecologische functie: Grote wateroppervlakken herbergen predatieve vis 
+         (bv. Karper, Baars, Zonnebaars) die kamsalamanderlarven en eitjes 
+         volledig wegvreten. De soort is gebonden aan middelgrote tot kleinere 
+         waterpartijen en veedrinkpoelen die periodiek kunnen uitdrogen of 
+         visvrij blijven.
+   - Fusie: Cover van BWK-waterfracties en geselecteerde kleine watervlakken.
+
+B. Landbiotoop ('landbiotoop_bwk'):
+   - BWK-selectie:
+       hc%, 2190%, 6410%, rbbhc%, hf%, 6430%, hj%, hp%, hp+%, hpr%, hpr+%, 
+       hr%, kb%, kh%, khw%, kt%, ku%, 3270%, kw%, lhb%, lhi%, lh%, sd%, 
+       2160%, 2170%, sf%, 2180%, 91E0%, rbbsf%, sp%, rbbsp%, sz%, va%, 
+       vn%, qe%, qs%, qa%, 9120%, 9130%, 9160%
+       (Vochtige en soortenrijke graslanden, kamgrasweiden, ruigten, struwelen, 
+       heggen en houtkanten 'kt/kh(...)', alluviale bossen, eikenbossen en 
+       moerasbossen; rijk aan holtes, dood hout en bodemdekking)
+
+
+2. LANDBIOTOOP FILTERING OP EILANDGROOTTE (>= 5 HA)
+--------------------------------------------------------------------------------
+- Minimale eilandoppervlakte landbiotoop (opp_land_ha = 5 ha):
+    * Samengestelde landclusters worden gevormd via 8-richtingen rasterbuur 
+      (zonder overbruggingsafstand, afstand_m = 0 m).
+    * Drempelwaarde: >= 5 ha (50.000 m2) werkelijke habitatoppervlakte per eiland.
+    * Ecologische functie: Kamsalamanders brengen het grootste deel van het jaar 
+      (zomer, herfst en winter) door op het land binnen een straal van enkele 
+      honderden meters rond de voortplantingspoel. Een compact landeiland van 
+      minstens 5 ha bos, struweel of extensief grasland is essentieel voor 
+      voldoende schuilgelegenheid tegen uitdroging, vorstvrije overwintering 
+      (muizenholen, strooisel, boomstronken) en prooivoorziening.
+
+
+3. RUIMTELIJKE KOPPELING WATER EN LAND (AFSTAND = 0 M)
+--------------------------------------------------------------------------------
+- Directe overlap / aansluiting:
+    * Het goedgekeurde landbiotoop (>= 5 ha) en het geschikte waterbiotoop worden 
+      wederzijds op elkaar gemaskerd (landbiotoop maskeert water en vice versa).
+    * Ecologische functie: De voortplantingspoel moet direct grenzen aan of 
+      ingebed liggen in het goedgekeurde landbiotoop (afstand_m = 0 m). Poelen 
+      die geïsoleerd in intensief bewerkt akkerland liggen zonder fysiek 
+      aansluitend landhabitat vallen af wegens extreme migratiemortaliteit.
+
+
+4. BOVENLOKALE METAPOPULATIE-EISEN (14 HA & 5 PLASSEN BINNEN 1.000 M)
+--------------------------------------------------------------------------------
+De Kamsalamander functioneert klassiek als metapopulatiesoort waarbij individuele 
+poelen periodiek kunnen uitsterven of droogvallen:
+
+- Dispersie- en clusterafstand (buffer_m): 1.000 m (1 km)
+    * Gekoppelde water- en landkernen worden samengevoegd over tussenafstanden 
+      tot 1.000 m via focal moving window buffering (directions = 4).
+- Criterium 1: Minimale netwerkgrootte (min_totale_ha): >= 14 ha
+    * Het geaccumuleerde werkelijke leefgebied (water + land) binnen het 
+      1 km-netwerk moet minstens 14 ha (140.000 m2) bedragen.
+- Criterium 2: Minimale poelendichtheid (min_plassen): >= 5 plassen
+    * Binnen de polygooncontour van het 1 km-netwerk moeten minstens 5 
+      afzonderlijke watervlakken (uit de watervlakkenkaart) aanwezig zijn.
+- Ecologische functie: Een geïsoleerde poel is demografisch kwetsbaar. Een 
+  duurzaam kamsalamandernetwerk vereist een poelendichtheid van minimaal 5 
+  geschikte wateren binnen 1.000 m (de maximale effectieve dispersieafstand over 
+  land) over minstens 14 ha leefgebied, waardoor uitwisseling en rekolonisatie 
+  gewaarborgd zijn.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Kamsalamander (Triturus cristatus)
+Waterbiotoop drempel      : Poelen/clusters <= 4.000 m2 (visarm/visvrij)
+Landbiotoop drempel       : >= 5 ha werkelijk landbiotoop (8-richtingen patches)
+Koppeling water-land      : Directe ruimtelijke interactie (afstand_m = 0 m)
+Metapopulatie zoekstraal  : 1.000 m (1 km dispersiecapaciteit)
+Drempelwaarde netwerk     : >= 14 ha totaal habitat EN >= 5 geschikte plassen
+Dispersieradius (ARPL)    : 1.000 m
+================================================================================

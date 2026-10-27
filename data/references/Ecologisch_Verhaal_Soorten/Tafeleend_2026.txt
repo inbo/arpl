@@ -1,0 +1,84 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: TAFELEEND (WINTERVOGEL)
+Soort: Aythya ferina (duikeend / overwinteraar op diepe, open wateren & rivieren)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+In het winterhalfjaar is de Tafeleend een talrijke, wijdverspreide duikeend. 
+In tegenstelling tot grondeleenden zoekt de Tafeleend haar voedsel (zaden, knoppen 
+en wortelstokken van waterplanten zoals kranswieren en fonteinkruiden, aangevuld 
+met zoetwatermosselen, slakken en insectenlarven) duikend op dieptes van 1 tot 
+enkele meters. De soort is strikt afhankelijk van uitgestrekte, open, zoete tot 
+brakke waterlichamen met voldoende diepte en open wateroppervlak om veilig te 
+kunnen rusten, ruien en foerageren.
+
+A. Vlakvormig Foerageerhabitat ('foerageer_bwk'):
+   - BWK-selectie:
+       ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, aom%, 3110%, 
+       3130%, ap%, ds%, 1130%, 3270%
+       (Mesotrofe en eutrofe plassen, zand- en grindwinputten, spaarbekkens, 
+       visvijvers, duinmeren, estuariene wateren en getijdenbekkens)
+   - Noot habitatstatus: Zoals afgesproken blijft 'hg' (en afgeleiden) 
+     consequent uitgesloten als habitat.
+
+B. Hydrografische data (Huet-zones waterlopen):
+   - Bron: vlaanderen_huetzon_10m.tif
+   - Selectieklassen: "Rg", "Rk" (Grote en kleine laaglandrivieren)
+   - Inclusie: Geselecteerde Huet-waterlopen krijgen een dekkingsfractie van 1.0 (100%).
+   - Ecologische functie: Brede, traagstromende rivierpanden (o.a. Grensmaas, Leie, 
+     Bovenschelde) bieden diep, vorstvrij foerageer- en vluchtwater tijdens 
+     koude winterperiodes.
+
+C. Fusiemethode:
+   - Directe cover-operatie waarbij de geselecteerde Huet-rivierpanden ('r_waterlopen_opp') 
+     bovenop de BWK-oppervlaktefracties ('foerageer_bwk_opp') worden gelegd.
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS (MIN. 5 HA OP 50 M)
+--------------------------------------------------------------------------------
+Tafeleenden hebben door hun relatief zware lichaamsbouw een lange aanloop over het 
+wateroppervlak nodig om op te vliegen en mijden kleine, ingesloten poelen:
+
+- Overbruggingsafstand (dist_m): 50 m
+    * Cellen binnen 50 m worden via buffer- en patchanalyse (directions = 4) 
+      samengevoegd tot aaneengesloten watereenheden.
+    * Ecologische functie: Overbrugt bruggen, landhoofden, smalle landtongen en 
+      dammen tussen waterbekkens, grindgaten en riviervakken.
+- Minimale oppervlakte per cluster (oppervlakte_ha): Dynamisch via Excel (MinOpp_ha; standaard 5 ha)
+    * Drempelwaarde: drempel_m2 = MinOpp_ha * 10.000 m2 (standaard 50.000 m2 
+      werkelijk open wateroppervlak).
+    * Ecologische functie: Sluit kleine vijvers, geïsoleerde grachten en ondiepe 
+      poelen uit die onvoldoende duikdiepte, voedselaanbod of overzicht bieden 
+      tegen predatie en verstoring.
+
+
+3. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Aaneengesloten watercomplexen (BWK-plassen + Huet-rivieren) 
+  die voldoen aan de minimale oppervlakte-eis (>= 5 ha binnen 50 m aggregatie).
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (bestandsnaamconventie met '_wv' suffix, 
+  export naar '00_ID_Rasters' en '01_Werkelijke_Oppervlaktes').
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses op Vlaams niveau.
+    * Ecologische functie: Als uiterst mobiele watervogel en trekvogel schakelt 
+      de Tafeleend voortdurend tussen grote riviersystemen, dokkencomplexen 
+      (o.a. Antwerpse haven), grindplassen langs de Maas en grote meren 
+      (Donkmeer, Schulensmeer, Blankaart, Grand Large).
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Tafeleend (Aythya ferina) - wintervogel (_wv)
+Aquatisch biotoop         : Diepe eutrofe/mesotrofe plassen, zandputten & estuaria
+Hydrografie               : Laaglandrivieren (Huet-klassen Rg en Rk)
+Overbruggingsafstand      : 50 m (zoekafstand_m)
+Minimale clusteroppervlak : 0.5 ha
+Dispersieradius (ARPL)    : 250 km (niet relevant)
+================================================================================

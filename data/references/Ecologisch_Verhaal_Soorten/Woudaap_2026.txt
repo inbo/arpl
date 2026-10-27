@@ -1,0 +1,111 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: WOUDAAP
+Soort: Ixobrychus minutus (kleinste reiger / rietkragen, moerassen & ecotonen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+Het Woudaapje is de kleinste reigerachtige van Europa en een ernstig bedreigde 
+broedvogel in Vlaanderen. De soort broedt in dichte, overjarige rietkragen, 
+lisdodde- en zeggenmoerassen, en in struwelen van lage wilgen en elzen die 
+direct in of aan stilstaand tot zeer zwak stromend water staan ('waterriet' 
+en 'voeten in het water'). Woudaapjes foerageren door behendig langs rietstengels 
+en takken net boven de waterspiegel te klauteren om te jagen op kleine visjes, 
+amfibieën, waterkevers en libellenlarven.
+
+A. Voortplantings- en Moerashabitat ('voortplanting_bwk'):
+   - BWK-selectie:
+       3260%, 3270%, ad%, ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, 
+       rbbah%, aom%, 3110%, 3130%, ap, ap+, apo, apo+, kn%, mc%, rbbmc%, 
+       mcb%, mr%, 2190%, 6430_hw%, 6430_mr%, 7140%, 7140_mrd%, rbbmr%, 
+       mrb%, sf%, 91E0%, rbbsf%
+       (Waterrietkragen, drijftillen, zeggenmoerassen, alluviale wilgen- 
+       en gagelbroekstruwelen, verlandingsvegetaties en mesotrofe tot eutrofe 
+       moerasplassen)
+   - Negatieve Selectie Populierenopstand ('not_populier'):
+       l% (alle populierenaanplanten en canadapopulierenbestanden)
+       * Verwerking: Populierenbestanden worden via inverse maskering direct 
+         verwijderd uit het moerasbiotoop.
+       * Ecologische functie: Monoculturen van populieren ontwateren de 
+         bodem via hoge transpiratie, verarmen de rietstructuur en vormen 
+         een uitkijk- en nestpost voor predatoren (zoals Zwarte kraai en Havik).
+   - Noot habitatstatus: Zoals vastgelegd blijft 'hg' (en samenstellingen) 
+     consequent uitgesloten als habitat.
+
+B. Open Waterpartijen ('openwater'):
+   - BWK-selectie:
+       ad%, ae%, 3140%, 3150%, 2190%, aer%, aev%, aom%, 3110%, 3130%, 
+       ap, ap+, apo, apo+
+       (Vijvers, open waterzones in plassen, kreken en petgaten)
+
+
+2. STAP 1: PRE-FILTER VOORTPLANTINGSHABITAT (>= 10 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (dist_m): 50 m
+    * Cellen van het gezuiverde moerasbiotoop (vrij van populieren) worden 
+      samengevoegd via focal moving window buffering (directions = 4).
+- Oppervlaktedrempel: >= 10 ha (100.000 m2) werkelijk moerasareaal 
+  (r_woudaap_voortplanting2_opp).
+- Ecologische functie: Sluit sterk versnipperde, geïsoleerde slootrandjes en 
+  smalle rietplukjes uit die onvoldoende verberging en voedselproductie bieden 
+  voor een broedterritorium.
+
+
+3. STAP 2: OPEN WATER TOETS (>= 1 HA) & KOPPELING (< 100 M)
+--------------------------------------------------------------------------------
+Woudaapjes jagen op de overgang van dichte vegetatie naar helder open water:
+
+1. Open Water Drempel (>= 1 ha op 10 m):
+   - De open waterpartijen worden met een aggregatie van 10 m geclusterd.
+   - Filterregel: Alleen aaneengesloten open waterkernen van minstens 1 ha 
+     (10.000 m2) werkelijk wateroppervlak blijven over (r_water_1ha_opp).
+   - Ecologische functie: Garandeert voldoende waterdiepte en visstand; 
+     voorkomt selectie van snel droogvallende greppels.
+2. 100 m Nabijheidstoets:
+   - Rond deze 1 ha waterkernen wordt de afstand berekend.
+   - Filterregel: Alleen het goedgekeurde voortplantingsmoeras (stap 1) dat 
+     binnen <= 100 m van minstens 1 ha open water ligt, wordt weerhouden 
+     (r_woudaap_leefgebied1_opp).
+   - Ecologische functie: Woudaapjes foerageren strikt langs de oevers en 
+     ecotonen van substantiële wateroppervlakken. Moerassen die te ver van open 
+     water liggen, missen de noodzakelijke visbiomassa.
+
+
+4. STAP 3: FINALE NETWERKCLUSTERING (MIN. 10 HA OP 100 M)
+--------------------------------------------------------------------------------
+- Het gekoppelde leefgebied (moeras binnen 100 m van water) wordt onderworpen 
+  aan een finale netwerkclustering:
+    * Zoekstraal clustering (dist_m): 100 m (fuzzy netwerkafstand)
+    * Minimale oppervlaktedrempel: >= 10 ha (100.000 m2) werkelijk habitat 
+      (drempel_m2 = 100.000).
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (export met '_wv' suffix naar 
+  '00_ID_Rasters' en '01_Werkelijke_Oppervlaktes').
+- Ecologische functie: Woudaapjes broeden graag in losse kolonies of geclusterde 
+  territoria. Een aaneengesloten of via 100 m verbonden leefgebiedcomplex van 
+  minstens 10 ha waarborgt voldoende ecotoonlengte en wisselende waterpeilen 
+  gedurende het gehele broedseizoen.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses op Vlaams niveau.
+    * Ecologische functie: Als lange-afstandstrekker (overwinteraar in tropisch 
+      Afrika) vertoont het Woudaapje een hoge mobiliteit bij de voorjaarsvestiging, 
+      waardoor uitwisseling tussen kerngebieden (zoals De Wijers, de vallei van 
+      de Oude Kale, het Donkmeer en het Krekengebied) over vele tientallen 
+      kilometers mogelijk is.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Woudaap (Ixobrychus minutus) - broedvogel (_wv)
+Voortplantingsbiotoop     : Waterriet, zeggenmoerassen & broekstruwelen
+Uitsluitingslaag          : Populierenbestanden (l%) integraal verwijderd
+Pre-clustering moeras     : >= 10 ha werkelijk moeras (clustering: 50 m)
+Open water vereiste       : Binnen <= 100 m van een open waterkern >= 1 ha (10 m)
+Finale netwerkdrempel     : >= 10 ha werkelijk leefgebied (clustering: 100 m)
+Dispersieradius (ARPL)    : 250 km (niet relevant)
+================================================================================

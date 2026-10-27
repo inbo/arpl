@@ -1,0 +1,95 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: KNOFLOOKPAD
+Soort: Pelobates fuscus (amfibie / zandgronden, rivierduinen & diepe poelen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Knoflookpad is een strikt gravende amfibiesoort met zeer specifieke biotopische 
+en geomorfologische eisen: diepe, vegetatierijke, zonnige en visvrije 
+voortplantingswateren (waar de uitzonderlijk grote kikkervisjes een lange 
+ontwikkelingstijd doormaken) in combinatie met een open tot halfopen landhabitat 
+met een losse, vlot bewerkbare of mulle zandbodem (rivierduinen, zandige akkers, 
+heischraal grasland, open struwelen) waarin de dieren zich overdag en tijdens 
+de winterslaap diep kunnen ingraven.
+
+A. Waterbiotoop ('waterbiotoop_bwk' + Watervlakken):
+   - BWK-selectie:
+       ae, ae+, aer, aer+, 2190%, 3140%, 3150%, ao, ao+, 3160%, 7140%, 7150%, 
+       aom, aom+, 3110%, 3130%, kn, ku%, 3270%, 6430%
+       (Mesotrofe tot eutrofe plassen, veedrinkpoelen, duinplassen, vennen, 
+       sloten en waterpartijen met rijke submerse watervegetatie)
+   - Externe data (watervlakken2024.shp):
+       * Vaste filter op kleine wateren: Watervlakken worden met 5 m gebufferd 
+         en samengevoegd; alleen geaggregeerde clusters <= 4.000 m2 (0,4 ha) 
+         worden geselecteerd.
+       * Ecologische functie: Grote plassen en meren bevatten predatieve vis 
+         (Snoek, Baars, Karperachtigen) die de trage, reusachtige larven 
+         volledig decimeren. De soort is strikt gebonden aan visvrije, 
+         periodiek droogvallende of diepe, niet-stromende poelen.
+   - Fusie: Cover van BWK-waterfracties en geselecteerde kleine watervlakken.
+
+B. Landbiotoop ('landbiotoop_bwk'):
+   - BWK-selectie:
+       ku%, bso%, cd%, ha%, hab%, rbbha%, rg%, k(ha%, k(ku%, sf%, 2180%, 
+       rbbsf%, sg%, rbbsg%, sz%
+       (Open zandige vegetaties, pioniergraslanden, heischrale graslanden, 
+       akkeroverhoeken met losse bodem, ruderale vegetaties op zand en lichte struwelen)
+
+
+2. LANDBIOTOOP FILTERING OP EILANDGROOTTE (>= 10 HA)
+--------------------------------------------------------------------------------
+- Minimale eilandoppervlakte landbiotoop (opp_land_ha = 10 ha):
+    * Samengestelde landclusters worden gevormd via 8-richtingen rasterbuur 
+      (zonder overbruggingsafstand, afstand_m = 0 m).
+    * Drempelwaarde: >= 10 ha (100.000 m2) werkelijke habitatoppervlakte per landeiland.
+    * Ecologische functie: Knoflookpadden zijn buiten de korte paaitijd strikt 
+      terrestrisch en graven zich tot meer dan een meter diep in. Een aaneengesloten 
+      eiland van minstens 10 ha geschikt landhabitat met losse zandbodem is 
+      vereist om voldoende gravend jachtareaal (nachtelijke jacht op bodemmacrofauna) 
+      en veilige overwinteringsplekken zonder bodemverdichting te bieden.
+
+
+3. RUIMTELIJKE KOPPELING WATER EN LAND (AFSTAND = 0 M)
+--------------------------------------------------------------------------------
+- Directe overlap / aansluiting:
+    * Het goedgekeurde landbiotoop (>= 10 ha) en het geschikte waterbiotoop worden 
+      wederzijds op elkaar gemaskerd (landbiotoop maskeert water en vice versa).
+    * Ecologische functie: De voortplantingspoel moet direct grenzen aan of 
+      ingebed liggen in het goedgekeurde zandige landbiotoop (afstand_m = 0 m). 
+      Poelen omringd door harde klei, veen of intensieve verstedelijking zijn 
+      ongeschikt omdat pas gemetamorfoseerde juvenielen direct zachte graafgrond 
+      moeten bereiken om uitdroging en predatie te voorkomen.
+
+
+4. BOVENLOKALE METAPOPULATIE-EISEN (160 HA & 4 PLASSEN BINNEN 1.000 M)
+--------------------------------------------------------------------------------
+De Knoflookpad is in Vlaanderen een van de meest bedreigde amfibieën en functioneert 
+uitsluitend duurzaam binnen robuuste metapopulatiesystemen:
+
+- Dispersie- en clusterafstand (buffer_m): 1.000 m (1 km)
+    * Gekoppelde water- en landkernen worden samengevoegd over tussenafstanden 
+      tot 1.000 m via focal moving window buffering (directions = 4).
+- Criterium 1: Minimale netwerkgrootte (min_totale_ha): >= 160 ha
+    * Het geaccumuleerde werkelijke leefgebied (water + land) binnen het 
+      1 km-netwerk moet minstens 160 ha (1.600.000 m2) bedragen.
+- Criterium 2: Minimale poelendichtheid (min_plassen): >= 4 plassen
+    * Binnen de polygooncontour van het 1 km-netwerk moeten minstens 4 
+      afzonderlijke watervlakken (uit de watervlakkenkaart) aanwezig zijn.
+- Ecologische functie: Omdat de voortplanting in afzonderlijke poelen door 
+  droogval of predatie jarenlang kan mislukken, vereist een populatie minstens 
+  4 functionele voortplantingswateren over een uitgestrekt areaal van 160 ha 
+  binnen een straal van 1.000 m om demografische catastrofes te overleven.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Knoflookpad (Pelobates fuscus)
+Waterbiotoop drempel      : Poelen/clusters <= 4.000 m2 (visvrij/vegetatierijk)
+Landbiotoop drempel       : >= 10 ha werkelijk zandig habitat (8-richtingen patches)
+Koppeling water-land      : Directe ruimtelijke interactie (afstand_m = 0 m)
+Metapopulatie zoekstraal  : 1.000 m (1 km dispersiecapaciteit)
+Drempelwaarde netwerk     : >= 160 ha totaal habitat EN >= 4 geschikte plassen
+Dispersieradius (ARPL)    : 1.000 m
+================================================================================

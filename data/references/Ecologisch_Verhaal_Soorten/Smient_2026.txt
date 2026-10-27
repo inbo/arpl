@@ -1,0 +1,104 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: SMIENT (WINTERVOGEL)
+Soort: Mareca penelope (grondelende eend / grazende overwinteraar op water & polders)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+In het winterhalfjaar is de Smient een uitgesproken talrijke, vegetarische 
+grondeleend (vaak aangeduid als 'fluiteend'). De soort vertoont een uitgesproken 
+tweeledige dagelijkse dynamiek: overdag rusten en slapen grote groepen veilig 
+midden op open, diepe waterpartijen, grote plassen of rivieren (buiten bereik van 
+verstoring en grondpredatoren). In de namiddag en nacht trekken ze naar 
+omliggende, voedselrijke graslanden om te grazen op korte, malse en eiwitrijke 
+grassen (Engels raaigras, beemdgrassen, zilt gras).
+
+A. Graslandbiotoop ('foerageer_grasland'):
+   - BWK-selectie:
+       hp%, hp+%, hpr%, hpr+%, rbbkam%, rbbzil%
+       (Vochtige en soortenrijke poldergraslanden, overstroomde weilanden, 
+       kamgrasweiden en zilte graslanden)
+   - Noot habitatstatus: Zoals afgesproken wordt 'hg' (en varianten) 
+     consequent uitgesloten als habitat.
+
+B. Aquatisch Biotoop (Drie complementaire waterbronnen):
+   1. BWK-waterfracties ('foerageer_water'):
+      ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, ap%, da%, 1310%, 
+      1320%, 1330%, ds%, 1130%, 1140%, 3270%, 3130%, aom%, kn%
+      (Eutrofe en mesotrofe plassen, zandwinputten, spaarbekkens, slikken, 
+      schorren, estuariene wateren en getijdengebieden)
+   2. Hydrografie waterlopen ('vlaanderen_huetzon_10m.tif'):
+      Klassen: "Mlz", "O1brak", "O1o", "O2zout", "Rg"
+      (Grote laaglandrivieren, estuariene getijdenbekkens en brakke/zilte 
+      wateren zoals Schelde, Rupel en IJzer; toekenning dekkingsfractie 1.0)
+   3. INBO Watervlakkenkaart ('vlaanderen_watervlakken_2024_10m.tif'):
+      Alle geregistreerde open waterlichamen (toekenning dekkingsfractie 1.0)
+   - Fusie Waterhabitat: Additieve cover van de drie waterlagen (geclamped op max. 1.0).
+
+
+2. RUIMTELIJKE KOPPELING GRASLAND-WATER (100 M ZONE)
+--------------------------------------------------------------------------------
+Smienten grazen zelden ver van open water; bij onraad vluchten ze direct vliegend 
+of peddelend het open water op:
+
+- Grasland-water interactiezone (100 m):
+    * Rond het samengevoegde totale waterhabitat wordt een buffer van 100 m berekend.
+    * Filterregel: Alleen grasland dat binnen deze 100 m waterbuffer ligt, 
+      wordt geselecteerd als geschikt foerageergrasland (grasland_gekoppeld_opp).
+    * Ecologische functie: Graslanden verder dan 100 m van open water worden 
+      door Smienten gemeden wegens een te hoog predatierisico door grondpredatoren 
+      (Vos, verwilderde kat) en onvoldoende directe vluchtdekking.
+
+
+3. SEPARATIE WATERTYPEN & OPPERVLAKTEDREMPEL LOSSTAAND WATER (>= 1 HA)
+--------------------------------------------------------------------------------
+Het model maakt een strikt functioneel onderscheid tussen water dat direct aan 
+graasweiden grenst en zelfstandige open waterpartijen:
+
+1. Water aan grasland (binnen 20 m):
+   - Water binnen een 20 m buffer van het goedgekeurde graasgrasland wordt 
+     beschouwd als directe vluchtstrook / oeverzone en blijft integraal behouden 
+     (water_aan_grasland), zonder minimumoppervlakte.
+2. Losstaand water (buiten 20 m van grasland):
+   - Zelfstandige waterpartijen die verder dan 20 m van geschikt grasland liggen 
+     (water_losstaand), moeten een eigen draagkracht bezitten.
+   - Oppervlaktedrempel: drempel_water_m2 = oppervlakte_ha * 10.000 m2 (standaard 1 ha / 10.000 m2).
+   - Zoekstraal clustering: 50 m.
+   - Ecologische functie: Losstaande wateren functioneren uitsluitend als veilige, 
+     verstoringsvrije dagrust- en slaapplaats voor grote groepen mits ze minstens 
+     1 ha open wateroppervlak omvatten. Kleine geïsoleerde poeltjes zonder 
+     aanpalend grasland hebben geen ecologische betekenis voor de soort.
+
+
+4. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Additieve samenvoeging (clamp max. 1.0) van:
+    1. Grasland binnen 100 m van water ('grasland_gekoppeld_opp')
+    2. Water direct grenzend aan geschikt grasland ('water_aan_grasland')
+    3. Zelfstandig losstaand water van minstens 1 ha ('water_losstaand_gefilterd')
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gecombineerde laag (bestandsnaamconventie met '_wv' suffix, export naar 
+  '00_ID_Rasters' en '01_Werkelijke_Oppervlaktes').
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses op Vlaams niveau.
+    * Ecologische functie: Als uiterst mobiele trekvogels en wintergasten schakelen 
+      groepen Smienten voortdurend tussen grote estuaria, dokken en meren enerzijds 
+      (Zeeschelde, Damse Vaart, Schulensmeer, Donkmeer, Blankaart) en omliggende 
+      overstroomde poldergraslanden anderzijds.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Smient (Mareca penelope) - wintervogel (_wv)
+Graslandbiotoop           : Vochtige en zilte polderweiden & kamgraslanden
+Waterhabitat componenten  : BWK-water + Huet-waterlopen (Mlz, O1, O2, Rg) + Watervlakken 2024
+Koppelafstand grasland    : Maximaal 100 m vanaf waterhabitat
+Water aan grasland        : Binnen 20 m van gekoppeld grasland (vrijgesteld van drempel)
+Losstaand water drempel   : >= 1 ha werkelijk wateroppervlak (clustering: 50 m)
+Dispersieradius (ARPL)    : 250 km (niet relevant)
+================================================================================

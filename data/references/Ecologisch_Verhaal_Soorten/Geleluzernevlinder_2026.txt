@@ -1,0 +1,5 @@
+biotoop: 6120%, hu+, hub%, hub+, hpr+, 6510
+
+MinOpp_ha: 1
+AfstandBiotopen_m:  50
+Dispersiecap_m: 5000

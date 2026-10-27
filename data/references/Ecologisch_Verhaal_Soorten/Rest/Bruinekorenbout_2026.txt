@@ -1,0 +1,4 @@
+landbiotoop_bwk1: mr%, 6430_hw%, 6430_mr%, 7140%, rbbmr%, mm%, 7210%, k(mr%, k(mm%
+landbiotoop_bwk_ruim: e%, f%, 9120%, 9130%, 9150%, h%, 6410%, 6510%, rbbhc%, l%, p%, rbbppm%, q%, 9120%, 9130%, 9150%, 9160%, 9190%, s%, 7140%, 7230%, 91E0%, rbbsf%, rbbsg%, rbbsp%, ku%, 6430%, kbb%, kh%
+voortplanting_bwk1: ae%, 2190%, 3140%, 3150%, k(ae%
+voortplanting_notbwk: ao, ao-, ao+, 3160%, 7140%, aom, aom-, aom+

@@ -1,0 +1,111 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: NOORDSE WITSNUITLIBEL
+Soort: Leucorrhinia rubicunda (libel / zure heidevennen, petgaten & hoogveen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Noordse witsnuitlibel is een koudeminnende, vroeg vliegende boreo-montane libel 
+en habitatspecialist van zure, oligotrofe tot dystrofe heidevennen, hoogveen- 
+laagtes en petgaten met een rijke veenmosvegetatie (Sphagnum). De soort eist 
+ondiepe, snel opwarmende en visvrije wateren, in directe samenhang met een luwe, 
+bosrijke heide- en hoogveenmatrix (berkenbroekbossen, gagelstruwelen en dennen- 
+en berkenopslag) voor jacht, beschutting en nachtrust.
+
+A. Voortplantingsbiotoop ('waterbiotoop_bwk1' geschoond met 'waterbiotoop_notbwk'):
+   - BWK-selectie (positief): 3160%, 3130%, aoo, aoo+, aoo-, kn%
+     (Natuurlijke dystrofe vennen en plassen, veenputten en overgangszones)
+   - Negatieve selectie ('waterbiotoop_notbwk'):
+     ad%, ah%, rbbah%, ap%, kn%, 2190%, 3140%, 3150%
+     (Eutrofe/mesotrofe plassen, visvijvers, open beken en duinpannen worden 
+     integraal afgetrokken: clamp(water1 - not_water, 0, 1)).
+
+B. Aanpalend Landbiotoop ('landbiotoop_bwk'):
+   - BWK-selectie: qb%, vn%, vo%, vt%, so%, rbbso%, ppm%, rbbppm%, sf%, 
+     rbbsf%, sm%, rbbsm%, ceb%, cg%, ce%, cm%, ms%, rbbms%, mk%
+     (Vochtige heiden, gagelstruwelen, moerasberkenbossen, veenmosrietlanden 
+     en zure zandige loof- en naaldbossen)
+   - Exclusie: Cellen met een positieve fractie 'waterbiotoop_notbwk' worden 
+     gemaskerd uit het landbiotoop.
+
+C. Ruim Landbiotoop & Boscomponent:
+   - Ruime selectie ('landbiotoop_bwk_ruim'): Bovenstaande typen aangevuld met 
+     vm% en mm% (grote heide- en laagveenmozaïeken).
+   - Houtige component ('landbiotoop_bwk_ruim_bos'): qb%, vm%, vn%, vo%, vt%, 
+     so%, rbbso%, ppm%, rbbppm%, sf%, rbbsf%, sm%, rbbsm%, ceb%
+
+
+2. ONAFHANKELIJKE CLUSTERING VAN DE DRIE BASISLAGEN
+--------------------------------------------------------------------------------
+1. Voortplantingswater (0.02 ha drempel op 50 m):
+   - Zoekstraal clustering (dist_m): 50 m
+   - Oppervlaktedrempel: >= 200 m2 (0.02 ha werkelijk habitat)
+   - Ecologische functie: Sluit snippers en tijdelijke plassen uit; garandeert 
+     een minimumvolume aan water met levend veenmos waarin de larven twee jaar 
+     kunnen opgroeien.
+2. Aanpalend Landbiotoop (5 ha drempel op 20 m):
+   - Zoekstraal clustering (dist_m): 20 m
+   - Oppervlaktedrempel: >= 5 ha (50.000 m2) werkelijk landhabitat.
+3. Ruim Landbiotoop (40 ha drempel op 50 m):
+   - Zoekstraal clustering (dist_m): 50 m
+   - Oppervlaktedrempel: >= 40 ha (400.000 m2) werkelijk habitat.
+
+
+3. RUIME OMGEVINGSEIS (>= 40 HA MET >= 40% BOS/STRUWEEL)
+--------------------------------------------------------------------------------
+- Binnen elk goedgekeurd ruim landcluster (>= 40 ha) wordt via 'terra::zonal' 
+  het percentage bos ('landbiotoop_bwk_ruim_bos') berekend.
+- Filtervoorwaarde: Het bosaandeel moet minstens 40% bedragen (Percentage_Bos >= 40).
+- Ecologische functie: De Noordse witsnuitlibel kan niet overleven in open, 
+  kale heidelandschappen of geïsoleerde veentjes zonder een substantieel aandeel 
+  opgaand bos dat windvang en luwte biedt.
+
+
+4. RUIMTELIJKE KOPPELING & WATER-FIRST 500 M AFSNIJDING
+--------------------------------------------------------------------------------
+De finale habitatschaal wordt strikt gestuurd door interacties tussen water en land:
+
+1. Wederzijdse 10 m koppeling:
+   - Waterbiotoop moet binnen 10 m van het aanpalende landbiotoop (>= 5 ha) liggen.
+   - Landbiotoop moet binnen 10 m van het geschikte waterbiotoop liggen.
+   - Ecologische functie: Directe grensoverschrijdende interactie tussen oever 
+     en opgroei-/jagingsbiotoop.
+2. Inbedding in ruim boscomplex (500 m buffer):
+   - Zowel water als land moeten liggen binnen een buffer van 500 m rond het 
+     goedgekeurde ruime bosrijke landbiotoop (>= 40 ha met >= 40% bos).
+3. Water-First afsnijding (straal_water_m = 500 m):
+   - Het goedgekeurde landbiotoop wordt STRIKT afgesneden op maximaal 500 m 
+     vanaf de goedgekeurde voortplantingswateren.
+   - Ecologische functie: Beperkt het landbiotoop tot de werkelijke dagelijkse 
+     actieradius van jagende en zonnende imago's rond de venoevers.
+
+
+5. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Additieve samenvoeging (clamp max. 1.0) van:
+    1. Het goedgekeurde voortplantingswater (>= 200 m2, gekoppeld op 10 m en 500 m)
+    2. Het goedgekeurde landbiotoop (>= 5 ha, binnen 500 m van water)
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gecombineerde water-landlaag.
+
+
+6. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): 5000 m
+    * Toepassing: ARPL / netwerkanalyses op landschapsniveau.
+    * Ecologische functie: Modelleert de verbindingen en uitwisseling tussen 
+      de grote Vlaamse heidecomplexen (Campine, Kalmthoutse Heide, Hoge Kempen).
+
+
+7. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Noordse witsnuitlibel (Leucorrhinia rubicunda)
+Waterbiotoop drempel      : >= 200 m2 (0.02 ha) dystrofe/zure vennen (clustering: 50 m)
+Negatieve waterselectie   : Eutroof/mesotroof water en visvijvers (not_bwk) uitgesloten
+Aanpalend landbiotoop     : >= 5 ha heide/bos binnen 10 m van water (clustering: 20 m)
+Ruime landschapseis       : Complex >= 40 ha met >= 40% bos (clustering: 50 m)
+Landschapsinbedding       : Water en land binnen <= 500 m van ruim boscomplex
+Afsnijding land rond water: Maximaal 500 m vanaf goedgekeurd voortplantingswater
+Dispersieradius (ARPL)    : 5000 m
+================================================================================

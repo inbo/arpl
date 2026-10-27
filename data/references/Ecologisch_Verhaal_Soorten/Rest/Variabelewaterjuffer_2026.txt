@@ -1,0 +1,2 @@
+landbiotoop_bwk1: hc%, hf%, hj%, hm%, hu%, mr%, mc%, md%, mk%, mm%, ms%, ce%, cm%, ms%, t%, sp%, sz%, sf%, so%, sm%, ru%, v%, q%, l%, ppm%, pm%, n, n+, kbb%, kh%
+waterbiotoop_bwk1: ae%, ao%, 3110%, 3150%, k(ae%, k(ao%

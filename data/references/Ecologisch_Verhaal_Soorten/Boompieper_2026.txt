@@ -1,0 +1,98 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: BOOMPIEPER
+Soort: Anthus trivialis (broedvogel / heide, open plekken & bosranden)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Boompieper is een typische ecotoonsoort die gebonden is aan gradiënten 
+tussen open, schrale vegetaties (voor nestgelegenheid en foerageren op de bodem) 
+en opgaande bomen (als zangpost en uitkijkpunt voor zijn karakteristieke zangvlucht).
+
+Het model hanteert een tweesporenbenadering:
+Spoor A: 'Groot leefgebied' (open biotoop gecombineerd met gebufferde bosranden)
+Spoor B: 'Klein leefgebied' (specifieke overgangszones tussen heide en naaldbos)
+
+A. Open biotopen algemeen ('bwk'):
+   - BWK-selectie:
+       hd%, 2130%, 2130_hd%, had%, 2150%, ha%, 2330%, 6230_ha%, sg%, 2310%, 
+       4030%, 6230%, rbbsg%, hk%, sk%, cg%, 5130%, cm%, 4010%, cd%, cv%, 
+       ce%, dm%, hn%, sd%, 2160%, 2170%, se%
+       (Droge en vochtige heiden, heischrale graslanden, duingraslanden, 
+       kruidenrijke kapvlaktes en struweelranden)
+
+B. Bossen algemeen ('bwk_bossen'):
+   - BWK-selectie: 9190%, qb%, 9120%, pa%, pi%, pm%, ppa%, ppi%, kb%
+     (Oude eikenbossen op zandgronden, berken-eikenbossen, diverse typen 
+     dennenbossen en struwelen)
+
+C. Heide-specifieke lagen ('heide'):
+   - BWK-selectie: cg%, 2310%, 5130%, cm%, 4010%, cd%, 4030%, cv%, ce%, 
+     7150%, 7140% (Droge struikheide, dopheide, pionierheiden en veenheiden)
+
+D. Naaldbossen ('naaldbos'):
+   - BWK-selectie: p% (alle typen dennen- en naaldbossen)
+
+
+2. SPOOR A: GROOT LEEFGEBIED (>= 5 HA MET 100 M BOSRAND & EDGING)
+--------------------------------------------------------------------------------
+1. Onafhankelijke clustering op 5 ha (zoekstraal 50 m):
+   - Zowel de open biotopen ('bwk') als de bossen ('bwk_bossen') worden eerst 
+     afzonderlijk geclusterd met dist_m = 50 m.
+   - Drempelwaarde: Beide moeten elk minimaal 5 ha werkelijk habitat omvatten.
+2. Afbakening bosrandzone (100 m):
+   - Binnen de goedgekeurde boskernen (>= 5 ha) wordt een binnenzone van 
+     maximaal 100 m vanaf de buitenrand geselecteerd.
+   - Ecologische functie: Boompiepers dringen niet door tot het diepe binnenbos; 
+     ze benutten uitsluitend de buitenste boomrijen en randzones tot 100 m diep.
+3. Contactzone / Edging (20 m speling):
+   - Er wordt gecontroleerd of de 100 m bosrandzone fysiek grenst aan 
+     (of binnen een 3x3 focal window van 20 m ligt van) het goedgekeurde 
+     open biotoopcluster (>= 5 ha).
+   - Alleen bosranden die daadwerkelijk contact maken met open habitat blijven 
+     behouden en worden samengevoegd met het open biotoop.
+
+
+3. SPOOR B: KLEIN LEEFGEBIED (>= 2 HA HEIDE-NAALDBOS RANDZONES)
+--------------------------------------------------------------------------------
+Naast grote complexen benut de soort ook kleinschalige overgangen tussen 
+heideveldjes en naaldbosranden:
+
+1. Contactzone heide en naaldbos (20 m focal window):
+   - Identificatie van heidecellen die binnen 20 m van naaldbos liggen.
+2. Clustering op 2 ha (zoekstraal 50 m):
+   - Deze heide-bosrandstroken worden geclusterd met dist_m = 50 m.
+   - Drempelwaarde: Minimaal 2 ha werkelijke oppervlakte.
+   - Ecologische functie: Biedt geschikte leefgebieden in kleinschalige 
+     heiderelicten omgeven door dennenbos waar de 5 ha-drempel niet gehaald 
+     wordt, maar wel voldoende gradiënt aanwezig is voor 1-2 territoria.
+
+
+4. FINALE INTEGRATIE & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Het totale leefgebied is een cover (optelling zonder overlap) van:
+    1. Het grote leefgebied (open biotoop >= 5 ha + gekoppelde 100 m bosrand)
+    2. Het kleine leefgebied (heide-naaldbosranden >= 2 ha)
+- Netwerk-ID's worden via 8-richtingen buurcellen toegekend aan het 
+  gecombineerde raster.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dispersiecap_m (uit Excel)
+    * Toepassing: ARPL / netwerkanalyses bovenlokaal niveau.
+    * Ecologische functie: Modelleert de functionele samenhang tussen 
+      verschillende bos-heidereservaten en kapvlaktecomplexen.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Boompieper (Anthus trivialis) - broedvogel
+Ecotoonstructuur          : Gradiënt tussen open schraalland en bosrand
+Groot leefgebied drempel  : >= 5 ha open biotoop EN >= 5 ha bos (clustering: 50 m)
+Groot leefgebied bosrand  : 100 m diepte, gekoppeld binnen 20 m van open biotoop
+Klein leefgebied drempel  : >= 2 ha heide grenzend aan naaldbos (clustering: 50 m)
+Klein leefgebied contact  : Binnen 20 m focal window heide-naaldbos
+Dispersieradius (ARPL)    : 25000 m
+================================================================================

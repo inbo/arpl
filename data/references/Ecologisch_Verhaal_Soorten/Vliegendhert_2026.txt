@@ -1,0 +1,127 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: VLIEGEND HERT
+Soort: Lucanus cervus (saproxyle kever / oude eikenbossen, hellingen & bosranden)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+Het Vliegend hert is de grootste inheemse keversoort van Vlaanderen en een 
+prioritair beschermde Europese habitatrichtlijnsoort (Bijlage II). De larven 
+leven ondergronds als saproxyle verterers in door witrotschimmels aangetast, 
+vermolmd dood hout van oude loofbomen – voornamelijk zomereik (Quercus robur), 
+wintereik (Q. petraea) en beuk (Fagus sylvatica). De soort stelt zeer strikte 
+microklimatologische eisen: de ondergrondse stronken en wortels moeten 
+zonbeschenen en warm blijven (voorkeur voor zuid- en westgeëxposeerde hellingen, 
+spoorweginsnijdingen, holle wegen en lichte bosranden). De adulte kevers vliegen 
+tijdens warme zomeravonden uit langs warme mantels en zomen om te likken aan 
+wondsappen van eiken.
+
+A. Naaldbos-negatievector ('naaldbos'):
+   - BWK-selectie:
+       pa%, pi%, pm%, pp%, rbbppm%, vm%, 91E0%, vn%, vo%, vt%, 91D0%
+       (Naaldbossen, dennenopstanden en moerasbossen met naaldhout)
+   - Noot habitatstatus: Zoals afgesproken blijft 'hg' (en afgeleiden) 
+     consequent uitgesloten als habitat.
+   - Functie in model: Cellen met meer dan 40% naaldhoutdekking 
+     (r_naaldbos_dominant > 0.40) worden uitgesloten van de basisboslaag; 
+     de werkelijke looffractie wordt berekend via clamp(1.0 - naaldbos, 0, 1).
+
+B. Externe GIS-lagen:
+   1. Groenkaart 2021 ('Groenkaart_2021.tif'):
+      - Hooggroen (waarde 1): Basis voor bomen/bosopstanden (r_groen_hoog_bin).
+      - Laaggroen / Open groen (waarden 2, 3, 4): Graslanden, akkers, ruigten 
+        en lage vegetatie grenzend aan het bos (r_groen_open_bin).
+   2. Historische Bosleeftijd ('vlaanderen_bosleeftijd_10m.tif'):
+      - Klassen 1 en 2: Historisch permanent oud bos (r_oud_bos_bin).
+   3. Hellingenkaart ('vliegend_hert_4gr_DTMVLII_10m_comp.tif'):
+      - Waarde 1: Terreinen met een hellingsgraad >= 4 graden (r_helling_bin).
+
+
+2. STAP 1: KWALIFICATIE VAN HET LOOFBOSCOMPLEX (10 HA OP 50 M)
+--------------------------------------------------------------------------------
+Geschikt loofbos wordt getoetst aan drie opeenvolgende ecologische voorwaarden:
+
+1. Loofsamenstelling: Hooggroen met maximaal 40% naaldhoutdekking.
+2. Afstand tot oud bos (<= 1.000 m):
+   - Alleen bos binnen een straal van 1 km rond historisch oud bos (klassen 1-2) 
+     blijft behouden.
+   - Ecologische functie: Lucanus cervus is een extreem dispersiezwakke soort 
+     met vleugellamme vrouwtjes die zelden verder lopen dan enkele honderden meters 
+     van de geboorteboom; kolonisatie is vrijwel uitsluitend mogelijk vanuit 
+     relictpopulaties in oude boskernen met een ononderbroken continuïteit aan 
+     dood hout.
+3. Afstand tot hellingen >= 4 graden (<= 1.000 m):
+   - Alleen bos binnen een straal van 1 km rond terreinen met minstens 4 graden 
+     helling blijft behouden.
+   - Ecologische functie: Hellingrijke zones zorgen voor een warm en droog 
+     microklimaat met sterke instraling van de zon op de boomvoeten en wortels, 
+     wat essentieel is voor de 4 tot 8 jaar durende larvale ontwikkeling.
+4. Bosclusterdrempel (>= 10 ha op 50 m):
+   - Het gezuiverde bos wordt geclusterd met dist_m = 50 m.
+   - Drempelwaarde: >= 10 ha (100.000 m2) aaneengesloten bosareaal (vh_bossen3_mask).
+
+
+3. STAP 2 & 3: OPEN GROENGEBIEDEN, BOSRANDEN (0.25 HA) & 40 M BOSDIEPTE
+--------------------------------------------------------------------------------
+Vliegende herten zijn geen soorten van donkere, gesloten boskernen, maar leven 
+op de overgangszone van bos naar open terrein:
+
+1. Open groengebieden (>= 5 ha op 50 m):
+   - Open groen (waarden 2, 3, 4) wordt via 50 m netwerkafstand geclusterd op 
+     minstens 5 ha (vh_open1_mask) om voldoende thermisch actieve open ruimte 
+     te garanderen.
+2. Scherpe bosranddetectie (15 m afstand tot open groen):
+   - Bosranden worden gedefinieerd als loofboscellen binnen <= 15 m van een 
+     goedgekeurd open groencomplex (r_bosrand_rauw_opp).
+   - Filterregel randlengte: De bosrand moet via 8-richtingen patches (dist_m = 10 m) 
+     minstens 0.25 ha (2.500 m2) aaneengesloten oppervlakte beslaan (vh_bosrand2_opp).
+   - Ecologische functie: 0.25 ha bij een rasterbreedte van 10-15 m staat gelijk 
+     aan minstens 150 tot 250 m continue, ononderbroken bosrand met voldoende 
+     zang-, vlieg- en paringsruimte voor de mannetjes.
+3. Bosdiepte-buffer van 40 m:
+   - Rond de kwalitatieve bosrand (>= 0.25 ha) wordt een buffer van 40 m 
+     boswaarts berekend (vh_bosrand3_mask).
+   - Ecologische functie: Het functionele voortplantings- en foerageerhabitat 
+     strekt zich uit vanaf de buitenste boszoom tot maximaal 40 meter diep in het 
+     bosbestand. Dieper in het bos zijn de wortelstelsels te koel en te vochtig.
+
+
+4. STAP 4: FINALE OPPERVLAKTEFILTERING (MIN. 5 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Het bruto-leefgebied (bosrand + 40 m dieptebuffer, vermenigvuldigd met de 
+  werkelijke looffractie) wordt samengevoegd.
+- Clustertoets:
+    * Zoekstraal clustering (dist_m): 50 m
+    * Minimale oppervlaktedrempel: >= 5 ha (50.000 m2) werkelijk habitatoppervlak 
+      (drempel_m2 = 50.000).
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (export naar '00_ID_Rasters' en 
+  '01_Werkelijke_Oppervlaktes').
+- Ecologische functie: Waarborgt dat alleen substantiële bosrandzones en 
+  laantracés overblijven die duurzaam voldoende overjarige eiken en vermolmde 
+  stobben bevatten om een levensvatbare populatie in stand te houden.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses op landschapsniveau.
+    * Ecologische functie: Omdat vrouwtjes zich over de grond verplaatsen en 
+      mannetjes zware vliegers zijn, brengt de dispersiecapaciteit de ernstige 
+      versnippering in beeld tussen de bekende Vlaamse kernpopulaties (o.a. 
+      Zoniënwoud/Dijlevallei, Voerstreek, Leuvense bossen en Dijle-Zenne-interfluvium).
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Vliegend hert (Lucanus cervus)
+Boskwalificatie           : Hooggroen met <= 40% naaldhout (werkelijke looffractie)
+Omgevingsvoorwaarden bos  : Binnen <= 1.000 m van oud bos EN <= 1.000 m van helling >= 4°
+Bosclusterdrempel         : >= 10 ha aaneengesloten loofbos (clustering: 50 m)
+Aanpalend open groen      : >= 5 ha open terrein (clustering: 50 m)
+Bosrandselectie           : Loofbos binnen <= 15 m van open groen (lengte >= 0.25 ha)
+Functionele bosdiepte     : Maximaal 40 m diep in het bos vanaf de bosrand
+Finale leefgebiedsdrempel : >= 5 ha werkelijk habitat (clustering: 50 m)
+Dispersieradius (ARPL)    : 1000 m
+================================================================================

@@ -1,0 +1,5 @@
+voortplanting_bwk: 6230%, rbbsg%
+
+MinOpp_ha: 0.16
+AfstandBiotopen_m:  20
+Dispersiecap_m: 100

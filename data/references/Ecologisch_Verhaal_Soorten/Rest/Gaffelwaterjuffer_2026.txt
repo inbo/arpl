@@ -1,0 +1,3 @@
+landbiotoop_bwk1: f%, 9120%, 9130%, 9150%, h%, 2190%, 6410%, 6430%, 6510%, rbbhc%, lh%, ls%, mc%, rbbmc%, mk%, 7140%, 7230%, mp%, mr%, rbbmr%, p%, q%, 2180%, 9120%, 9130%, 9150%, 9160%, 9190%, ru%, 9160%, 91E0%, s%, 2160%, 2170%, 2180%, 4010%, 4030%, 7140%, 7230%, 91E0%, rbbsg%, rbbsp%, v%, 91E0%, n, n+, n-, kbb%, kh%, kp%, ku%, 6430%
+landbiotoop_notbwk: cd%, 2310%, 4030%, cg%, cp%, 9120%, dm%, 2330%
+waterbiotoop_bwk1: ae%, 2190%, 3140%, 3150%, aer%, kn%, mp%, 2190%, k(ae%, k(aer%, k(mp%

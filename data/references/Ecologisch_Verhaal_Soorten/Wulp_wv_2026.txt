@@ -1,0 +1,81 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: WULP (WINTERVOGEL / WATERVOGEL)
+Soort: Numenius arquata (steltloper / overwinteraar op slikken, schorren & polders)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+Modelidentificatie: wulp_wv
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+In het winterhalfjaar fungeert Vlaanderen als een internationaal belangrijk 
+pleister- en overwinteringsgebied voor de Wulp. In tegenstelling tot het 
+broedseizoen (waarin de soort strikt gebonden is aan valleigraslanden en heiden 
+met een 100 ha drempel en verbossingsfilter), benut de Wulp als wintervogel een 
+combinatie van getijdengebieden en open, vochtige polderlandbouwgronden:
+
+- Laagtij / Voedselgronden: Foerageert op mariene en estuariene slikken en 
+  wadplaten (wadslakjes, wadpieren, krabben en bivalven).
+- Hoogtij / Binnendijks foerageren: Wijkt tijdens hoogwater uit naar laaggelegen, 
+  open poldergraslanden, overstroomde weiden en zilt grasland om te boren naar 
+  regenwormen en emelten, of om in groepsverband te rusten op hoogwatervlucht- 
+  plaatsen (HVP's) met een weidse horizon.
+
+A. Foerageer- en Rustbiotoop ('foerageer'):
+   - Parquet-koppeling via specifieke sleutel: 'wulp_wv'
+   - BWK-selectie:
+       aer%, 2190%, 3140%, 3150%, aev%, ah%, rbbah%, apo%, aom%, 3110%, 
+       3130%, aoo%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, 
+       hp%, hp+%, hpr%, hpr+%, rbbkam%, rrbzil%, ku%, 6430%, kz%
+       (Getijdenslikken, schorren, zilte pioniervegetaties, duinpannen, vennen, 
+       kreken, vochtige en soortenrijke graslanden, kamgrasweiden, zilte graslanden 
+       en duingraslanden)
+   - Noot habitatstatus: Zoals consequent aangehouden blijft 'hg' (en samenstellingen) 
+     volledig uitgesloten als habitat.
+
+
+2. LANDSCHAPSCLUSTERING & FUNCTIONELE WINTERDREMPEL (30 HA OP 50 M)
+--------------------------------------------------------------------------------
+Overwinterende groepen Wulpen zijn sociaal en schuw; ze tolereren geen kleinschalige, 
+visueel ingesloten percelen:
+
+- Overbruggingsafstand (dist_m): 50 m
+    * Cellen worden via buffer- en patchanalyse (directions = 4) ruimtelijk 
+      samengevoegd over een afstand van 50 m.
+    * Ecologische functie: Overbrugt sloten, dijken, smalle kreken en landwegen 
+      tussen aaneengrenzende slikplaten en graslandpolders.
+- Minimale clusteroppervlakte: >= 30 ha (300.000 m2) werkelijk habitatoppervlak 
+  (drempel_m2 = 300.000).
+- Ecologische functie: Een aaneengesloten foerageercomplex van minimaal 30 ha 
+  werkelijk habitat waarborgt voldoende open zicht tegen naderende roofvogels of 
+  grondpredatoren en biedt voldoende draagkracht aan pleisterende groepen van 
+  tientallen tot honderden individuen.
+
+
+3. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Aaneengesloten slik-, schor- en poldergraslandcomplexen 
+  die voldoen aan de >= 30 ha oppervlaktedrempel binnen de 50 m zoekstraal.
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (export met '_wv' suffix naar 
+  '00_ID_Rasters' en '01_Werkelijke_Oppervlaktes').
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses op Vlaams niveau.
+    * Ecologische functie: Wintergasten pendelen dagelijks over 10 tot 30 km 
+      tussen de slaapplaatsen in de estuaria/kust (Zeescheldebekken, Zwin, 
+      Westerschelde) en de binnendijkse foerageergronden in de polders 
+      (o.a. Oostkustpolders, IJzerbroeken, Scheldepolders).
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Wulp (Numenius arquata) - wintervogel / watervogel (wulp_wv)
+Doelbiotoop               : Getijdenslikken, schorren, zilte weiden & vochtige graslanden
+Overbruggingsafstand      : 50 m (aggregatie)
+Minimale clusteroppervlak : >= 30 ha werkelijk habitat per complex
+Netwerkvorming            : 8-richtingen buurcellen op gefilterde fracties
+Dispersieradius (ARPL)    : 250 km (niet relevant)
+================================================================================

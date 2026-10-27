@@ -1,0 +1,5 @@
+voortplanting: 2130%, 2310%, cd%, 4030%, cg%, 5130%, cm%, 4010%, dm%, 2330%, had%, 2130_had%, 2150%, hd%, 2130_hd%
+
+MinOpp_ha: 50
+AfstandBiotopen_m:  50
+Dispersiecap_m: 5000

@@ -1,0 +1,4 @@
+landbiotoop_bwk: ce%, 4010%, 7150%, hc%, 6410%, hf%, 6430%, hj%, hm%, hr%, lh%, mc%, rbbmc%, md%, 7140%, 91E0%, mk%, 7230%, mm%, 7210%, mr%, 6430_hw%, 6430_mr%, rbbmr%, ms%, rbbms%, sf%, 91E0%, rbbsf%, sm%, 4010%, so%, rbbso%, va%, vm%, vn%, vo%, vt%, 91D0%
+waterbiotoop_bwk_moeras: hf%, 6430%, mc%, rbbmc%, md%, 7140%, 91E0%, mk%, 7230%, mm%, 7210%, mr%, 6430_hw%, 6430_mr%, rbbmr%, ms%, rbbms%, sf%, rbbsf%, sm%, 4010%, 7230%, so%, rbbso%
+waterbiotoop_bwk_moeras2: mc%, rbbmc%, md%, 7140%, 91E0%, mk%, 7230%, mm%, 7210%, mr%, 6430_hw%, 6430_mr%, rbbmr%, ms%, rbbms%
+waterbiotoop_bwk_water: ae%, 3140%, 3150%, ao%, 7140%, 7150%, hf%, 6430%, mr%, 6430_hw%, 6430_mr%, rbbmr%, mc%, rbbmc%, md%, 91E0%, mk%, 7230%, mm%, 7210%, ms%, rbbms%, sf%, rbbsf%, sm%, 4010%, so%, rbbso%, 3130%

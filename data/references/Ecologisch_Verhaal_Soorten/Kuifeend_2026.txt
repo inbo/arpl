@@ -1,0 +1,82 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: KUIFEEND (WINTERVOGEL)
+Soort: Aythya fuligula (duikeend / overwinteraar op diepe, open wateren)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+In het winterhalfjaar is de Kuifeend een talrijke, uitgesproken duikeend van 
+open, diepere wateren. De soort foerageert hoofdzakelijk benthisch door te duiken 
+naar driehoeksmosselen (Dreissena polymorpha), zoetwaterslakken, kreeftachtigen 
+en waterplantenzaden. Ze prefereert diepe zandwinputten, spaarbekkens, dokken, 
+grote recreatieplassen, brede kanalen en traag stromende grote rivieren.
+
+A. Vlakvormig Foerageerhabitat ('foerageer_bwk'):
+   - BWK-selectie:
+       ae%, 2190%, 3140%, 3130%, aom%, 3150%, aer%, aev%, ah%, rbbah%, ap%
+       (Mesotrofe en eutrofe plassen, zand- en grindwinputten, spaarbekkens, 
+       visvijvers, duinmeren en grote waterpartijen)
+
+B. Hydrografische data (Huet-zones waterlopen):
+   - Bron: vlaanderen_huetzon_10m.tif
+   - Selectieklassen: "Rg", "Rzg", "Mlz", "O1o", "O1brak"
+       * Grote estuariene waterlichamen, laaglandrivieren, grote getijdenrivieren 
+         en brakke overgangswateren met aanzienlijke diepte en breedte.
+   - Inclusie: Toegekend als een dekkingsfractie van 1.0 (100%).
+
+C. Externe Watervlakkenkaart:
+   - Bron: vlaanderen_watervlakken_2024_10m.tif (integrale selectie van alle 
+     gekarteerde watervlakken met fractie 1.0).
+
+D. Fusiemethode:
+   - Additieve sommatie van het BWK-foerageerhabitat, de geselecteerde Huet-waterlopen 
+     en de watervlakkenlaag (geclamped op een maximale dekkingsfractie van 1.0).
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+In tegenstelling tot grondelende eenden heeft de Kuifeend een duidelijke voorkeur 
+voor voldoende open wateroppervlak om te landen, op te stijgen en ongestoord 
+in groepen te kunnen duiken en rusten:
+
+- Overbruggingsafstand (dist_m): Dynamisch via Excel (AfstandBiotopen_m)
+    * Cellen binnen deze afstand worden via een moving window-analyse 
+      (directions = 4) samengevoegd tot aaneengesloten waterclusters.
+    * Ecologische functie: Overbrugt smalle landhoofden, pieren, steigers en 
+      bruggen over plassen en watergangen.
+- Minimale oppervlakte per cluster (oppervlakte_ha): Dynamisch via Excel (MinOpp_ha; standaard 0.5 ha)
+    * Drempelwaarde: drempel_m2 = MinOpp_ha * 10.000 m2 (standaard 5.000 m2 
+      werkelijk open wateroppervlak).
+    * Ecologische functie: Sluit zeer kleine sloten, poeltjes en smalle grachten 
+      uit die voor duikeenden ongeschikt zijn qua duikdiepte, aanvliegroute 
+      en foerageerrendement.
+
+
+3. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Het gefuseerde watercomplex (BWK + Huet + Watervlakken) 
+  dat voldoet aan de minimale clusteroppervlakte (>= 0.5 ha).
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (bestandsnaamconventie met '_wv' suffix).
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Geen functionele beperking (wintervogel)
+    * Toepassing: ARPL / netwerkanalyses bovenlokaal niveau.
+    * Ecologische functie: Als uiterst mobiele watervogel verplaatst de Kuifeend 
+      zich gedurende de winter moeiteloos tussen verschillende waterbekkens, 
+      grindgaten langs de Maas, dokken in de Antwerpse en Gentse havens, en grote 
+      recreatiedomeinen in functie van verstoring en ijsbedekking.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Kuifeend (Aythya fuligula) - wintervogel (_wv)
+Aquatisch biotoop         : BWK-plassen/vijvers + Watervlakken 2024
+Hydrografie               : Diepe rivieren en estuaria (Rg, Rzg, Mlz, O1o, O1brak)
+Overbruggingsafstand      : 50 m
+Minimale clusteroppervlak : MinOpp_ha (standaard 0.5 ha werkelijk waterhabitat)
+Dispersieradius (ARPL)    : Geen functionele beperking in winterhalfjaar
+================================================================================

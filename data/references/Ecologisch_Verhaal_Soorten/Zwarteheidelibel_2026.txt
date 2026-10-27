@@ -1,0 +1,130 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: ZWARTE HEIDELIBEL
+Soort: Sympetrum danae (kleine heidelibel / zure vennen, hoogveen & heideplassen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Zwarte heidelibel is de kleinste en donkerste heidelibel van Vlaanderen en 
+een uitgesproken kensoort van zure, voedselarme heidevennen, vennen, hoogveenslenken, 
+dystrofe plassen en veenputten met veenmosrijke oevers (Sphagnum). De soort is 
+pionier- en heidespecialist: larven ontwikkelen zich razendsnel in ondiepe, 
+snel opwarmende zure waterpartijen die 's zomers gedeeltelijk mogen uitdrogen of 
+verlanden. Adulte libellen voeden zich, rusten en rijpen in de aanpalende luwe, 
+zonnige heide- en bosmozaïeken (vochtige en droge heide, gagelstruwelen en 
+zandige open bosranden met vliegdennen of berken).
+
+A. Voortplantingsbiotoop ('waterbiotoop_bwk1' geschoond met 'waterbiotoop_notbwk'):
+   - BWK-selectie (positief):
+       3110%, 3160%, aoo, aoo+, aoo-
+       (Oligotrofe kalkarme wateren, natuurlijke dystrofe heidevennen en 
+       natuurlijke veenputten/verlandingszones)
+   - Negatieve selectie ('waterbiotoop_notbwk'):
+       kn%, ap%, ad%, ah%
+       (Mesotrofe tot eutrofe plassen, visvijvers, verrijkte sloten en 
+       recreatiewateren worden integraal afgetrokken via: clamp(water1 - not_water, 0, 1)).
+
+B. Aanpalend Landbiotoop ('landbiotoop_bwk'):
+   - BWK-selectie:
+       qb%, vn%, vo%, vt%, so%, rbbso%, ppm%, rbbppm%, sf%, rbbsf%, sm%, 
+       rbbsm%, ceb%, cg%, ce%, cm%, ms%, rbbms%, mk%
+       (Zandige eiken- en berkenbossen, moerasberkenbossen, gagelstruwelen, 
+       droge en natte heiden, dopheide- en veenmosvegetaties)
+   - Noot habitatstatus: Zoals afgesproken blijft 'hg' (en samenstellingen) 
+     consequent uitgesloten als habitat.
+
+C. Ruim Landbiotoop & Boscomponent:
+   - Ruime landschapsselectie ('landbiotoop_bwk_ruim'):
+       Bovenstaande typen aangevuld met vm% en mm% (grote heide-, broek- 
+       en laagveencomplexen).
+   - Ruime boscomponent ('landbiotoop_bwk_ruim_bos'):
+       qb%, vm%, vn%, vo%, vt%, so%, rbbso%, ppm%, rbbppm%, sf%, rbbsf%, 
+       sm%, rbbsm%, ceb%
+
+
+2. WATERBIOTOOP BEREKENEN & CLUSTEREN (MIN. 0.01 HA / 100 M²)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (dist_m): 50 m
+- Oppervlaktedrempel water: >= 100 m2 (0.01 ha werkelijk voortplantingshabitat)
+- Ecologische functie: Door hun snelle larvale cyclus volstaan voor de Zwarte 
+  heidelibel zelfs piepkleine, ondiepe veenpoeltjes en slenken van 100 m2, mits 
+  er veenmos aanwezig is en vissen ontbreken.
+
+
+3. AANPALEND LANDBIOTOOP: NABIJE OMGEVING (MIN. 5 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (dist_m): 50 m
+- Oppervlaktedrempel: >= 5 ha (50.000 m2) werkelijk landhabitat
+- Ecologische functie: Biedt een aaneengesloten terrestrische dekking direct 
+  rond het ven voor rijping, zonnen en beschutting tegen zware windstoten.
+
+
+4. RUIM LANDBIOTOOP: LANDSCHAPPELIJKE KERN (MIN. 40 HA & >= 40% BOS)
+--------------------------------------------------------------------------------
+Op landschapsniveau wordt de robuustheid van de heide- en bosmatrix geëvalueerd:
+
+1. Ruime clustering (dist_m = 50 m):
+   - Clustering van het ruime landbiotoop op minimaal 40 ha (400.000 m2) 
+     werkelijk habitat.
+2. 40% Bos-samenstellingstoets:
+   - Binnen het goedgekeurde 40 ha-cluster wordt via 'terra::zonal' het 
+     percentage bos ('landbiotoop_bwk_ruim_bos') berekend.
+   - Filtervoorwaarde: Het bosaandeel moet minstens 40% bedragen (Percentage_Bos >= 40).
+   - Ecologische functie: In tegenstelling tot de Venwitsnuitlibel (die een compactere 
+     20 ha / 60% bosdrempel kent) opereert de Zwarte heidelibel over een ruimer 
+     heidelandschap (40 ha) waarbij een meer open structuur met minstens 40% 
+     beschuttend bos/struweel volstaat voor duurzame populaties.
+
+
+5. RUIMTELIJKE INTERACTIES & WATER-FIRST 500 M AFSNIJDING
+--------------------------------------------------------------------------------
+De finale eenheid ontstaat uit gerichte koppelingen tussen water en land:
+
+1. Wederzijdse 20 m oeverkoppeling:
+   - Waterbiotoop moet binnen <= 20 m van het aanpalende landbiotoop liggen.
+   - Landbiotoop moet binnen <= 20 m van het geschikte waterbiotoop liggen.
+   - Ecologische functie: Verzekert een directe, barrièrevrije overgang tussen 
+     oevervegetatie en het open wateroppervlak.
+2. Inbedding in ruim boscomplex (500 m buffer):
+   - Zowel water als land moeten liggen binnen een buffer van 500 m rond het 
+     goedgekeurde ruime bosrijke complex (>= 40 ha met >= 40% bos).
+3. Water-First afsnijding (straal_water_m = 500 m):
+   - Het goedgekeurde landbiotoop wordt STRIKT begrensd tot maximaal 500 m 
+     vanaf de goedgekeurde voortplantingswateren.
+   - Ecologische functie: Begrenst het terrestrische habitat tot de werkelijke 
+     dagelijkse vlieg- en foerageerzone van de volwassen libellen rond hun 
+     geboorteven.
+
+
+6. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Additieve samenvoeging (clamp max. 1.0) van:
+    1. Het goedgekeurde voortplantingswater (>= 100 m2, gekoppeld op 20 m en 500 m)
+    2. Het goedgekeurde landbiotoop (>= 5 ha, binnen 500 m van water)
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gecombineerde water-landlaag (export naar '00_ID_Rasters' en 
+  '01_Werkelijke_Oppervlaktes').
+
+
+7. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses op Vlaams niveau.
+    * Ecologische functie: De Zwarte heidelibel zwerft in de nazomer geregeld 
+      uit over afstanden van enkele kilometers langs heidecorridors; de 
+      dispersiestraal modelleert de functionele samenhang tussen de grote 
+      Kempense heidekernen en geïsoleerde laagveengebieden.
+
+
+8. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Zwarte heidelibel (Sympetrum danae)
+Waterbiotoop drempel      : >= 100 m2 (0.01 ha) dystrofe vennen/veenputten (clustering: 50 m)
+Negatieve waterselectie   : Eutrofe/mesotrofe plassen en visvijvers (notbwk) uitgesloten
+Aanpalend landbiotoop     : >= 5 ha heide/bos binnen 20 m van water (clustering: 50 m)
+Ruime landschapseis       : Complex >= 40 ha met >= 40% bos/struweel (clustering: 50 m)
+Landschapsinbedding       : Water en land binnen <= 500 m van ruim boscomplex
+Water-First begrenzing    : Landbiotoop strikt afgesneden op <= 500 m van geschikt water
+Dispersieradius (ARPL)    : 10000 m
+================================================================================

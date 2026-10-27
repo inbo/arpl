@@ -1,0 +1,60 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: BERGEEND (WINTERVOGEL)
+Soort: Tadorna tadorna (winterhalfjaar / doortrekker & overwinteraar)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITAT & SELECTIE
+--------------------------------------------------------------------------------
+- Type habitat: Brakke, zoute en zoete waterpartijen, slikken, schorren, 
+  estuaria en laaggelegen natte gronden/plas-draszones.
+- BWK-foerageercodes (foerageer_bwk):
+    ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, ap%, bu%, da%, 
+    1310%, 1320%, 1330%, ds%, 1130%, 1140%, dz%, hp+%, rbbkam%, rbbzil%, 
+    hpr%, hpr+%, kn%, ku%, kz%, 3130%, aom%, hp%
+    (Slik- en schorrehabitats, zilte graslanden, duinpannen, estuariene 
+    milieus en ondiepe open wateren)
+- Hydrografische data (Huet-zones):
+    Mlz, O1brak, O1o, O2zout, Rg
+    (Grote estuariene zones, brakke/zoute waterlopen, zoutgetijdenzones, 
+    primaire riviervakken van de Zeeschelde en estuarium)
+- Fusiemethode: Additieve fusie van BWK-oppervlaktefracties en Huet-waterlopen 
+  (Huet = fractie 1.0), afgetopt op maximaal 1.0 (100% geschiktheid) per cel.
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+- Overbruggingsafstand (dist_m): 50 m
+    * Cellen binnen 50 m van elkaar worden samengevoegd via een buffer- en 
+      patch-analyse (directions = 4).
+    * Ecologische functie: Overbrugt smalle dammen, dijken, rietkragen en 
+      tussenliggende infrastructuur tussen aaneengesloten slik- en waterpartijen.
+- Minimale oppervlakte (MinOpp_ha): 5 ha (50.000 m2)
+    * Drempel berekend op de werkelijke geaccumuleerde habitatoppervlakte per cluster.
+    * Ecologische functie: Bergeenden foerageren bij voorkeur in groepsverband 
+      op wadslakjes (Peringia ulvae), kreeftachtigen en algen op uitgestrekte, 
+      open slikvlaktes en ondiepe wateren. Een kern van minstens 5 ha garandeert 
+      voldoende foerageeroppervlakte en overzicht/veiligheid tegen predatoren.
+
+
+3. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): 250.000 m (250 km)
+    * Toepassing: ARPL / netwerkanalyses bovenlokaal niveau.
+    * Ecologische functie: Als mobiele watervogel en trekvogel kent de Bergeend 
+      in het winterhalfjaar geen reële ruimtelijke dispersiebeperking binnen 
+      Vlaanderen. Zij verplaatsen zich flexibel en over zeer grote afstanden 
+      tussen het Kust- en Zwincomplex, het Schelde-estuarium, de havengebieden 
+      en natte poldergebieden in het binnenland.
+
+
+4. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Winterhalfjaar (extensie: _wv)
+Doelbiotoop               : Estuariene wateren, slikken, schorren en natte gronden
+Bronlagen                 : BWK (foerageer_bwk) + Huet-zones (Mlz, O1brak, O1o, O2zout, Rg)
+Fusiemethode              : Additieve cover (aftopping op max. 1.0)
+Functionele zoekstraal    : 50 m
+Minimale clusteroppervlak : 5 ha (werkelijke oppervlakte)
+Dispersieradius (ARPL)    : 250 km (250.000 m - geen functionele dispersiebeperking)
+================================================================================

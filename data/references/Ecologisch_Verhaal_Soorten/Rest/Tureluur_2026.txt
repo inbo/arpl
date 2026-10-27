@@ -1,0 +1,2 @@
+biotopen: ah%, rbbah%, ao%, 3160%, 7140%, 7150%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, hpr, hpr+, 2190%, rbbkam%, rbbzil%, k(ah%, k(ao%, k(da%, kz
+biotopen_slik_schor: ah%, rbbah%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, k(ah%, k(da%

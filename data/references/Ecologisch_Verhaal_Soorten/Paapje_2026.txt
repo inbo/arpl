@@ -1,0 +1,98 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: PAAPJE
+Soort: Saxicola rubetra (weidevogel / open graslanden, ruigten & heischrale venen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+Het Paapje is een zomervogel en uitgesproken grondbroeder van open, vochtige tot 
+matig droge, extensief beheerde graslanden, heischrale venen en bloemrijke 
+ruigten. De soort vraagt een kruidenrijke, structuurrijke vegetatie met lage 
+uitkijk- en zangposten (stengels van schermbloemigen, zuring, hekpalen of lage 
+struikjes) om insecten vanaf te bejagen. Het Paapje mijdt echter gesloten 
+bosranden en bomenrijen wegens verhoogde predatiedruk.
+
+A. Doelbiotoop Graslanden & Moerasvegetaties ('bwk'):
+   - BWK-selectie:
+       hc%, 2190%, 6410%, rbbhc%, hf%, 6430%, rbbhf%, hj+, hm%, 6230%, 
+       hmm%, hme%, hmo%, hpr%, rbbkam%, rbbzil%, hr+, hu%, 6120%, 6510%, 
+       md%, 7140%, mk%, mm%, mp%, 2190_mp%, ms%, rbbms%, t%, 7110%, tm%, 7120%
+       (Vochtige en soortenrijke graslanden, dotterbloemgraslanden, kamgrasweiden, 
+       glanshaverhooilanden, moerasspirea-ruigten, veenmosrietlanden, overgangs- 
+       en hoogvenen)
+
+B. Houtige Elementen & Boslagen ('bwkbos' + Groenkaart):
+   - BWK-selectie ('bwkbos'):
+       91%, gml, gmn, f%, n, n+, n-, l, ls%, lh%, p%, q%, ru%, 2180%, v%
+       (Alle inheemse en uitheemse naald- en loofbossen, alluviale bossen, 
+       struwelen en houtkanten)
+   - Externe Groenkaart: Groenkaart_2021.tif (hooggroen / waarde 1)
+   - Correctie: BWK-bos wordt geschoond met de doelbiotooplaag (inverse maskering) 
+     om te voorkomen dat kruidenrijke grazige randen dubbel tellen.
+
+
+2. NEGATIEVE FILTER: BOSRANDSTORING (100 M EXCLUSIEZONE)
+--------------------------------------------------------------------------------
+Paapjes vertonen een sterke afkeer van opgaand bos, bomenrijen en gesloten bosranden, 
+omdat roofvogels (o.a. Boomvalk, Sperwer), uilen en kraaiachtigen deze gebruiken 
+als uitkijkpost om nesten en pas uitgevlogen jongen op te sporen:
+
+1. Bosclusterdrempel (>= 20 are):
+   - Samengesteld bos (BWK-bos + Groenkaart) wordt via 8-richtingen patches 
+     gefilterd op aaneengesloten clusters van minstens 20 cellen (>= 20 are / 2.000 m2).
+   - Ecologische functie: Isoleert effectieve bosopstanden en bomenrijen en 
+     negeert losse, individuele struikjes die juist als zangpost dienen.
+2. 100 m Afstandszone:
+   - Rond alle goedgekeurde boskernen (>= 20 are) wordt een afstandszone van 
+     100 m berekend.
+   - Filterregel: Alleen graslanden die op minstens 100 m afstand van bos liggen 
+     (afstand_tot_bos >= 100), blijven behouden.
+   - Ecologische functie: Garandeert dat alleen weidse, open graslandcomplexen 
+     zonder horizonvervuiling en predatiedruk als leefgebied overblijven.
+
+
+3. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+- Overbruggingsafstand (zoekafstand_m): 50 m
+    * Cellen binnen 50 m worden via buffer- en patchanalyse (directions = 4) 
+      samengevoegd tot aaneengesloten functionele leefgebiedsblokken.
+    * Ecologische functie: Overbrugt sloten, dijken, landbouwwegen en smalle 
+      bermen binnen open graslandcomplexen.
+- Minimale oppervlakte per cluster (oppervlakte_ha): Dynamisch via Excel (MinOpp_ha; standaard 5 ha)
+    * Drempelwaarde: drempel_m2 = MinOpp_ha * 10.000 m2 (standaard 50.000 m2 
+      werkelijk habitatoppervlak).
+    * Ecologische functie: Een broedpaar of kleine vestiging van Paapjes 
+      vereist een compact open kerngebied van minstens 5 ha om voldoende 
+      foerageerruimte te hebben en predatierisico te spreiden.
+
+
+4. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Het gezuiverde grasland- en moerasbiotoop (buiten de 100 m 
+  bosrandzone) dat voldoet aan de minimale oppervlakte-eis (>= 5 ha).
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (export naar '00_ID_Rasters' en 
+  '01_Werkelijke_Oppervlaktes').
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses bovenlokaal niveau.
+    * Ecologische functie: Als lange-afstandstrekvogel vestigt het Paapje zich 
+      vaak in wisselende dichtheden in grote valleigebieden (bv. IJzervallei, 
+      Demervallei, Maasuiterwaarden) en militaire domeinen; de parameter 
+      brengt de samenhang tussen deze open kerngebieden in kaart.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Paapje (Saxicola rubetra) - broedvogel
+Doelbiotoop               : Soortenrijke/vochtige graslanden, ruigten & venen
+Boselementen selectie     : BWK-bos + Groenkaart 2021 (gefilterd op >= 20 are)
+Exclusiezone bos          : Minstens 100 m afstand tot bos (buffer van 100 m)
+Overbruggingsafstand      : 50 m (zoekafstand_m)
+Minimale clusteroppervlak : 5 ha
+Dispersieradius (ARPL)    : 5000 m
+================================================================================

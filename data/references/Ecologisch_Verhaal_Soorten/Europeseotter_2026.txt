@@ -1,0 +1,108 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: EUROPESE OTTER
+Soort: Lutra lutra (semi-aquatisch zoogdier / toppredator watersystemen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Europese otter stelt als toppredator hoge eisen aan zowel de aquatische 
+omgeving (visrijke, onverstoorde waterlopen en plassen om te foerageren) als 
+aan een uitgestrekte, dekkingrijke terrestrische matrix (voor dagrustplaatsen, 
+legeringen, holenstelsels en veilige verplaatsingen over land).
+
+A. Integraal Waternetwerk ('otter_water_max'):
+   - Hydrografische data (Huet-zones waterlopen):
+       vlaanderen_huetzon_10m.tif (waarde == 1: primaire waterloopvakken)
+   - Stilstaand water (watervlakken):
+       vlaanderen_watervlakken_2024_10m.tif (waarde == 1: plassen, vijvers, meren)
+   - Fusie: Binaire unie (waterloop of plas = 100% geschikt waterbiotoop).
+
+B. Terrestrische Dekkings- en Oeverbiotopen (BWK-groepen d, h, k, m, r, s, t, v):
+   - Slikken, schorren & getijdenmilieus (d):
+       da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%
+   - Halfnatuurlijke vochtige graslanden & zomen (h):
+       hc%, 2190%, rbbhc%, hf%, rbbhf%, hj%, hm%, hpr%, rbbzil%, hu%
+   - Struwelen, houtkanten & kapvlaktes (k):
+       ka%, kb%, kh%, kn%, 3140%, 3150%, kp%, ku%
+   - Moerassen, rietlanden & verlandingsvegetaties (m):
+       mc%, rbbmc%, md%, 7140%, 91E0%, mk%, 7230%, mm%, 7210%, mp%, mr%, 
+       1130%, 1330%, 6430_hw%, 6430_mr%, rbbmr%, ms%, rbbms%, mz%
+   - Ruigten & alluviale/vochtige loofbossen (r):
+       ru%, 2180%, 9160%, 91E0%, 91F0%
+   - Heiden & moerasstruwelen (s):
+       sf%, rbbsf%, sg%, rbbsg%, sm%, 4010%, rbbsm%, so%, rbbso%, sp%, rbbsp%
+   - Venen & hoogvenen (t):
+       t%, 7110%
+   - Moerasbossen & elzenbroekbossen (v):
+       va%, vc%, vf%, vm%, vn%, vo%, vt%, 91E0%, 91D0%
+
+
+2. LANDBIOTOOP SAMENVOEGING & DE 1.000 HA ROBUUSTHEIDSDREMPEL
+--------------------------------------------------------------------------------
+Otters hebben zeer grote actieradii (territoria beslaan tientallen kilometers 
+watergang) en zijn gevoelig voor menselijke verstoring en verkeersmortaliteit:
+
+- Sommatie landbiotopen:
+    * De werkelijke oppervlaktefracties van alle 8 groepen (d, h, k, m, r, s, t, v) 
+      worden opgeteld en per cel geclamped op max. 1.0.
+- Zoekstraal clustering (dist_m): 50 m
+    * Cellen binnen 50 m worden via buffer- en patchanalyse samengevoegd tot 
+      aaneengesloten landschapscomplexen.
+- Oppervlaktedrempel landmatrix (drempel_m2): >= 1.000 ha (10.000.000 m2)
+    * Alleen geclusterde landcomplexen met minstens 1.000 ha werkelijke 
+      natuur- en bosoppervlakte blijven behouden.
+    * Ecologische functie: Sluit versnipperde, verstedelijkte of intensief 
+      beheerde landschappen uit. Een otterpopulatie vereist een robuuste, 
+      grootschalige halfnatuurlijke matrix met voldoende rustgebieden 
+      buiten het directe bereik van intensieve menselijke activiteit.
+
+
+3. WEDERZIJDSE WATER-LANDKOPPELING (<= 1.000 M ACTIERADIUS)
+--------------------------------------------------------------------------------
+Water en land versterken elkaar functioneel binnen de dagelijkse foerageer- 
+en rustpendel:
+
+1. Landfilter op waternabijheid (<= 1.000 m van water):
+   - Alleen cellen van het goedgekeurde 1.000 ha landcomplex die binnen 
+     een straal van <= 1.000 m van geschikt water liggen, worden geselecteerd.
+   - Ecologische functie: Binnenlandse bos- en moerasdelen die te ver van een 
+     foerageerwater liggen (> 1 km), worden door otters niet structureel benut.
+2. Waterfilter op landnabijheid (<= 1.000 m van landmatrix):
+   - Alleen waterlopen en plassen die binnen een straal van <= 1.000 m van het 
+     goedgekeurde 1.000 ha landcomplex liggen, worden goedgekeurd.
+   - Ecologische functie: Geïsoleerde waterlopen door verstedelijkt gebied of 
+     intensieve akkerbouw zonder dekkingrijk achterland in de nabijheid zijn 
+     ongeschikt als duurzaam leefgebied (verhoogd risico op aanrijdingen en stress).
+
+
+4. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Het totale leefgebied is een additieve fusie (clamp max. 1.0) van:
+    1. Het gekoppelde landbiotoop (landmatrix >= 1.000 ha binnen 1 km van water)
+    2. Het gekoppelde waterbiotoop (watergangen/plassen binnen 1 km van landmatrix)
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gecombineerde water-landlaag.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dispersiecap_m (uit Excel)
+    * Toepassing: ARPL / netwerkanalyses op stroomgebieds- en Vlaams niveau.
+    * Ecologische functie: Jonge otters en zwervers kunnen tientallen tot 
+      honderden kilometers afleggen langs stroomgebieden; de parameter modelleert 
+      de connectiviteit tussen grote riviersystemen (IJzer, Schelde-estuarium, 
+      Maas- en Demerbekken).
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Europese otter (Lutra lutra)
+Waternetwerk              : Primaire waterlopen (Huet = 1) + watervlakken 2024
+Landbiotoop componenten   : Som van 8 BWK-groepen (slikken, grasland, struweel, 
+                            moeras, alluviaal bos, heide, veen, moerasbos)
+Minimale landmatrix       : >= 1.000 ha werkelijke oppervlakte (clustering: 50 m)
+Koppelafstand Land -> Water: <= 1.000 m tot waternetwerk
+Koppelafstand Water -> Land: <= 1.000 m tot goedgekeurde 1.000 ha landmatrix
+Dispersieradius (ARPL)    : 100000
+================================================================================

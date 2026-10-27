@@ -1,0 +1,5 @@
+voortplanting: cd%, 2310%, 4030%, ce%, 4010%, 7150%, 7140_oli%, cg%, 5130%, cm%, cp%, cv%, sg%, 6230%, rbbsg%, sm%, 7140%, 7230%, rbbsm%, t%, 7110%, 7120%
+
+MinOpp_ha: 300
+AfstandBiotopen_m:  50
+Dispersiecap_m: 1000

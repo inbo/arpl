@@ -1,0 +1,102 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: ZADELSPRINKHAAN
+Soort: Ephippiger ephippiger (sprinkhaanachtigen / droge heiden & bosranden)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Zadelsprinkhaan is een warmteminnende, vleugellamme sabelsprinkhaan van open 
+tot halfopen, droge heideterreinen, bosranden, zonnige kapvlaktes en schrale 
+struweelranden. De soort heeft een sterke voorkeur voor een structuurrijke, 
+laagblijvende houtige vegetatie (vooral struikheide, jeneverbes, brem en jonge 
+opslag van berk of eik) afgewisseld met open zandplekken. Vrouwtjes zetten hun 
+eieren af in de zandige bodem; eieren en nimfen zijn gevoelig voor schimmels 
+en stagnerend grondwater, waardoor strikt droge bodemcondities noodzakelijk zijn.
+
+A. Doelbiotoop Droge Vegetaties & Zandige Structuren ('bwk'):
+   - BWK-selectie:
+       2310%, 4030%, 5130%, cdb%, ceb%, 4010%, 7150%, 7140_oli%, cgb%, 
+       cmb%, jun%
+       (Stuifzanden, droge en vochtige heiden met opslag van struik- en boomgroei, 
+       jeneverbesstruwelen 'jun%' en overgangsstadien met struweel/bosopslag)
+   - Noot habitatstatus: Zoals afgesproken blijft 'hg' (en samenstellingen) 
+     consequent uitgesloten als habitat.
+
+
+2. BODEMDRAINAGE-CONFIGURATIE: STRIKTE DROOGTE (STAP 1)
+--------------------------------------------------------------------------------
+Zadelsprinkhanen tolereren geen bodemvernatting of hoge waterstanden:
+
+- Drainagekaart: vlaanderen_drainage_n2khab_10m.tif
+- Selectieklassen: "a", "b", "c", "a-b"
+    * Uitsluitend zeer droge tot matig droge bodems zonder grondwaterinvloed 
+      in de toplaag.
+- Verwerking: Het BWK-oppervlak ('bwk_opp') wordt direct gemaskerd met deze 
+  droge drainageklassen (zadelsprinkhaan_basis_opp).
+- Ecologische functie: Garandeert optimale microklimatologische bodemopwarming 
+  voor ei-ontwikkeling en sluit te vochtige depressies en dalgronden uit.
+
+
+3. PRIMAIRE CLUSTERING OP LANDSCHAPSNIVEAU (>= 1 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Overbruggingsafstand (dist_m): 50 m
+    * Cellen van het gedroogde biotoop worden samengevoegd via focal moving 
+      window buffering (directions = 4).
+    * Ecologische functie: Overbrugt zandpaden, brandgangen en lage bermen 
+      binnen het heidelandschap.
+- Minimale drempelwaarde: >= 1 ha (10.000 m2) werkelijk habitatoppervlak 
+  (zadelsprinkhaan_clusters_opp).
+- Ecologische functie: Sluit sterk versnipperde en geïsoleerde snippers 
+  < 1 ha uit die te klein zijn om een populatie te dragen.
+
+
+4. METAPOPULATIE STRUCTUUR ANALYSE (STAP 3)
+--------------------------------------------------------------------------------
+Omdat de Zadelsprinkhaan vleugellam is en zich uitsluitend traag lopend en 
+springend kan verplaatsen, maakt het model een strikt onderscheid tussen grote, 
+zelfstandige populaties en afhankelijke netwerkpatches:
+
+1. Grote Kwaliteitskernen (>= 5 ha):
+   - Clusters met een geaccumuleerd werkelijk oppervlak >= 5 ha (50.000 m2) 
+     worden direct goedgekeurd als zelfstandig duurzaam leefgebied (r_leefgebied_5ha_opp).
+2. Kleine Netwerkpatches (1 tot 5 ha):
+   - Patches tussen 1 ha en 5 ha worden getoetst aan metapopulatie-eisen:
+       * Methode: Polygoonconversie per patch en berekening van een 500 m buffer.
+       * Criterium: Een kleine patch moet minstens 6 overlappende buren 
+         (inclusief zichzelf, unieke_buren_count >= 6) binnen een straal 
+         van 500 m hebben.
+       * Ecologische functie: Kleine heiderelicten zijn uiterst kwetsbaar voor 
+         lokaal uitsterven; een dichte cluster van minimaal 6 stapstenen binnen 
+         de 500 m dispersieafstand waarborgt continue uitwisseling en herkolonisatie.
+
+
+5. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Additieve samenvoeging (clamp max. 1.0) van:
+    1. Grote kernen (>= 5 ha)
+    2. Goedgekeurde netwerkpatches (1-5 ha met >= 6 buren binnen 500 m)
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (export naar '00_ID_Rasters' en 
+  '01_Werkelijke_Oppervlaktes').
+
+
+6. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses bovenlokaal niveau.
+    * Ecologische functie: Brengt de verregaande isolatie van de relictpopulaties 
+      in kaart (o.a. in de Antwerpse en Limburgse Kempen) en identificeert 
+      prioritaire herstelzones langs heidecorridors en zandige tracés.
+
+
+7. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Zadelsprinkhaan (Ephippiger ephippiger)
+Doelbiotoop               : Droge en verstruweelde heiden, stuifzanden & jeneverbesstruweel
+Bodemdrainage             : Beperkt tot strikt droge bodems (klassen a, b, c, a-b)
+Primaire clustering       : >= 1 ha werkelijk habitat (clustering: 50 m)
+Direct goedgekeurd        : Patches >= 5 ha werkelijk habitat
+Metapopulatie-eis (1-5 ha): Moet >= 6 buurpatches hebben binnen een straal van <= 500 m
+Dispersieradius (ARPL)    : 1000 m
+================================================================================

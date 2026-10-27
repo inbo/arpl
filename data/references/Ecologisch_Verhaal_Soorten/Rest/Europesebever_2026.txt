@@ -1,0 +1,2 @@
+houtig: gml%, kb%, lh%, n, n+, n-, pop%, ru%, 2180%, 9160%, 91E0%, 91F0%, rud%, sf%, rbbsf%, sm%, 4010%, 7230%, rbbsm%, sz%, va%, vc%, vf%, vm%, vn%, vo%, vt%, 91D0%
+leefgebied_bwk: ae%, 2190%, 3140%, 3150%, aer%, aev%, apo%, app%, gml%, k(a%, kn%, ku%, lh%, n, n-, n+, pop%, mc%, rbbmc%, md%, 7140%, 91E0%, mr%, 1130%, 1330%, 2190%, 6430_hw%, 6430_mr%, 7140%, 7140_mrd%, rbbmr%, ms%, rbbms%, ru%, 2180%, 9160%, 91E0%, 91F0%, rud%, sf%, rbbsf%, sm%, 4010%, 7230%, rbbsm%, sz%, va%, vc%, vf%, vm%, vn%, vo%, vt%, 91D0%

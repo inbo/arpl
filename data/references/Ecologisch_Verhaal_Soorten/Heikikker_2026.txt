@@ -1,0 +1,95 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: HEIKIKKER
+Soort: Rana arvalis (amfibie / heidevennen, veengebieden & vochtige overgangen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Heikikker is een amfibie gebonden aan zure tot zwak gebufferde, voedselarme tot 
+matig voedselrijke landschappen. De ecologie vereist onbeschaduwde, snel opwarmende 
+en visvrije voortplantingswateren (heidevennen, veenputten, petgaten) in directe 
+ruimtelijke samenhang met een vochtig, extensief landhabitat (vochtige heide, 
+hoogveen, moerasbossen en schraallanden) voor het zomerverblijf en overwintering.
+
+A. Waterbiotoop ('waterbiotoop0' + Watervlakken):
+   - BWK-selectie:
+       3110%, 3130%, ao, ao+, ao-, aom%, 3160%, 7140%, 7150%
+       (Zwak gebufferde en oligotrofe vennen, zure plassen, veenputten, 
+       verlandingsvegetaties en overgangsvenen)
+   - Externe data (watervlakken2024.shp):
+       * Vaste filter op kleine wateren: Watervlakken worden met 5 m gebufferd 
+         en geaggregeerd; alleen clusters <= 4.000 m2 (0,4 ha) worden geselecteerd.
+       * Ecologische functie: Grote open wateren bevatten predatieve vis (zoals 
+         Snoek en Baars) die de eiklompen en larven decimeren. Heikikkers leggen 
+         hun eiklompen bij voorkeur in ondiepe, zonbeschenen oeverzones van 
+         kleinere vennen en veenpoelen.
+   - Fusie: Cover van BWK-waterfracties en geselecteerde kleine watervlakken.
+
+B. Landbiotoop ('landbiotoop1'):
+   - BWK-selectie:
+       ce%, 4010%, 7150%, cm, cm+, 4030%, ct, ct+, 7110%, hj%, hm%, hmo%, 
+       6230%, mc%, mcb%, rbbmc%, md%, 7140%, mk%, 7230%, ms%, rbbms%, pms, 
+       pms+, ppms, ppms+, rbbppm%, qb, qb+, 9120%, 9190%, 2180%, qs, qs+, 
+       sm%, 4010%, 7140%, 7230%, 91E0%, so%, rbbso%, t%, 7110%, vo%, 91E0%, 
+       vt%, 91D0%
+       (Natte en vochtige heiden, hoogvenen, veenmosrietlanden, broekbossen, 
+       berken-eikenbossen en vochtige schraalgraslanden)
+
+
+2. LANDBIOTOOP FILTERING OP EILANDGROOTTE (>= 10 HA)
+--------------------------------------------------------------------------------
+- Minimale eilandoppervlakte landbiotoop (opp_land_ha = 10 ha):
+    * Samengestelde landclusters worden gevormd via 8-richtingen rasterbuur 
+      (zonder overbruggingsafstand, afstand_m = 0 m).
+    * Drempelwaarde: >= 10 ha (100.000 m2) werkelijke habitatoppervlakte per eiland.
+    * Ecologische functie: Heikikkers verblijven buiten de korte voortplantingsperiode 
+      in het voorjaar (ca. 2 weken) het hele jaar op het land. Een compacte kern 
+      van minstens 10 ha vochtig landbiotoop is noodzakelijk om uitdroging te 
+      voorkomen, voldoende prooiaanbod (kevers, spinnen, slakken) te garanderen 
+      en vorstvrije overwinteringsplekken (moslaag, strooisellaag, boomstronken) 
+      te bieden.
+
+
+3. RUIMTELIJKE KOPPELING WATER EN LAND (AFSTAND = 0 M)
+--------------------------------------------------------------------------------
+- Directe overlap / aansluiting:
+    * Het goedgekeurde landbiotoop (>= 10 ha) en het geschikte waterbiotoop worden 
+      wederzijds op elkaar gemaskerd (landbiotoop maskeert water en vice versa).
+    * Ecologische functie: De overgang tussen voortplantingsven en zomerbiotoop 
+      moet drempelloos zijn (afstand_m = 0 m). Vennen die geïsoleerd liggen in 
+      een intensieve landbouw- of bebouwingsmatrix zonder direct aansluitend 
+      zomerbiotoop vallen af wegens te hoge predatie- en uitdrogingsrisico's tijdens 
+      de migratie.
+
+
+4. BOVENLOKALE METAPOPULATIE-EISEN (148 HA & 5 PLASSEN)
+--------------------------------------------------------------------------------
+Net als de Boomkikker functioneert de Heikikker in een metapopulatieverband om 
+lokale voortplantingsmislukkingen (door extreme voorjaarsdroogte of verzuring) op 
+te vangen:
+
+- Dispersie- en clusterafstand (buffer_m): 2.000 m (2 km)
+    * Gekoppelde water- en landkernen worden samengevoegd over tussenafstanden 
+      tot 2.000 m via focal moving window buffering (directions = 4).
+- Criterium 1: Minimale netwerkgrootte (min_totale_ha): >= 148 ha
+    * Het geaccumuleerde werkelijke leefgebied (water + land) binnen het 
+      2 km-netwerk moet minstens 148 ha bedragen.
+- Criterium 2: Minimale poelendichtheid (min_plassen): >= 5 plassen
+    * Binnen de polygooncontour van het 2 km-netwerk moeten minstens 5 
+      afzonderlijke watervlakken (uit de watervlakkenkaart) aanwezig zijn.
+- Ecologische functie: Garandeert een duurzame metapopulatie (minimaal 5 
+  voortplantingswateren over minstens 148 ha habitat binnen een 2 km 
+  dispersiestraal) die demografische schommelingen en genetische verarming tegengaat.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Heikikker (Rana arvalis)
+Waterbiotoop drempel      : Poelen/clusters <= 4.000 m2 (visarm/ondiep/opwarmend)
+Landbiotoop drempel       : >= 10 ha werkelijk landbiotoop (8-richtingen patches)
+Koppeling water-land      : Directe ruimtelijke interactie (afstand_m = 0 m)
+Metapopulatie zoekstraal  : 2.000 m (2 km dispersiecapaciteit)
+Drempelwaarde netwerk     : >= 148 ha totaal habitat EN >= 5 geschikte plassen
+Dispersieradius (ARPL)    : 2.000 m
+================================================================================

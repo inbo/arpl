@@ -1,0 +1,5 @@
+bwk: ce%, 4010%, 7150%, ct%, 7110%
+
+MinOpp_ha: 1
+AfstandBiotopen_m:  50
+Dispersiecap_m: 3000

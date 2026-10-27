@@ -1,0 +1,5 @@
+biotoop: had%, dm%, ha%, 2330%, 2130_had, 2150
+
+MinOpp_ha: 0.16
+AfstandBiotopen_m:  20
+Dispersiecap_m: 100

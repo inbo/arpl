@@ -1,0 +1,5 @@
+bwk: ce%, 4010%, 7150%, cdb%, cg%, 2310%, 4030%, cmb%, ct%, 7110%, cvb%, pms%, ppms%, se%, sgb%, 6230%, sk%, 6210%, sz%, t%, 7110%, k(ce%, k(ct%, k(cdb%, k(cmb%, k(cg%, k(cvb%, k(t%, k(se%, k(pms%, k(ppms%, k(sgb%, k(sk%, k(sz%, 5130%, 7150%
+
+MinOpp_ha: 10
+AfstandBiotopen_m:  100
+Dispersiecap_m: 5000

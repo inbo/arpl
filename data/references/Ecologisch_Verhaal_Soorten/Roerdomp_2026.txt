@@ -1,0 +1,115 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: ROERDOMP
+Soort: Botaurus stellaris (moerasvogel / overjarig riet, ecotonen & viswateren)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Roerdomp is een uiterst schuwe, cryptisch gekleurde reigerachtige en een 
+strikte habitatspecialist van grootschalige, dynamische rietmoerassen. De soort 
+vereist overjarig, vitaal riet dat in ondiep water staat (zogenaamd 'waterriet') 
+voor nestbouw en dekking, in combinatie met visrijke, heldere en ondiepe 
+waterkanten en ecotonen (zoals kreken, petgaten, rietkragen en poelen) waar hij 
+onopgemerkt kan jagen op witvis, amfibieën en grote waterinvertebraten.
+
+A. Basishabitat Componenten:
+   - Rietland ('rietland'):
+       mr%, 2190%, 6430_hw%, 6430_mr%, 7140%, 7140_mrd%, rbbmr%
+       (Rietlanden, rietkragen, drijftillen en veenmoskraggen met riet)
+   - Open water ('openwater'):
+       3260%, 3270%, ae%, 2190%, 3140%, 3150%, ao%, 3160%, 7140%, 7150%, 
+       3110%, 3130%, ap%, apo%
+       (Mesotrofe tot eutrofe plassen, oligotrofe vennen, petgaten en vijvers)
+   - Zeggevegetaties ('zegge'):
+       mc%, rbbmc% (Grote zeggenmoerassen)
+   - Moeras en ruigten ('moeras'):
+       hc%, 2190%, 6410%, rbbhc%, hf%, 6430%, rbbhf%, md%, 7140%, 91E0%, 
+       mk%, 7230%, ms%, rbbms%, mz%, 1330_da%, 1330_hpr%
+       (Dotterbloemgraslanden, moerasspirea-ruigten, alluviale verruigingen)
+   - Grazige overgangen ('grasland'):
+       hj% (Vochtige graslanden)
+   - Vochtige struwelen ('struweel'):
+       sf%, 2180%, 91E0%, rbbsf%, so%, rbbso%
+       (Gagelstruwelen, grauwe wilgenstruwelen en alluviale broekstruwelen)
+
+B. Negatieve Stoorlagen (Directe Uitsluiting):
+   - Hooggroen: Groenkaart_2021.tif (alle hooggroen = 1)
+   - Estuariene wateren: Habitattype 1130 (estuaria) uit Parquet
+   - Fusie Stoorlaag: Cover van opgaand bos en estuarien water wordt integraal 
+     via inverse maskering uit alle biotooplagen gefilterd.
+   - Ecologische functie: Roerdompen mijden gesloten bosopstanden wegens 
+     predatie door roofvogels/kraaiachtigen en estuaria wegens te sterke 
+     getijdenstroming en zoutinvloed die waterrietontwikkeling verhinderen.
+
+
+2. MEERTRAPS RUIMTELIJKE FILTERS OP HET LEEFGEBIED
+--------------------------------------------------------------------------------
+Het basishabitat (som van alle componenten, geclamped op 1.0) wordt stapsgewijs 
+onderworpen aan drie opeenvolgende ecologische nabijheidstoetsen:
+
+A. Stap 2: Grote Open Waterpartijen (>= 10 ha) & 100 m Schil
+   - Open water ('openwater_clean_opp') wordt geclusterd met dist_m = 50 m.
+   - Drempelwaarde: >= 10 ha (100.000 m2) aaneengesloten open wateroppervlak.
+   - 100 m Waterbuffer: Alleen leefgebied binnen <= 100 m van deze grote 
+     waterlichamen blijft behouden (roerdomp_leefgebied2_opp).
+   - Ecologische functie: Grote waterplassen bieden visrijkdom en fungeren als 
+     centrale voedselmotor binnen het territorium.
+
+B. Stap 3: Robuuste Riet-Waterkanten / Ecotonen (>= 0.5 ha op 10 m buffer)
+   - 10 m Rietbuffer: Rond het zuivere rietland wordt een buffer van 10 m getrokken.
+   - Oeverextractie: Het open water dat binnen deze 10 m rietbuffer valt, vormt 
+     de directe 'waterkant' (de ecotoon tussen riet en water).
+   - Clustertoets waterkant: De waterkant moet binnen een 50 m netwerk minstens 
+     0.5 ha (5.000 m2) werkelijk oppervlak omvatten.
+   - 100 m Waterkantbuffer: Alleen leefgebied binnen <= 100 m van deze robuuste 
+     waterkant blijft behouden (roerdomp_leefgebied3_opp).
+   - Ecologische functie: Garandeert een minimale lengte en dichtheid van 
+     water-rietovergangen; massieve rietvelden zonder grillige waterkanten 
+     bieden geen bereikbare visgronden.
+
+C. Stap 4: Nestkernen in Zuiver Rietland (>= 0.5 ha)
+   - Zuiver rietland ('rietland_clean_opp') wordt geclusterd met dist_m = 50 m.
+   - Drempelwaarde: >= 0.5 ha (5.000 m2) werkelijk rietoppervlak per kern.
+   - 100 m Rietkernbuffer: Alleen leefgebied binnen <= 100 m van een dergelijke 
+     nestkern blijft behouden (roerdomp_leefgebied4_opp).
+   - Ecologische functie: Een roerdompvrouwtje vereist een veilige, ongestoorde 
+     rietkern van minimaal 0.5 ha om een nestplatform boven het water te bouwen.
+
+
+3. STAP 5: FINALE METAPOPULATIE-CLUSTERING (MIN. 25 HA OP 500 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (dist_m): 500 m
+    * Cellen van het gezuiverde, aan waterkanten en nestkernen gekoppelde habitat 
+      worden over een netwerkafstand van 500 m samengevoegd.
+- Minimale leefgebiedsdrempel: >= 25 ha (250.000 m2) werkelijk habitat 
+  (drempel_25ha_m2 = 250.000).
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (bestandsnaamconventie met '_wv' suffix).
+- Ecologische functie: Een Roerdompterritorium vereist een uitgestrekt moeras- 
+  complex van minstens 25 ha binnen 500 m vluchtbereik om het gehele broedseizoen 
+  voldoende vis en amfibieën te kunnen foerageren voor de jongen.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses bovenlokaal niveau.
+    * Ecologische functie: Buiten het broedseizoen en tijdens zwerfgedrag 
+      kunnen Roerdompen grote afstanden afleggen langs natte corridors 
+      (Scheldebekken, Hageven, vijverregio De Wijers, IJzervallei) op zoek 
+      naar open, vorstvrij water.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Roerdomp (Botaurus stellaris) - broed- & watervogel (_wv)
+Basishabitat              : Rietland, open water, zeggemoerassen, ruigten & struwelen
+Exclusielagen             : Hooggroen (Groenkaart 2021) EN estuaria (code 1130)
+Wateroppervlak-eis        : Binnen 100 m van open watercluster >= 10 ha (50 m netwerk)
+Ecotoon / waterkant-eis   : Binnen 100 m van riet-waterkant >= 0.5 ha (10 m buffer)
+Nestkern-eis              : Binnen 100 m van zuivere rietkern >= 0.5 ha (50 m netwerk)
+Metapopulatie clustering  : 500 m netwerkafstand
+Minimale leefgebiedsomvang: >= 25 ha werkelijk habitat per complex
+Dispersieradius (ARPL)    : 25000 m
+================================================================================

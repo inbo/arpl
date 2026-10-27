@@ -1,0 +1,61 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: DRIJVENDE WATERWEEGBREE
+Soort: Luronium natans (waterplant / mesotroof tot oligotroof zoet water)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITAT & SELECTIE
+--------------------------------------------------------------------------------
+- Type habitat: Matig voedselarme tot matig voedselrijke (oligo- tot mesotrofe), 
+  zwak gebufferde, heldere, stilstaande tot traag stromende wateren met een 
+  zandige of venige bodem (kanalen, vaarten, vennen, sloten en heideplassen).
+- BWK-selectie (voortplanting_bwk):
+    ao, ao+, 3160%, 7140%, 7150%, aom, aom+, 3110%, 3130%, ap, ap+, 
+    k(ao), k(aom), 3260%
+    (Natuurlijke en halfnatuurlijke stilstaande wateren, heidevennen, zure 
+    plassen, oligotrofe wateren met oeverkruidvegetaties en beken)
+- Hydrografische data (Huet-zones waterlopen):
+    BkK1, BkK2, KabPKunst, Kan, KanPKunst, Kunst
+    (Kleine beken/zijlopen van het foreltype, kanalen, gekanaliseerde 
+    waterlopen en kunstmatige waterpartijen)
+- Fusiemethode: Cover-operatie waarbij BWK-oppervlaktefracties worden aangevuld 
+  met geschikte Huet-zones (Huet-cellen krijgen een nominale basisfractie 
+  van 0.01 / 1% bedekking).
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+- Overbruggingsafstand (dist_m): 20 m
+    * Cellen binnen 20 m worden via een focal moving window (straal 10 m, 
+      directions = 4) samengevoegd tot aaneengesloten watercomplexen.
+    * Ecologische functie: Overbrugt duikers, bruggen, stuwen en smalle 
+      onderbrekingen in kanalen, vaarten en watergangstelsels zodat een 
+      hydrologisch verbonden waterloop als één geheel functioneert.
+- Minimale oppervlakte (0.16 ha): Dynamisch via Excel (MinOpp_ha)
+    * Drempel berekend op werkelijke habitatoppervlakte per cluster 
+      (0.16 ha * 10.000 m2).
+    * Ecologische functie: Garandeert een minimaal watervolume en stabiele 
+      chemische/hydrologische condities tegen plotselinge uitdroging of 
+      extreme temperatuurschommelingen.
+
+
+3. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses op stroomgebiedsniveau.
+    * Ecologische functie: Modelleert de verplaatsing van zaden, rozetten en 
+      vegetatieve fragmenten (hydrochoor via waterstroming/scheepvaart of 
+      epizoöchoor via watervogels) tussen verschillende kanaalpanden en 
+      vencomplexen.
+
+
+4. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Drijvende waterweegbree (Luronium natans)
+Doelbiotoop               : Oligo- tot mesotrofe wateren, kanalen, vennen & beken
+Bronlagen                 : BWK (voortplanting_bwk) + Huet-zones (kanalen/beken)
+Fusiemethode              : Cover (BWK aangevuld met Huet nominale fractie 0.01)
+Functionele zoekstraal    : 20 m (overbrugging van kunstwerken/duikers)
+Minimale clusteroppervlak : 0.16 ha
+Dispersieradius (ARPL)    : 100 m
+================================================================================

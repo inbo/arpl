@@ -1,0 +1,92 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: NACHTZWALUW
+Soort: Caprimulgus europaeus (broedvogel / heide, kapvlakten & open naaldbos)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Nachtzwaluw is een schemer- en nachtactieve zomervogel en habitatspecialist 
+van droge, zandige heidelandschappen en halfopen boscomplexen. De soort broedt 
+op de kale bodem tussen heidepollen, strooisel of kapresten en jaagt 's nachts 
+op vliegende nachtvlinders en kevers langs open bosranden, kapvlaktes, brandgangen 
+en ijle overgangen tussen bos en heide.
+
+A. Voortplantings- en foerageerhabitat ('voortplanting'):
+   - BWK-selectie:
+       cd%, 2310%, 4030%, ce%, 4010%, 7150%, 7140_oli%, cg%, 5130%, cm%, 
+       cp%, cv%, dm%, 2330%, ha%, 6230%, 6230_ha%, 2130%, 2130_had%, 2150%, 
+       hn%, pi%, pms%, ppa%, ppi%, ppmh%, rbbppm%, se%, sg%, rbbsg%
+       (Droge en vochtige heiden, stuifzanden, duinen, pionier- en heischrale 
+       graslanden, kapvlaktes en ijle/jonge dennenopstanden)
+
+B. Boscomplexen ('bos'):
+   - BWK-selectie:
+       9190%, pa%, pm%, pp%, rbbppm%, qs%
+       (Oude eiken-berkenbossen op zandgrond, grove dennenbossen, Corsicaanse 
+       dennenbossen en gemengde naaldbossen)
+
+
+2. STAP 1: BOSCLUSTERING & 5 HA KERNDREMPEL
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (cluster_afstand_bos): 50 m
+- Oppervlaktedrempel bos (drempel_bos_m2): >= 5 ha (50.000 m2)
+- Ecologische functie: Nachtzwaluwen hebben overdag behoefte aan beschutte 
+  rust- en roestplaatsen op lage horizontale dennentakken of op de bosbodem. 
+  Kleine, losstaande bosjes (< 5 ha) bieden onvoldoende luwte, rust en 
+  beschutting tegen weersinvloeden en dagpredatoren.
+
+
+3. STAP 2: BOSRANDANALYSE & OEVER-/RANDLENGTE-TOETS (MIN. 1.500 M)
+--------------------------------------------------------------------------------
+Het microhabitat van de Nachtzwaluw bevindt zich bij uitstek op de gradiënt 
+tussen gesloten bos en open terrein:
+
+1. Bosranddetectie ('bepaal_bosrand'):
+   - Het goedgekeurde 5 ha boscluster wordt via een 3x3 moving window (1 pixel = 10 m) 
+     gebufferd.
+   - De overlap van deze buffer met het open voortplantingshabitat identificeert 
+     de directe bosrandcellen (rand_opp).
+2. Aggregatie open habitat & toets op randlengte:
+   - Het open biotoop wordt geaggregeerd via een buffer van 25 m om functionele 
+     heide- en kapvlaktecomplexen af te bakenen (directions = 8).
+   - Filtervoorwaarde: Binnen de contour van elk open biotoopcomplex moeten 
+     minstens 150 bosrandpixels aanwezig zijn (RandPixels >= 150).
+   - 150 pixels op 10 m resolutie komt overeen met minstens 1.500 m (1,5 km) 
+     functionele bosrandlengte.
+   - Ecologische functie: Een solitair mannetje verdedigt een territorium 
+     langs lange bos-heideovergangen; open heideterreinen of kapvlaktes zonder 
+     minstens 1,5 km grillige bosrand bieden onvoldoende zangposten en 
+     luwe jachtcorridors voor nachtvlinders.
+
+
+4. STAP 3: FINALE LEEFGEBIEDSCLUSTERING (MIN. 25 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (cluster_afstand_leefgebied): 50 m
+- Minimale leefgebiedsoppervlakte: >= 25 ha (250.000 m2) werkelijk habitat 
+  (drempel_leefgebied_m2 = 250.000).
+- Ecologische functie: Nachtzwaluwen zijn semi-koloniaal of vestigen zich in 
+  losse clusters van meerdere territoria. Een aaneengesloten complex van 
+  minstens 25 ha structuurrijk heide- en kapvlaktebiotoop met rijke bosranden 
+  is noodzakelijk voor de instandhouding van een duurzame lokale populatie.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses bovenlokaal niveau.
+    * Ecologische functie: Als lange-afstandstrekvogel heeft de soort een hoge 
+      vliegcapaciteit, maar binnen Vlaanderen modelleert de dispersiecapaciteit 
+      de uitwisseling tussen de grote heidekernen (Campine-bekken, Kalmthoutse 
+      Heide, militaire domeinen in Limburg en Antwerpen).
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Nachtzwaluw (Caprimulgus europaeus) - broedvogel
+Bosclusterdrempel         : >= 5 ha naald-/loofbos (clustering: 50 m)
+Bosranddetectie           : 3x3 focal window (10 m overlap open biotoop en bos)
+Bosrandlengte-eis         : Minstens 150 pixels (= 1.500 m) bosrand per open biotoopcluster
+Finale leefgebiedsdrempel : >= 25 ha werkelijk habitat (clustering: 50 m)
+Dispersieradius (ARPL)    : 5000 m
+================================================================================

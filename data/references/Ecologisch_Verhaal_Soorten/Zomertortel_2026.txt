@@ -1,0 +1,138 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: ZOMERTORTEL
+Soort: Streptopelia turtur (duifachtige / broedvogel van kleinschalig cultuurland)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Zomertortel is een lange-afstandstrekker (overwinteraar in de Sahel) en een 
+ernstig bedreigde Rode Lijst-soort in Vlaanderen. De soort is ecologisch 
+gespecialiseerd op rijk gestructureerd, kleinschalig agrarisch cultuurlandschap 
+met een hoge dichtheid aan houtkanten, doornige struwelen en zonnige overgangen. 
+Als strikt zaadetende vogel zoekt de Zomertortel op de grond naar zaden van vroege 
+onkruiden (o.a. duivenkervel, vogelmuur, ganzenvoet) en cultuurgewassen. 
+Voor succesvol broeden is een strikte ruimtelijke driehoek vereist: (1) dichte, 
+doornige neststruwelen, (2) open foerageergronden binnen korte vliegafstand, 
+en (3) vlot toegankelijk open drinkwater met geleidelijk aflopende oevers.
+
+A. Voortplantings- en Nestbiotoop ('voortplanting'):
+   - BWK-selectie:
+       sp, sp-, sp+, spb%, sd%, sf%, sk%, so%, spr%, sz%, kh(sp%, khcr%, 
+       kbcr%, kt(sp%, mr%, hf%, 6430, rbbsp%, rbbso%, rbbmr%, rbbsf%, 
+       sprb%, kbq%, kbqr%, ppmb%
+       (Dichte doornstruwelen, braam- en sleedoornstruwelen, houtkanten, 
+       heggeranken, bosranden en zoomvegetaties)
+   - Uitsluitingen:
+       * Gesloten boscomplexen > 20 are (via Groenkaart hooggroen-focal)
+       * Grote dorpskernen / verstedelijking > 10 ha (inclusief 100 m buffer)
+   - Noot habitatstatus: Zoals consequent aangehouden blijft 'hg' (en afgeleiden) 
+     volledig uitgesloten als habitat.
+
+B. Foerageerbiotoop (BWK + Landbouwgebruikspercelen LGP 2025):
+   1. BWK-selectie ('foerageer'):
+      4030%, 4010%, cg%, ni%, bs%, hmo%, ku%, hu%, hk%, ha%, hn%, hm%, 
+      hp%, hrb%, hj%
+      (Schrale graslanden, heischrale vegetaties, bermen, akkerranden, ruderale 
+      terreinen en pioniervegetaties)
+   2. Landbouwpercelen (LGP 2025, 'vlaanderen_lgp_gwscod_2025_10m.tif'):
+      Gewascodes: c(201, 202, 311, 321, 601, 800)
+      (Graangewassen, braaklegging en zadenproducerende teelten; toekenning 
+      oppervlaktefractie 0.01 per actieve cel)
+   - Fusie Foerageerhabitat: Additieve sommatie (BWK + LGP, clamp max. 1.0).
+
+C. Drinkwaterbronnen (BWK + Watervlakken + Hydrografie):
+   1. BWK-waterfracties ('water'):
+      ap%, ae%, ao%, am%, ah% (poelen, veedrinkpoelen, grachten, vennen)
+   2. INBO Watervlakkenkaart 2024 ('vlaanderen_watervlakken_2024_10m.tif', fractie 0.01)
+   3. Huet-zones waterlopen ('vlaanderen_huetzon_10m.tif', fractie 0.01)
+   - Fusie Drinkwater: Additieve sommatie van de drie waterlagen (clamp max. 1.0).
+
+
+2. NEGATIEVE FILTERS OP BROEDBIOTOOP (VERBOSSING & BEBOUWING)
+--------------------------------------------------------------------------------
+Zomertortels mijden zowel diepe, aaneengesloten boskernen als verstedelijkte 
+omgevingen:
+
+1. Verbossingsfilter (Hooggroen > 20 are):
+   - Groenkaart 2021 hooggroen (waarde 1) wordt via een 5x5 focal window geanalyseerd.
+   - Cellen met hooggroen binnen een dichte boommatrix (>= 12 cellen in window) 
+     worden als gesloten bos beschouwd (r_bos_20are) en via inverse maskering 
+     uit het broedbiotoop verwijderd.
+   - Ecologische functie: Voorkomt selectie van dichte boskernen; de Zomertortel 
+     nestelt uitsluitend in geïsoleerde struwelen, mantels en houtkanten.
+2. Bebouwingsfilter (Dorpskernen > 10 ha + 100 m buffer):
+   - Stedelijke BWK-eenheden ('u%' codes, m.u.v. 'ulm') worden geclusterd 
+     (dist_m = 100 m, drempel >= 10 ha).
+   - Rond deze kernen wordt een verstoringsbuffer van 100 m gelegd die 
+     het broedbiotoop inactiveert.
+   - Ecologische functie: Sluit intensief bebouwde agglomeraties en verstedelijkte 
+     dorpsranden uit wegens verstoring en gebrek aan zaadbronnen.
+
+
+3. BIOTOOPFILTERING & MINIMALE DREMPELS
+--------------------------------------------------------------------------------
+- Broedbiotoop ('broed_gefilterd_opp'):
+    * Zoekstraal clustering (dist_m): 50 m
+    * Minimale oppervlaktedrempel: >= 300 m2 (0.03 ha werkelijk struweel)
+    * Ecologische functie: Kleine, compacte doornstruwelen van enkele are bieden 
+      reeds voldoende nestgelegenheid en predatiebescherming.
+- Foerageerbiotoop ('foerageer_gefilterd_opp'):
+    * Zoekstraal clustering (dist_m): 50 m
+    * Minimale oppervlaktedrempel: >= 1 ha (10.000 m2 werkelijk foerageerareaal)
+    * Ecologische functie: Waarborgt substantiële zadenbronnen in akkerranden 
+      en schraallanden.
+- Drinkwater ('water_gefilterd_opp'):
+    * Geen drempelfilter; alle geregistreerde open wateren, poelen en 
+      waterlopen stromen integraal door als potentiële drinkplaats.
+
+
+4. RUIMTELIJKE DRIEHOEK: OMGEVINGSBUFFERS (300 M EN 500 M)
+--------------------------------------------------------------------------------
+Het broedsucces van de Zomertortel staat of valt met de gelijktijdige nabijheid 
+van voedsel en water rond het nest:
+
+1. Foerageerbuffer (300 m):
+   - Rond het goedgekeurde foerageercomplex (>= 1 ha) wordt een buffer van 
+     300 m berekend (foerageer_afstand_m = 300).
+   - Ecologische functie: Omdat Zomertortels hun jongen voeden met energierijke 
+     'kropmelk' (aangemaakt uit zaden), mogen de foerageervluchten vanuit het 
+     nest idealiter niet verder reiken dan 300 meter om het nest niet te lang 
+     onbewaakt achter te laten.
+2. Drinkwaterbuffer (500 m):
+   - Rond de waterbronnen wordt een buffer van 500 m berekend 
+     (drinkwater_afstand_m = 500).
+   - Ecologische functie: Zaadetende duiven moeten dagelijks drinken om het 
+     droge voedsel te verteren en kropmelk aan te maken; open water moet 
+     binnen 500 m van het nest bereikbaar zijn.
+3. Finale Interactiezone:
+   - Alleen broedstruweel dat tegelijkertijd binnen <= 300 m van voedsel én 
+     binnen <= 500 m van open water ligt (r_omgeving_ok_opp), wordt geselecteerd 
+     als finaal leefgebied (final_opp).
+
+
+5. NETWERK-ID'S & BOVENLOKALE CONNECTIVITEIT
+--------------------------------------------------------------------------------
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op het 
+  volledig gevalideerde leefgebied (export naar '00_ID_Rasters' en 
+  '01_Werkelijke_Oppervlaktes').
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses op Vlaams niveau.
+    * Ecologische functie: Brengt de verregaande isolatie en fragmentatie van de 
+      overgebleven Vlaamse broedkernen in beeld (voornamelijk relictbolwerken in 
+      de zandstreek, zuidelijk West-Vlaanderen, de Kempen en Haspengouw).
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Zomertortel (Streptopelia turtur) - broedvogel
+Broedbiotoop              : Doornstruwelen, houtkanten, heggen & mantels
+Broedbiotoop drempel      : >= 300 m2 werkelijk struweel (clustering: 50 m)
+Uitsluitingen broedbiotoop: Gesloten bos > 20 are EN dorpskernen > 10 ha (incl. 100 m buffer)
+Foerageerbiotoop          : BWK-ruigten/schraallanden + LGP landbouwteelten (gewascodes 201, 202, etc.)
+Foerageerdrempel          : >= 1 ha werkelijk oppervlak (clustering: 50 m)
+Drinkwaterbronnen         : BWK-water + Watervlakken 2024 + Huet-waterlopen
+Ruimtelijke nabijheidseis : Neststruweel moet liggen binnen <= 300 m van voedsel 
+                            EN binnen <= 500 m van drinkwater
+Dispersieradius (ARPL)    : 10000 m
+================================================================================

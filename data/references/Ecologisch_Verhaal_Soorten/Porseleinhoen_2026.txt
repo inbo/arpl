@@ -1,0 +1,112 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: PORSELEINHOEN
+Soort: Porzana porzana (moerasvogel / overstroomde graslanden & zeggenmoerassen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+Het Porseleinhoen is een heimelijke moerasral gebonden aan ondiepe, dynamische 
+water-landovergangen. De soort broedt in dichte, lage vegetaties (zoals zeggen, 
+liesgras, vlotgras en ijle rietkragen) die met de voeten in ondiep water staan 
+(waterdiepte ca. 5 tot 30 cm) met een rijke modderlaag. Het biotoop bestaat uit 
+een combinatie van natte/geïnundeerde graslanden en moeras- en verlandingszones 
+op natuurlijk natte bodems, met een open horizon zonder opgaand hout.
+
+A. Doelbiotoop Grasland & Moeras ('grasland' + 'moeras'):
+   - Grasland ('grasland'):
+       ces%, 7140_oli%, hj%, hm%, 6410%, hme%, hmm%, hpr+, 2190%, rbbkam%, 
+       rbbzil%, hu%, 6510%, ku%, 3270%, 6430%
+       (Vochtige en periodiek overstroomde graslanden, dotterbloemhooilanden, 
+       overgangsveen-graslanden en graslanden van alluviale laagtes)
+   - Moeras ('moeras'):
+       hc%, 2190%, 6410%, rbbhc%, hf%, 6430%, rbbhf%, mc%, rbbmc%, md%, 
+       7140%, mk%, 7230%, mm%, 7210%, mp%, 2190_mp%, mr%, 1130%, 1330%, 
+       6430_hw%, 6430_mr%, rbbmr%, ms%, rbbms%
+       (Zeggenmoerassen, rietvegetaties, slikkige overgangen, galigaan- en 
+       moerasspirea-ruigten en veenmoskraggen)
+
+B. Directe storingslaag (Stap 1 uitsluiting):
+   - Externe Groenkaart: Groenkaart_2021.tif (alle hooggroen / waarde 1)
+   - Terrils & groeven ('terril' / 'kg%'): Direct uitgesloten via inverse 
+     maskering op het samengestelde biotoop (clamp max. 1.0).
+
+
+2. NATTE GRONDEN FILTER VIA DRAINAGEKAART (STAP 2)
+--------------------------------------------------------------------------------
+Porseleinhoenders tolereren geen droge of ontwaterde percelen. Het samengevoegde 
+biotoop wordt getoetst aan de Vlaamse drainagekaart:
+
+- Drainagekaart: vlaanderen_drainage_n2khab_10m.tif
+- Geselecteerde drainageklassen:
+    * "d", "e", "f", "h", "i", "g", "e-f", "h-i", "e-i"
+    * Betreft matig natte tot zeer natte bodems met een permanent of periodiek 
+      zeer hoge grondwaterstand.
+- Ecologische functie: Sluit landschappelijk te droge graslanden en kunstmatig 
+  ontwaterde percelen uit; garandeert dat alleen grondwatergevoede of 
+  inundatiegevoelige laagtes behouden blijven.
+
+
+3. EERSTE CLUSTERING & PRE-DREMPEL (3 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (dist_m): 50 m
+- Oppervlaktedrempel: >= 3 ha (30.000 m2) werkelijk habitatoppervlak.
+- Ecologische functie: Elimineert versnipperde, kleine slootkanten en geïsoleerde 
+  plukjes moeras die hydrologisch te kwetsbaar zijn om gedurende het broedseizoen 
+  geïnundeerd te blijven.
+
+
+4. OPEN ZICHT FILTER: BOSRANDSTORING (100 M ROND BOS >= 20 ARE)
+--------------------------------------------------------------------------------
+Het Porseleinhoen is een vogel van weidse, open moerasvlaktes en mijdt opgaand hout:
+
+1. Bosclusterdrempel (>= 20 are):
+   - Hooggroen (Groenkaart 2021) wordt via 8-richtingen patches geclusterd.
+   - Alleen aaneengesloten boomopstanden van minstens 20 cellen (>= 20 are / 2.000 m2) 
+     worden geselecteerd als functionele storingsbron.
+2. 100 m Exclusiezone:
+   - Rond deze boskernen wordt een storingsbuffer van 100 m berekend.
+   - Het habitat binnen deze 100 m buffer wordt integraal gemaskerd 
+     (biotoop_fase5_kaal_frac).
+3. Re-evaluatie 3 ha drempel:
+   - Het resterende open habitat wordt na aftrek van de bosrandzone direct 
+     opnieuw getoetst op de >= 3 ha drempel (clustering: 50 m).
+   - Ecologische functie: Bescherming tegen predatoren (zoals Bruine kiekendief, 
+     Buizerd, Zwarte kraai en Vos) die bomenrijen en bosranden benutten als 
+     uitkijk- en naderingspost.
+
+
+5. FINALE CLUSTERING & FUNCTIONEEL COMPLEX (>= 10 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (dist_m): 50 m
+- Einddrempel leefgebied: >= 10 ha (100.000 m2) werkelijk habitatoppervlak 
+  (drempel_10ha_m2 = 100.000).
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (export naar '00_ID_Rasters' en 
+  '01_Werkelijke_Oppervlaktes').
+- Ecologische functie: Porseleinhoenders vestigen zich vaak in semi-koloniale 
+  clusters in uitgestrekte moerasgebieden. Een aaneengesloten natte kern van 
+  minimaal 10 ha waarborgt voldoende dynamische peilschommelingen en 
+  vluchtwegen wanneer waterstanden in de loop van de zomer zakken.
+
+
+6. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): 250.000 m (250 km / continentale trekvogel)
+    * Waarde uit Excel: Dispersiecap_m = 250.000 m.
+    * Ecologische functie: Als nomadische moerasvogel en lange-afstandstrekker 
+      kan het Porseleinhoen enorme afstanden overbruggen om tijdelijk geschikte 
+      inundatievlaktes (zoals de IJzervallei, valleien van de Beneden-Schelde, 
+      Demerbroeken of krekengebieden) te koloniseren.
+
+
+7. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Porseleinhoen (Porzana porzana) - broedvogel
+Doelbiotoop               : Vochtige graslanden, overstroomde uiterwaarden & moerassen
+Bodemdrainage             : Beperkt tot natte bodems (klassen d, e, f, h, i, g, e-f, h-i, e-i)
+Tussentijdse drempel      : >= 3 ha werkelijk habitat (clustering: 50 m)
+Exclusiezone hooggroen    : 100 m buffer rond bomenclusters >= 20 are (met 3 ha herkeuring)
+Finale leefgebiedsdrempel : >= 10 ha werkelijk habitat (clustering: 50 m)
+Dispersieradius (ARPL)    : 250.000 m (250 km, trekvogel)
+================================================================================

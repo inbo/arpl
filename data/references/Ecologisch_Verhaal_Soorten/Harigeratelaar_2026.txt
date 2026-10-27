@@ -1,0 +1,5 @@
+biotoop: hk%, 6210_hk, 6120, hu%
+
+MinOpp_ha: 0.16
+AfstandBiotopen_m:  20
+Dispersiecap_m: 100

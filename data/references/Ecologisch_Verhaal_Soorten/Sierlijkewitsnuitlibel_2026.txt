@@ -1,0 +1,126 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: SIERLIJKE WITSNUITLIBEL
+Soort: Leucorrhinia pectoralis (libel / mesotrofe veenplassen, petgaten & verlanding)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Sierlijke witsnuitlibel is een zeldzame, prioritair beschermde Europese 
+habitatrichtlijnsoort (Bijlage II en IV). De soort stelt zeer hoge eisen aan 
+haar voortplantingswater: matig voedselrijke (mesotrofe tot zwak eutrofe), 
+heldere en zonnige plassen, petgaten, vennen of diepe sloten met een uitbundige 
+onderwatervegetatie (kranswieren, fonteinkruiden, drijvend fonteinkruid) en 
+brede, beschutte verlandingsgordels (krabberscheer, zeggen, galigaan). De imago's 
+hebben daarnaast behoefte aan een luw, open tot halfopen landhabitat met een hoog 
+aandeel struweel, bosranden en bosopslag voor beschutting, rijping en jacht.
+
+A. Voortplantingsbiotoop ('voortplanting_bwk' + Watervlakken):
+   - BWK-selectie:
+       3130%, 3140%, 3150%
+       (Oligotrofe tot mesotrofe kalkarme wateren, kranswierwateren en 
+       natuurlijke eutrofe plassen met waterplantengemeenschappen)
+   - Externe data (watervlakken2024.shp):
+       * Vaste filter op kleine wateren: Watervlakken worden met 5 m gebufferd 
+         en samengevoegd; alleen clusters <= 4.000 m2 (0,4 ha) worden geselecteerd.
+       * Ecologische functie: Grote plassen herbergen vaak hoge dichtheden 
+         bodemwoelende of predatieve vis die de vegetatiestructuur verstoren. 
+         De soort zoekt windbeschutte, kleinere waterpartijen of afgesloten 
+         inhammen.
+   - Fusie: Cover van BWK-voortplantingsfracties en de geselecteerde kleine 
+     watervlakken.
+
+B. Houtige & Grazige Structuurvegetaties ('struweel1' & 'foerageer0'):
+   - Struweel en opgaand hout ('struweel1'):
+       fa%, 9120%, 9130%, fe%, fm%, fs%, lhb+, lhi+, 91E0%, 7210%, n, n+, 
+       n-, ppmb%, rbbppm%, ppms%, ppmh%, pmb%, pmh%, qa%, 9130%, qb%, 9120%, 
+       9190%, qe%, qs%, ru%, 9160%, 91E0%, 2160%, se%, sf%, rbbsf%, sm%, 
+       7140%, 7230%, sp%, rbbsp%, rbbso%, sz%, va%, vc%, vf%, vm%, vn%
+       (Alluviale bossen, broekstruwelen, gagelstruwelen, lichte eikenbossen, 
+       moerasbossen en duinstruwelen)
+   - Breder foerageerhabitat ('foerageer0'):
+       Bovenstaande typen aangevuld met moerasruigten, rietlanden en zeggen 
+       (mc%, md%, mk%, mm%, mr%, ms%, 6430%).
+
+
+2. STAP 2: WATERNETWERK-CONNECTIVITEIT (>= 4 PLASSEN BINNEN 500 M)
+--------------------------------------------------------------------------------
+De Sierlijke witsnuitlibel is een typische metapopulatiesoort die zelden duurzaam 
+overleeft bij een enkele, geïsoleerde poel:
+
+- Poelaggregatie & centroïdebepaling:
+    * Voortplantingswateren worden via 8-richtingen buurcellen gegroepeerd tot 
+      afzonderlijke plassen/clusters.
+    * Van elke plas wordt de representatieve kernlocatie bepaald.
+- Connectiviteitsregel:
+    * Binnen een straal van <= 500 m (euclidische afstand) moeten minstens 4 
+      afzonderlijke voortplantingsplassen aanwezig zijn (cluster_counts >= 4).
+    * Alleen waterclusters die deel uitmaken van een dergelijk poelencomplex 
+      worden goedgekeurd (witsnuit_water_finaal_opp).
+- Ecologische functie: Jonge imago's zwerven tussen naburige plassen. Als een 
+  voortplantingswater door vegetatiesuccessie dichtgroeit of tijdelijk verzuurt, 
+  waarborgt de aanwezigheid van minimaal 4 nabijgelegen plassen de overleving 
+  en herkolonisatie van de lokale populatie.
+
+
+3. STAP 3: FOERAGEERHABITAT FILTERING (>= 50 HA & >= 70% STRUWEEL)
+--------------------------------------------------------------------------------
+Het landhabitat wordt beoordeeld op zowel landschappelijke omvang als dichte, 
+luwe struweelbedekking:
+
+1. Foerageerclustering (25 m buffer, directions = 8):
+   - Aaneengesloten foerageerclusters worden berekend.
+   - Criterium 1: Minimale clustergrootte >= 50 ha (500.000 m2) oppervlakte.
+2. Struweelaandeel binnen 50 m perimeter (>= 70% struweel):
+   - Rond het foerageercluster wordt via een circulaire focal filter (straal 50 m) 
+     de omringende struweelfractie ('struweel1') geanalyseerd.
+   - Criterium 2: Het aandeel struweel moet minstens 70% van de 
+     foerageeroppervlakte beslaan (Percentage_Struweel >= 70).
+- Ecologische functie: Pas uitgeslopen adulten verlaten direct de waterkant en 
+  trekken zich tot enkele honderden meters terug in windluwe, zonbeschenen 
+  struwelen en bosranden om geslachtsrijp te worden en te jagen op kleine diptera. 
+  Open, boomloze polders of kale heiden bieden onvoldoende thermische beschutting.
+
+
+4. STAP 4 & 5: WEDERZIJDSE KOPPELING & WATER-FIRST 800 M AFSNIJDING
+--------------------------------------------------------------------------------
+1. Wederzijdse koppelingsbuffer (800 m):
+   - Het goedgekeurde waterbiotoop (>= 4 plassen) moet binnen <= 800 m van het 
+     goedgekeurde struweelcomplex (>= 50 ha, >= 70% struweel) liggen.
+   - Het goedgekeurde struweelcomplex moet binnen <= 800 m van het geschikte 
+     waterbiotoop liggen.
+2. Complex-omvangdrempel (>= 35 ha op 25 m buffer):
+   - De gekoppelde water- en landfracties worden additief samengevoegd 
+     (clamp max. 1.0).
+   - Het totale leefgebied moet na 25 m aggregatie minstens 35 ha (350.000 m2) 
+     werkelijk habitat omvatten.
+3. Water-First afsnijding (straal_water_m = 800 m):
+   - Het goedgekeurde landhabitat wordt STRIKT gemaskerd tot een buffercontour 
+     van maximaal 800 m rond de functionele voortplantingswateren.
+   - Ecologische functie: 800 meter vormt de maximale functionele actieradius 
+     waarbinnen territoriale mannetjes en eiafzettende vrouwtjes dagelijks 
+     heen en weer pendelen tussen voedselrijke bosranden en de voortplantingsplas.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses bovenlokaal niveau.
+    * Ecologische functie: Hoewel de dagelijkse actieradius 800 m bedraagt, 
+      kunnen zwerwende individuen over grotere afstanden nieuwe laagveengebieden, 
+      kleiputtencomplexen of beekdalen koloniseren (bv. Antwerpse Linkeroever, 
+      vallei van de Zwarte Beek, De Wijers).
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Sierlijke witsnuitlibel (Leucorrhinia pectoralis)
+Waterbiotoop drempel      : Mesotrofe/vegetatierijke wateren (3130, 3140, 3150) + plassen <= 4.000 m2
+Netwerk-eis water         : Minstens 4 afzonderlijke plassen binnen <= 500 m van elkaar
+Foerageergebied omvang    : >= 50 ha aaneengesloten foerageercluster (25 m buffer)
+Struweelkwaliteit-eis     : Minimaal 70% aandeel struweel/opgaand hout in en rond cluster
+Wederzijdse interactie    : Water en foerageergebied binnen <= 800 m van elkaar
+Totale leefgebiedsdrempel : >= 35 ha werkelijk habitat (clustering: 25 m)
+Water-First afsnijding    : Landbiotoop strikt begrensd tot <= 800 m van geschikt water
+Dispersieradius (ARPL)    : 10000 m
+================================================================================

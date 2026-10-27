@@ -1,0 +1,90 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: ADDER
+Soort: Vipera berus (koudbloedig reptiel / vochtige heiden, hoogveen & randzones)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Adder is een ernstig bedreigd, koudbloedig reptiel en een uitgesproken 
+habitatspecialist in Vlaanderen. De soort is strikt afhankelijk van een 
+kleinschalig mozaïek binnen uitgestrekte heide- en veenlandschappen. Voor een 
+succesvolle levenscyclus heeft de Adder drie ruimtelijk gekoppelde elementen nodig: 
+(1) droge, zonbeschenen en windluwe heuveltjes, zandruggen of bosranden voor 
+thermoregulatie (zonplekken) en vorstvrije winterholen; (2) vochtige tot natte 
+dopheidevegetaties, veenmosmoerassen en overgangsvenen met een dichte structuur 
+en een hoge dichtheid aan prooidieren (vooral woelmuizen en kikkers); en 
+(3) overgangen naar struwelen (pijpenstrootjebulten, gagel, jonge berkjes) als 
+dekking tegen predatoren.
+
+A. Doelbiotoop Heide- en Veenvegetaties ('bwk'):
+   - BWK-selectie:
+       cd%, 2310%, 4030%, ce%, 4010%, 7150%, cg%, cm%, cv%, k(cg%, k(cv%, 
+       k(cm%, k(cd%, k(ce%
+       (Open stuifzanden, droge struikheiden, natte heiden met dophei en veenmossen, 
+       heischrale graslanden en karteringseenheden langs heidebermen en zandbanen)
+   - Noot habitatstatus: Zoals afgesproken blijft 'hg' (en afgeleiden) 
+     consequent uitgesloten als habitat.
+
+
+2. DUBBELE DREMPEL CLUSTERFILTERING ('cluster_filter_twee_drempels')
+--------------------------------------------------------------------------------
+Het model voor de Adder hanteert een unieke, tweedelige oppervlaktefiltering die 
+zowel de lokale leefbaarheid per deellocatie als de minimale levensvatbaarheid 
+van de totale metapopulatie garandeert:
+
+1. Drempel 1: Minimale Individuele Patchgrootte (min_oppervlakte_ha = 20 ha):
+   - Methode: Individuele aaneengesloten biotopen worden via 8-richtingen buurcellen 
+     geïdentificeerd (zonder overbruggingsafstand, afstand_m = 0 m).
+   - Filterregel: Alleen individuele patches met een werkelijke habitatoppervlakte 
+     van minstens 20 ha (200.000 m2) worden weerhouden (stats_indiv >= min_opp_m2).
+   - Ecologische functie: Een patch van minimaal 20 ha werkelijk habitat waarborgt 
+     voldoende variatie aan zonplekken, winterholen en zomerfoerageerzones voor 
+     een lokale deelpopulatie. Geïsoleerde heiderelicten < 20 ha worden direct 
+     verworpen.
+
+2. Drempel 2: Minimale Totale Netwerkgrootte (min_totale_opp_ha = 760 ha):
+   - Methode: De goedgekeurde >= 20 ha patches worden overbrugd via een 
+     focal moving window buffer gelijk aan de dispersiecapaciteit (buffer_m = 500 m, 
+     directions = 4).
+   - Filterregel: De geaccumuleerde werkelijke habitatoppervlakte van alle verbonden 
+     >= 20 ha patches binnen het netwerk moet minstens 760 ha (7.600.000 m2) 
+     bedragen (Area_m2 >= min_totale_m2).
+   - Ecologische functie: Adders zijn zeer honkvast, hebben een lage mobiliteit 
+     en zijn extreem gevoelig voor inteelt en genetische drift. Empirisch en 
+     genetisch onderzoek toont aan dat een levensvatbare populatie op lange termijn 
+     een aaneengesloten of via 500 m verbonden heidecomplex van minimaal 700 tot 
+     800 ha vereist (zoals Groot Schietveld en Kalmthoutse Heide).
+
+
+3. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Alleen patches die voldoen aan de individuele drempel 
+  (>= 20 ha) EN tegelijkertijd deel uitmaken van een 500 m geaggregeerd 
+  metapopulatienetwerk van minstens 760 ha werkelijke oppervlakte (final_opp).
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke fracties (export naar '00_ID_Rasters' en 
+  '01_Werkelijke_Oppervlaktes').
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): 500 m (vast in script & Excel)
+    * Toepassing: Vorming van de functionele netwerken en ARPL-analyse.
+    * Ecologische functie: Adders verplaatsen zich zelden verder dan enkele 
+      honderden meters buiten hun vertrouwde dekking. Wegen, intensieve landbouw 
+      en dichte bossen vormen absolute barrières; 500 m markeert de maximale 
+      veilige oversteekafstand door open corridorstructuren (zoals brandgangen en 
+      heischrale bermen) tussen kerngebieden.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Adder (Vipera berus)
+Doelbiotoop               : Droge en natte heiden, stuifzanden & schrale duinen
+Afstand tot biotoop       : Directe aaneensluiting (afstand_m = 0 m voor basisclusters)
+Drempel 1 (Patchgrootte)  : >= 20 ha werkelijk habitat per individuele patch (8-richtingen)
+Netwerk zoekstraal        : 500 m (focal buffering via dispersiecapaciteit)
+Drempel 2 (Netwerkgrootte): >= 760 ha totale werkelijke habitatoppervlakte per netwerk
+Dispersieradius (ARPL)    : 500 m
+================================================================================

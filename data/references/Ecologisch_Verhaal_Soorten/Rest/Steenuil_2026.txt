@@ -1,0 +1,3 @@
+akker: bl%, bk%
+grasland: hp, hp+, rbbkam%, rbbzil%, hpr%, hr%, kj%, rbbvos%
+kle_bwk: kb%, kh%, kj%, kw%

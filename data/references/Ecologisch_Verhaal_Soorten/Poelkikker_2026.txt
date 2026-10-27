@@ -1,0 +1,106 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: POELKIKKER
+Soort: Pelophylax lessonae (amfibie / hoogvenen, heidevennen & bosrijke poelen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Poelkikker is de kleinste en meest habitatkieskeurige van de inheemse groene 
+kikkers. De soort is ecologisch gebonden aan zure tot matig voedselrijke, zonnige 
+en snel opwarmende stilstaande wateren met een rijke drijvende- en onderwatervegetatie 
+(veenmosoevers, waterlelies, fonteinkruiden) in voedselarme landschappen (hoogvenen, 
+heidevennen, bospoelen en laagveenmoerassen). De Poelkikker overwintert 
+in tegenstelling tot de Bastaardkikker en Meerkikker overwegend op het land 
+(in losse bosbodems, strooisellagen of veenmossen).
+
+A. Waterbiotoop ('waterbiotoop0' + Watervlakken):
+   - BWK-selectie:
+       ao%, 3160%, 7140%, 7150%, aom%, 3110%, 3130%, aoo%, ap, ap+, apo, 
+       apo+, kn%, 3140%, 3150%
+       (Oligotrofe tot mesotrofe vennen, zure veenplassen, duinpannen, sloten 
+       en natuurlijke verlandingsvegetaties)
+   - Externe data (watervlakken2024.shp):
+       * Vaste filter op kleine wateren: Watervlakken worden met 5 m gebufferd 
+         en samengevoegd; alleen clusters <= 4.000 m2 (0,4 ha) worden geselecteerd.
+       * Ecologische functie: Grote open wateroppervlakten herbergen predatieve vis 
+         (o.a. Snoek, Baars) en worden gedomineerd door de competitief sterkere 
+         Meerkikker. De Poelkikker handhaaft zich uitsluitend duurzaam in 
+         kleinere, visarme tot visvrije vennen en poelen.
+   - Fusie: Cover van BWK-waterfracties en de geselecteerde kleine watervlakken.
+
+B. Landbiotoop ('landbiotoop1'):
+   - BWK-selectie:
+       ce%, 4010%, 7150%, cg, cg+, 2310%, 4030%, cm, cm+, ct, ct+, 7110%, 
+       hf%, 6430%, hj%, hm%, 6410%, hmo%, 6230%, hp+, hpr+, mc%, mcb%, 
+       rbbmc%, md%, 7140%, 91E0%, mk%, 7230%, mr%, rbbmr%, ms%, rbbms%, 
+       pms, pms+, ppmb, ppmb+, ppms, ppms+, qb, qb+, 9120%, 9190%, qs, 
+       qs+, sm%, 4010%, 7140%, 7230%, 91E0%, so%, rbbso%, sz%, t%, 7110%, 
+       vo%, vt%, 91D0%
+       (Vochtige en droge heiden, hoogvenen, zeggenmoerassen, rietlanden, 
+       berkenbroekbossen, alluviale elzenbossen en zandige eikenbossen)
+
+
+2. LANDBIOTOOP FILTERING OP EILANDGROOTTE (>= 10 HA)
+--------------------------------------------------------------------------------
+- Minimale eilandoppervlakte landbiotoop (opp_land_ha = 10 ha):
+    * Samengestelde landclusters worden gevormd via 8-richtingen rasterbuur 
+      (zonder overbruggingsafstand, afstand_m = 0 m).
+    * Drempelwaarde: >= 10 ha (100.000 m2) werkelijke habitatoppervlakte per landeiland.
+    * Ecologische functie: Een aaneengesloten terrestrische matrix van minstens 
+      10 ha vochtig bos, heide of moeras is noodzakelijk voor de nachtelijke jacht, 
+      beschutting tegen uitdroging en predatie tijdens warme zomerweken, en 
+      vorstvrije overwintering in de strooisel- en moslaag.
+
+
+3. RUIMTELIJKE KOPPELING LAND- EN WATERBIOTOOP (10 M OEVERZONE)
+--------------------------------------------------------------------------------
+In tegenstelling tot soorten met een strikte 0 m maskering hanteert het Poelkikker- 
+model een gerichte 10 m oeverinteractie:
+
+- 10 m Landbuffer:
+    * Rond de goedgekeurde landeilanden (>= 10 ha) wordt een buffer van 10 m 
+      berekend (r_land_buf_opp).
+- Watermaskering:
+    * Alleen geschikt water dat binnen deze 10 m buffer van goedgekeurd landhabitat 
+      ligt, wordt weerhouden (pk_water_gekoppeld_opp).
+    * Het goedgekeurde landbiotoop wordt direct meegenomen.
+- Fusiemethode:
+    * Additieve sommatie van het gekoppelde water en het landbiotoop 
+      (geclamped op maximaal 1.0).
+    * Ecologische functie: Poelkikkers zonnen en foerageer-pendelen intensief 
+      tussen de waterkant en de direct aanpalende grazige of houtige oevervegetatie. 
+      Vennen die verder dan 10 m van geschikt landhabitat liggen, zijn 
+      onbruikbaar.
+
+
+4. BOVENLOKALE METAPOPULATIE-EISEN (160 HA & 5 PLASSEN BINNEN 1.200 M)
+--------------------------------------------------------------------------------
+De Poelkikker functioneert strikt binnen een dynamisch netwerk van meerdere 
+voortplantingswateren:
+
+- Dispersie- en clusterafstand (buffer_m): 1.200 m (1,2 km)
+    * Gekoppelde leefgebieden worden samengevoegd over tussenafstanden 
+      tot 1.200 m via focal moving window buffering (directions = 4).
+- Criterium 1: Minimale netwerkgrootte (min_totale_ha): >= 160 ha
+    * Het geaccumuleerde werkelijke leefgebied (water + land) binnen het 
+      1,2 km-netwerk moet minstens 160 ha (1.600.000 m2) bedragen.
+- Criterium 2: Minimale poelendichtheid (min_plassen): >= 5 plassen
+    * Binnen de polygooncontour van het 1,2 km-netwerk moeten minstens 5 
+      afzonderlijke watervlakken (uit de watervlakkenkaart) liggen.
+- Ecologische functie: Een robuuste metapopulatie vereist minimaal 5 
+  geschikte poelen binnen de dispersiestraal van 1,2 km over een aanzienlijk 
+  leefgebiedsareaal (160 ha) om periodieke uitval door verdroging of 
+  genetische introgressie door bastaardering op te vangen.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Poelkikker (Pelophylax lessonae)
+Waterbiotoop drempel      : Poelen/clusters <= 4.000 m2 (visarm/ondiep/snel opwarmend)
+Landbiotoop drempel       : >= 10 ha werkelijk landbiotoop (8-richtingen patches)
+Koppeling water-land      : Water moet binnen <= 10 m van goedgekeurd landbiotoop liggen
+Metapopulatie zoekstraal  : 1.200 m (1,2 km dispersiecapaciteit)
+Drempelwaarde netwerk     : >= 160 ha totaal habitat EN >= 5 geschikte plassen
+Dispersieradius (ARPL)    : 1.200 m
+================================================================================

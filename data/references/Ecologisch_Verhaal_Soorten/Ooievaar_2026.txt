@@ -1,0 +1,5 @@
+voortplanting: 1130%, 1140%, 1320%, hc%, 2190%, 6410%, rbbhc%, hj%, hm%, 6230%, hme%, hp%, 1310%, 1330%, hp+%, rbbkam%, rbbzil%, hpr%, hr%, 6430%, hu%, 6120%, 6510%, hx%, kn%, 3150%, 3140%, rbbvos%
+
+MinOpp_ha: 300
+AfstandBiotopen_m:  50
+Dispersiecap_m: 25000

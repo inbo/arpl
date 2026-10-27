@@ -1,0 +1,5 @@
+voortplanting: ku%, 3270%, 6430%, md%, 91E0%, ru%, 2180%, 91F0%, sd%, 2160%, 2170%, sf%, rbbsf%, sz%, va%, vc%, vf%, vm%, vn%, vo%, vt%, 91D0%
+
+MinOpp_ha: 3
+AfstandBiotopen_m:  50
+Dispersiecap_m: 25000

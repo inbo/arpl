@@ -1,0 +1,5 @@
+bwk: bs%, dd%, 2120%, ha%, 2330%, 6230_ha%, hd%, 2130%, 2130_hd%, hm%, 6410%, 2190%, sd%, 2160%, 2170%
+
+MinOpp_ha: 25
+AfstandBiotopen_m:  100
+Dispersiecap_m: 10000

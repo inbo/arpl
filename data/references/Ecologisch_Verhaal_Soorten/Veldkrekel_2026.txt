@@ -1,0 +1,115 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: VELDKREKEL
+Soort: Gryllus campestris (sprinkhaanachtigen / droge heiden, schraallanden & duinen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Gradatie- & Scenario-analyse)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Veldkrekel is een warmteminnende, niet-vliegende krekel van open, zonnige en 
+droge terreinen op zand- en leembodems. De soort graaft woon- en paringsholen in 
+de kale bodem en heeft een sterke voorkeur voor een lage, ijle en structuurrijke 
+kruidenvegetatie (stuifzandranden, heischrale graslanden, droge struikheiden en 
+kust- en landduinen) met veel direct zonlicht op het bodemoppervlak. Dichte, 
+beschaduwde of vochtige bodems worden strikt gemeden omdat holen daar onderlopen 
+of beschimmelen.
+
+A. Doelbiotoop Droge Open Terreinen ('bwk'):
+   - BWK-selectie (tekstbestand):
+       2310%, 2330%, 6120%, 6230%, bs+, cd%, 4030%, cg%, 5130%, cm%, 4010%, 
+       cv%, dm%, ha%, 6230_ha%, 2130%, 2150%, hd%, hmo%, hn%, hr%, 6430%, 
+       hu%, 2190%, 6120%, 6510%, ku+, 3270%, k(cg%, k(cv%, k(ha%, k(hd%, 
+       k(hu%, k(hn%, k(hmo%, k(hr%, k(cm%, k(cd%, k(ku+%, ku%
+       (Droge zandverstuivingen, pioniergraslanden, droge heiden, heischrale 
+       graslanden, kalkgraslanden en karteringseenheden op zandige bermen/spoorzones)
+   - Veiligheids-injectie in script:
+       Aanvulling met specifieke droge heide- en duincodes:
+       c("cm-", "cmb", "cg-", "cgb", "ku", "ku-", "k(ku)")
+   - Expliciete uitsluiting: Natte heide ('ce') en vochtige vegetaties worden 
+     bewust NIET opgenomen.
+   - Noot habitatstatus: Zoals afgesproken blijft 'hg' (en afgeleiden) 
+     consequent uitgesloten als habitat.
+
+
+2. BODEMDRAINAGE-DIFFERENTIATIE (N2KHAB MET VEEN-CORRECTIE)
+--------------------------------------------------------------------------------
+Omdat bodemvocht de meest limiterende ecologische factor vormt voor gravende 
+veldkrekels, modelleert het script twee drainage-scenario's via de 
+Vlaamse bodemkaart ('vlaanderen_drainage_n2khab_10m.tif'):
+
+A. Scenario 1: Strikt Optimaal Droog (Bodemklassen a, a-b, b, c)
+   - Toepassing: 'masker_strikt'
+   - Filterregel: Alleen bodems die bewezen zeer droog tot matig droog zijn 
+     (geen stagnerend water of grondwaterinvloed in de wortelzone).
+   - Ecologische betekenis: Kwalitatief optimaal voortplantings- en holengebied 
+     met gegarandeerde thermische opwarming en minimale schimmel-/inundatierisico's.
+
+B. Scenario 2: Inclusief Suboptimaal & NA (Sluit alleen expliciet nat uit)
+   - Toepassing: 'masker_inclusief'
+   - Ongeschikt nat (uitgesloten): Klassen e, e-f, e-i, f, g, h, h-i, i 
+     (inclusief gecorrigeerde veengronden 'g').
+   - Toegelaten: Matig natte overgangsklassen ('d', 'a-d', 'c-d') én gebieden 
+     zonder reguliere kartering (Kustduinen 'X', Militaire domeinen 'OB', Polders).
+   - Ecologische betekenis: Brengt ook potentiële leefgebieden in beeld op 
+     zandgronden die hydrologisch voldoende droog zijn maar binnen gekarteerde 
+     eenheden als 'onbekend' of 'suboptimaal' te boek staan.
+
+
+3. MEERTRAPS CLUSTERING & METAPOPULATIE-EISEN (PER SCENARIO)
+--------------------------------------------------------------------------------
+Elk scenario wordt door een identieke ruimtelijke pijplijn gevoerd:
+
+1. Basisclustering & Minimale Omvang (>= 1 ha op 50 m):
+   - Overbruggingsafstand (dist_m): 50 m (directions = 4).
+   - Drempelwaarde: >= 1 ha (10.000 m2) werkelijke habitatoppervlakte per patch.
+   - Ecologische functie: Overbrugt zandpaden, brandgangen en schrale bermen; 
+     geïsoleerde snippers < 1 ha worden direct afgekeurd.
+
+2. Differentiatie naar Patchgrootte:
+   - Grote kernen (>= 5 ha):
+       Direct goedgekeurd als zelfstandig duurzaam leefgebied (r_5ha).
+       Biedt voldoende ruimte voor een stabiele lokale populatie.
+   - Kleine patches (1 tot 5 ha):
+       Moeten deel uitmaken van een functioneel metapopulatienetwerk.
+       * Methode: Bepaling van zwaartepunten (centroïdes) per patch.
+       * Criterium: Binnen een straal van <= 500 m (euclidische afstand) 
+         moeten minstens 6 naburige patches liggen (buren_count >= 6).
+       * Ecologische functie: Veldkrekels kunnen niet vliegen en overbruggen 
+         lopend zelden meer dan enkele honderden meters per generatie. Kleine 
+         habitats (1-5 ha) zijn vatbaar voor lokaal uitsterven en vereisen 
+         minstens 6 stapstenen binnen 500 m om via re-kolonisatie overeind te blijven.
+
+
+4. VERSCHILKAART & GRADATIE-LOGICA (0 / 1 / 2)
+--------------------------------------------------------------------------------
+Het script exporteert een gecombineerd gradatieraster ('Habitat_Gradatie_Verschil_veldkrekel.tif'):
+
+- Waarde 2 (Zeker / Optimaal leefgebied):
+    Aanwezig in BEIDE scenario's (Strikt Droog én Inclusief).
+    Dit zijn de robuuste, bewezen droge heide- en stuifzandkernen.
+- Waarde 1 (Potentieel / Suboptimaal leefgebied):
+    ALLEEN aanwezig in het Inclusieve scenario (klasse 'd', Kustduinen, Militaire domeinen).
+    Aandachtsgebieden voor veldvalidatie of ecohydrologisch herstel.
+- Waarde NA (Geen habitat):
+    Afwezig of te nat / te versnipperd.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses bovenlokaal niveau.
+    * Ecologische functie: Brengt de functionele isolatie tussen de grote 
+      Kempense heidecomplexen en duingebieden in kaart voor deze loopgebonden soort.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Veldkrekel (Gryllus campestris)
+Doelbiotoop               : Droge heiden, stuifzanden, duinen & schrale bermen
+Bodemdrainage             : Tweeledig (Strikt a,b,c vs. Inclusief d/NA/OB met uitsluiting e-i/g)
+Overbruggingsafstand      : 50 m (aggregatie)
+Direct goedgekeurd        : Patches >= 5 ha werkelijk habitat
+Metapopulatievoorwaarde   : Patches 1 tot 5 ha moeten >= 6 buren hebben binnen <= 500 m
+Gradatie-output           : Klasse 2 (Zeker/Optimaal droog), Klasse 1 (Potentieel/NA)
+Dispersieradius (ARPL)    : 2500 m
+================================================================================

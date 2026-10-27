@@ -1,0 +1,3 @@
+bwk_land: 6430%, 91E0%, hf%, 2190%, 6430%, rbbhf%, hr%, mr%, 1130%, 1330%, 2190%, 6430_hw%, 6430_mr%, 7140%, 7140_mrd%, rbbmr%, ku%, 3270%, ru%, 2180%, 9160%, 91E0%, 91F0%, sf%, rbbsf%, vc%, va%, vf%, vn%, vm%, vo%, vt%, rbbmc%, rbbms%, rbbhc%, ce%, hc%, hm%, 91D0%
+water_bwk: ae, 2190%, 3140%, 3150%, ae+, aer, aer+, aev, aev+, vc%, ao-, ao, ao+, aom-, aom, aom+, m%
+waterlopen1_bwk: 3260%

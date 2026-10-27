@@ -1,0 +1,3 @@
+foerageer1: aer%, ah%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, hpr%, 2190%, rbbkam%, rbbzil%, hpr+%, kn%, 3140%, 3150%, ku%, 3270%, 6430%, kz%
+not_openwater: ad%, ae%, 2190%, 3140%, 3150%, aer%, aes%, aev%, ah%, rbbah%, am%, ao%, 3160%, 7140%, 7150%, aom%, 3110%, 3130%, aoo%, ap%, apo%, app%, mz%, 1330_da%, 1330_hpr%
+voortplanting1: da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, hpr%, 2190%, rbbkam%, rbbzil%, ku%, 6430%, kz%

@@ -1,0 +1,83 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: REGENWULP (WINTERVOGEL)
+Soort: Numenius phaeopus (steltloper / doortrekker & overwinteraar)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Regenwulp is een doortrekkende en overwinterende steltloper die in Vlaanderen 
+voornamelijk pleistert op open, uitgestrekte foerageergronden. De soort zoekt 
+voedsel (regenwormen, emelten, kevers, bodeminvertebraten en bessen) in open 
+landbouwgebieden (extensieve graslanden en akkers) en benut daarnaast open 
+heiden (o.a. Dopheide- en Kraaiheidevegetaties) als traditionele rust-, 
+slaap- en foerageerlocatie.
+
+A. Open Cultuurlandschap ('foerageer' + 'akkers'):
+   - Graslandbiotoop ('foerageer'):
+       ha, 2330%, 6230_ha%, ha+, hc, 2190%, 6410%, rbbhc%, hc+, hj, hj+, 
+       hp%, hp+%, rbbkam%, rbbzil%, hpr%, hpr+%, hx%, ku%, 6430%
+       (Pioniergraslanden, vochtige en soortenrijke graslanden, dotterbloemweiden, 
+       kamgraslanden, zilte graslanden en ruderale graslanden)
+   - Akkercomplexen ('akkers'):
+       b% (alle akkerbouwgronden en teelten)
+   - Fusie Cultuurlandschap: Additieve sommatie van graslanden en akkers 
+     (geclamped op maximaal 1.0).
+
+B. Heidecomplexen ('heide'):
+   - BWK-selectie:
+       ce, ce+, ct, ct+
+       (Vochtige heiden en dopheivegetaties, eventueel met overgangsvenen)
+   - Noot overige tekstbestand-codes: De subtypen 'foerageer_goed', 'heideplas', 
+     'plas' en 'slik' zijn gedefinieerd in het referentiebestand, maar worden 
+     in de R-scriptpipeline niet direct als afzonderlijke lagen aangeroepen.
+
+
+2. AFZONDERLIJKE CLUSTERING VAN DE HOOFDCOMPLEXEN
+--------------------------------------------------------------------------------
+Het model evalueert het open cultuurlandschap en de heideterreinen als twee 
+parallelle, onafhankelijke pijlers die elk aan een eigen omvangdrempel 
+moeten voldoen:
+
+1. Open Cultuurlandschap (Graslanden + Akkers):
+   - Overbruggingsafstand (dist_m): Dynamisch via Excel (AfstandBiotopen_m; standaard 50 m)
+   - Oppervlaktedrempel: Dynamisch via Excel (MinOpp_ha * 10.000 m2)
+   - Ecologische functie: Regenwulpen foerageren in open polders en akkerbouw- 
+     landschappen. Ze overbruggen sloten en veldwegen binnen 50 m, maar mijden 
+     kleinschalige, versnipperde percelen wegens predatiegevaar.
+2. Heidegebieden (ce / ct):
+   - Overbruggingsafstand (dist_m): Dynamisch via Excel (AfstandBiotopen_m; standaard 50 m)
+   - Oppervlaktedrempel: Zelfde drempelwaarde (MinOpp_ha * 10.000 m2)
+   - Ecologische functie: Uitgestrekte, natte heideterreinen (bv. in de Kempen) 
+     dienen als collectieve hoogwatervluchtplaats of nachtelijke slaapplaats 
+     met vrij zicht en minimale verstoring.
+
+
+3. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Additieve cover van het goedgekeurde open cultuurlandschap 
+  en de goedgekeurde heidecomplexen (geclamped op 1.0).
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gecombineerde laag (bestandsnaamconventie met '_wv' suffix).
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses bovenlokaal niveau.
+    * Ecologische functie: Als mobiele steltloper en trekvogel pendelt de 
+      Regenwulp moeiteloos over tientallen kilometers tussen slaapplaatsen 
+      (schorren, heiden, grote plassen) en agrarische foerageergronden 
+      (polders en zandleemakkers).
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Regenwulp (Numenius phaeopus) - wintervogel (_wv)
+Open Cultuurlandschap     : Graslanden (ha, hc, hj, hp, hpr, hx, ku) + Akkers (b%)
+Heidecomponent            : Vochtige heiden (ce, ct)
+Overbruggingsafstand      : standaard 50 m
+Minimale clusteroppervlak : 300 ha
+Samenvoeging              : Directe sommatie van goedgekeurde cultuur- en heideclusters
+Dispersieradius (ARPL)    : 250 km
+================================================================================

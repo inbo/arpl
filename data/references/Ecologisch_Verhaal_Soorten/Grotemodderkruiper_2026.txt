@@ -1,0 +1,88 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: GROTE MODDERKRUIPER
+Soort: Misgurnus fossilis (vis / laaglandbeken, poldergrachten & overstromingsvlaktes)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Grote modderkruiper is een bodembewonende zoetwatervis van laaggelegen, 
+periodiek overstroomde alluviale vlaktes en poldersystemen. De soort prefereert 
+ondiepe, stilstaande tot zeer traag stromende wateren met een dikke, zachte 
+modderbodem en een dichte water- en oevervegetatie waarin hij zich bij droogte 
+of zuurstofgebrek kan ingraven en via darmademhaling overleven.
+
+A. Vlakvormig water- en moerasbiotoop ('bwk'):
+   - BWK-selectie:
+       3150%, 3260%, ae, ae+, aev+, aev, aop, aop+, aom, aom+, mc, mc+, mk, 
+       mk+, kn, kn+, ka, ka+, rbbmc%, rbbmr%
+       (Eutrofe en mesotrofe plassen, laaglandbeken, waterpartijen met 
+       drijfblad- of onderwatervegetatie, rietlanden en moerassen)
+
+B. Negatieve waterfilter ('not_bwk'):
+   - BWK-selectie: ap% (visvijvers / intensief beheerde kweekvijvers)
+   - Exclusie: Intact wateroppervlak uit de watervlakkenkaart wordt verminderd 
+     met het aandeel 'ap%' (1 - not_bwk), omdat intensief beheerde visvijvers 
+     ongeschikt zijn door predatie door karperachtigen/roofvis of droogvalbeheer.
+
+C. Hydrografische data (Huet-zones waterlopen):
+   - Selectie: P1, P2 (Brasem- en Karperzones / traagstromende laaglandwaterlopen 
+     en stilstaande wateren met hoge watertemperatuur en slibbodem).
+   - Inclusie: Geselecteerde waterloopcellen krijgen een fractie van 1.0 (100%).
+
+D. Externe Watervlakkenkaart:
+   - Bron: vlaanderen_watervlakken_2024_10m.tif (geschoond van 'not_bwk').
+
+
+2. MILIEUCONDITIE: OVERSTROMINGSGEVOELIGE BODEMS (OVSTRG)
+--------------------------------------------------------------------------------
+De aanwezigheid van water is op zichzelf onvoldoende; de soort is evolutionair 
+aangepast aan dynamische beekdalen en overstromingsvlaktes:
+
+- Bodemfilter overstromingsgevoeligheid:
+    * Bron: Overstromingsgevoelige gronden (vlaanderen_ovstrg_10m.tif).
+    * Selectieklassen: 1 en 2 (effectief en potentieel overstromingsgevoelige gronden).
+- Filteroperatie:
+    * De samengevoegde waterlaag (BWK + Plassen + Huet P1/P2) wordt STRIKT 
+      gemaskerd met de overstromingsgevoelige zones.
+    * Ecologische functie: Sluit geïsoleerde waterbekkens, hooggelegen poelen en 
+      niet-overstroombare watergangen uit. Grote modderkruipers zijn afhankelijk 
+      van inundaties van omliggende graslanden en uiterwaarden voor eiafzet en 
+      larvale ontwikkeling tussen ondergelopen vegetatie.
+
+
+3. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+- Overbruggingsafstand (focal 3x3): 10 m
+    * Cellen binnen 10 m (1 pixel) worden overbrugd via een 3x3 moving window.
+    * Ecologische functie: Overbrugt duikers, bruggen en korte verbuizingen 
+      in poldersloten, grachtenstelsels en beken.
+- Minimale clusteroppervlakte: >= 0.04 ha (400 m2 / 4 aaneengesloten cellen)
+    * Drempelwaarde berekend op werkelijke habitatoppervlakte per cluster 
+      (stats_opp$Werkelijke_ha >= 0.04).
+    * Ecologische functie: Zelfs relatief kleine waterpartijen, zoals brede 
+      veedrinkpoelen, bermsloten of plas-draszones, kunnen een lokale populatie 
+      herbergen, mits ze binnen het overstromingsvrije systeem liggen en 
+      minstens 400 m2 aan permanent water/slibsubstraat bieden.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dispersiecap_m (uit Excel)
+    * Toepassing: ARPL / netwerkanalyses op stroomgebiedsniveau.
+    * Ecologische functie: Bepaalt hoe poldergrachtenstelsels en beekdalen 
+      tijdens grootschalige overstromingen (inundaties) met elkaar in verbinding 
+      staan, waardoor individuen nieuwe sloten en waterlichamen kunnen herkoloniseren.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Grote modderkruiper (Misgurnus fossilis)
+Doelbiotoop               : Ondiepe, plantenrijke wateren, sloten, plassen & moeras
+Negatieve selectie        : ap% (visvijvers) geëlimineerd uit het watervlakkenbestand
+Waterloopkarakteristiek   : Huet-zones P1 en P2 (Brasem-/Karperzone)
+Landschapsfilter          : Uitsluitend overstromingsgevoelige bodems (ovstrg = 1 of 2)
+Overbruggingsafstand      : 10 m (3x3 focal window voor duikers/sloten)
+Minimale clusteroppervlak : >= 0.04 ha (400 m2 werkelijk habitat)
+Dispersieradius (ARPL)    : 1500 m
+================================================================================

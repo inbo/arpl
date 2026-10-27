@@ -1,0 +1,124 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: WATERSNIP
+Soort: Gallinago gallinago (steltloper / plas-drasgraslanden, moerassen & venen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Watersnip is een steltloper van zeer vochtige tot overstroomde, open 
+landschappen. Zowel broedende als pleisterende/overwinterende vogels zoeken 
+voedsel (wormen, insectenlarven, zaden) door met hun gevoelige, lange snavel te 
+boren in zachte, modderige en ondiep geïnundeerde bodems (plas-dras condities). 
+De soort vereist een open structuur met pollenrijke verbergingsvegetatie (zoals 
+russchen, zeggen en lichte rietkragen) waarin nesten verborgen kunnen worden en 
+overdag gerust kan worden, maar mijdt gesloten boscomplexen en massale, diepe 
+waterplassen zonder beloopbare modderranden.
+
+A. Doelbiotoop Vegetaties ('biotopen'):
+   - BWK-selectie:
+       3110%, 3130%, ao%, 3160%, 7140%, 7150%, ce%, 4010%, hc%, 2190%, 
+       6410%, rbbhc%, hf%, 6430%, rbbhf%, hj%, hm%, 6230%, hpr, rbbkam%, 
+       rbbzil%, hpr+, mc%, rbbmc%, md%, mk%, 7230%, mm%, 7210%, ms%, rbbms%
+       (Oligotrofe vennen, zure veenplassen, overgangs- en trilvenen, vochtige 
+       heiden, dotterbloemgraslanden, moerasspirea-ruigten, natte schraalgraslanden, 
+       overstroomde weilanden en grote zeggenmoerassen)
+   - Noot habitatstatus: Zoals vastgelegd blijft 'hg' (en afgeleiden) 
+     consequent uitgesloten als habitat.
+
+B. Externe GIS-lagen:
+   1. Bodemdrainagekaart ('vlaanderen_drainage_n2khab_10m.tif'):
+      - Geselecteerde klassen: "d", "e", "f", "h", "i", "g", "e-f", "h-i", "e-i"
+      - Matig natte tot zeer natte bodems met zeer hoge grondwaterstanden.
+   2. Groenkaart 2021 ('Groenkaart_2021.tif'):
+      - Hooggroen (waarde 1): Structuurbeperkende bosopstanden.
+   3. GRB Waterkaart ('vlaanderen_grb_water_10m.tif'):
+      - Open wateroppervlakten (waarde 1): Waterpartijen, kanalen en diepe plassen.
+
+
+2. BODEMDRAINAGE-FILTER OP DE BASISOPPERVLAKTE (STAP 1)
+--------------------------------------------------------------------------------
+Watersnippen kunnen uitsluitend foerageren in bodems die zacht en doordringbaar 
+zijn door een hoge grondwaterstand of periodieke inundatie:
+
+- Drainage-toets: Het ruwe BWK-biotoop ('biotopen_opp') wordt direct gemaskerd 
+  met de goedgekeurde natte drainageklassen.
+- Ecologische functie: Sluit droge, ontwaterde of intensief gedraineerde percelen 
+  uit; alleen van nature natte beekdalen, polderdepressies, venranden en 
+  laagveengebieden blijven behouden.
+
+
+3. PRIMAIRE CLUSTERING OP LANDSCHAPSNIVEAU (>= 10 HA OP 100 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (dist_m): 100 m
+    * Cellen van het gedraineerde biotoop worden samengevoegd over een 
+      overbruggingsafstand van 100 m via focal buffering (directions = 4).
+    * Ecologische functie: Watersnippen opereren binnen open beekdalen en 
+      uiterwaarden; een buffer van 100 m overbrugt sloten, verhoogde perceelranden 
+      en smalle dijkwegen tussen geschikte graslandkamers.
+- Oppervlaktedrempel: >= 10 ha (100.000 m2) werkelijk habitatoppervlak 
+  (watersnip_clusters_opp).
+
+
+4. LANDSCHAPSKWALITEIT CHECKS PER CLUSTER (< 75% BOS & < 90% WATER)
+--------------------------------------------------------------------------------
+Binnen de berekende 10 ha-clusters wordt de landschappelijke openheid en balans 
+beoordeeld via zonale statistiek:
+
+1. Bos-plafond (< 75% bos):
+   - Het aandeel hooggroen (Groenkaart = 1) binnen het cluster moet minder 
+     dan 75% bedragen (Pct_Bos < 75).
+   - Ecologische functie: Sluit gesloten boscomplexen en te sterk verboste 
+     moeraspercelen uit. Watersnippen zijn weidevogels/steltlopers van open 
+     horizonten en mijden percelen die ingesloten zijn door hoog opgaand hout 
+     wegens predatie door roofvogels en kraaiachtigen.
+2. Water-plafond (< 90% water):
+   - Het aandeel GRB-openwater binnen het cluster moet minder dan 90% bedragen 
+     (Pct_Water < 90).
+   - Ecologische functie: Watersnippen zwemmen zelden en vereisen wadvlaktes, 
+     slibrijke oevers of plas-dras grasland. Diepe meren of zandwinputten 
+     zonder substantiële moeras- of slikzone zijn ongeschikt.
+
+
+5. TERRESTRISCHE KERN CHECK (MIN. 10 HA LANDBIOTOOP OP 0 M)
+--------------------------------------------------------------------------------
+Als sluitstuk moeten de kwalitatieve clusters een aanzienlijke, zuiver 
+terrestrische kern bezitten:
+
+1. Aftrek open water:
+   - GRB-wateroppervlakten worden via inverse maskering uit het basisbiotoop 
+     verwijderd (r_terr_basis_opp).
+2. Zuivere landclustering (dist_m = 0 m):
+   - Het resterende terrestrische biotoop wordt via 8-richtingen buurcellen 
+     (zonder overbruggingsafstand) geclusterd.
+   - Filterregel: Het cluster moet een aaneengesloten terrestrische kern van 
+     minstens 10 ha (100.000 m2) werkelijk habitat omvatten (terr_patches_opp).
+3. Finale koppeling:
+   - Alleen 100 m-landschapsclusters die een dergelijke aaneengesloten 10 ha 
+     landkern overlappen én aan de landschapskwaliteitseisen voldoen, worden 
+     definitief weerhouden (final_opp).
+   - Ecologische functie: Garandeert dat het leefgebied niet louter bestaat uit 
+     smalle riet- of oeverrandjes rond grote meren, maar een volwaardig, 
+     beloopbaar en onversnipperd drasland- of veencomplex vormt.
+
+
+6. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses op Vlaams niveau.
+    * Ecologische functie: Als trekvogel en wintergast zwerft de Watersnip 
+      dynamisch over tientallen kilometers tussen riviervalleien, overstromings- 
+      gebieden (o.a. IJzervallei, Demerbroeken, Scheldeschorren, Maasvallei) 
+      en natte heidegebieden op zoek naar ijsvrije, zachte modderbodems.
+
+
+7. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Watersnip (Gallinago gallinago)
+Doelbiotoop               : Vochtige/natte graslanden, moerassen, zeggen & veentjes
+Bodemdrainage             : Beperkt tot natte bodems (klassen d, e, f, h, i, g, e-f, h-i, e-i)
+Primaire clustering       : >= 10 ha werkelijk habitat (clustering: 100 m)
+Landschapskwaliteit       : Bosaandeel < 75% EN open water < 90% per cluster
+Terrestrische kern-eis    : Moet een aaneengesloten niet-water kern van >= 10 ha bevatten (0 m)
+Dispersieradius (ARPL)    : 10000 m
+================================================================================

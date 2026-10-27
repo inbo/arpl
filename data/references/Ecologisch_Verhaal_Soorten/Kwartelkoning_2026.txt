@@ -1,0 +1,101 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: KWARTELKONING
+Soort: Crex crex (broedvogel / vochtige hooilanden & alluviale beekdalen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Kwartelkoning is een uiterst schuwe, bodembewonende moeras- en weidevogel van 
+dynamische rivier- en beekvalleien. De soort is strikt afhankelijk van uitgestrekte, 
+open en laaggelegen hooilanden en ruigten met een dichte, kruidenrijke en snel 
+opgroeiende vegetatie (voor dekking en insectenrijke voeding), zonder opgaand 
+struweel of bosopstanden.
+
+A. Graslandbiotoop ('grasland'):
+   - BWK-selectie:
+       hc%, 2190%, 6410%, rbbhc%, hf%, 6430%, rbbhf%, hft%, hj%, hm%, hp+, 
+       hpr, hpr-, hpr+, rbbkam%, rbbzil%, hr%, hu%, 6120%, 6510%, ku%, 3270%
+       (Vochtige en soortenrijke hooilanden, dotterbloemgraslanden, kamgrasweiden, 
+       glanshavergraslanden, ruigten en verruigde randen)
+
+B. Moeras- en Verlandingsbiotoop ('moeras'):
+   - BWK-selectie:
+       mc%, rbbmc%, mk%, 7140%, 7230%, mp%, 2190%, 2190_mp%, mr%, 6430_hw%, 
+       6430_mr%, 7140_mrd%, rbbmr%, ms%, rbbms%
+       (Zeggenvegetaties, rietmoerassen, moerasspirea-ruigten en trilvenen)
+
+C. Ongeschikte elementen (Directe uitsluiting):
+   - Hooggroen: Groenkaart_2021.tif (alle hooggroen = 1)
+   - Terrils & ontginningen ('terril' / 'kg%'): Direct uitgesloten
+
+
+2. FASE 2: HYDROLOGISCHE & GEOMORFOLOGISCHE VALLEISTURING
+--------------------------------------------------------------------------------
+Het initiële biotoop (grasland + moeras) moet liggen binnen een hydrologisch 
+geschikte vallei- of beekdalcontext. Er geldt een OR-koppeling over drie stuurkaarten:
+
+1. Bodemprofiel ('Vlaanderen_profiel_10m.tif'):
+   - Klassen: "p", "p+x" (alluviale/poldergronden met profielontwikkeling).
+2. Bodemdrainage ('vlaanderen_drainage_n2khab_10m.tif'):
+   - Klassen: "d", "e", "f", "g", "h", "i", "e-f", "h-i", "e-i" (matig natte tot 
+     zeer natte bodems met periodiek hoge grondwaterstanden).
+3. Overstromingsgevoeligheid ('vlaanderen_ovstrg_10m.tif'):
+   - Klassen: 1 en 2 (effectief en potentieel overstromingsgevoelige gronden).
+- Ecologische functie: Sluit plateaus en droge zandige gronden uit. De soort 
+  nestelt historisch in periodiek overstroomde uiterwaarden en alluviale beekdalen.
+
+
+3. FASE 3 TOT 5: MORFOLOGISCHE COMPACTHEID & STORINGSBUFFERS
+--------------------------------------------------------------------------------
+- Stap 3: Majority-structuurfilter (20 m cirkel)
+    * Moving window van 20 m straal (cirkel). Alleen cellen waar minstens de 
+      helft van de buurtcellen geschikt is, blijven behouden.
+    * Ecologische functie: Elimineert rafelige randen, smalle bermstrookjes en 
+      geïsoleerde snippers; selecteert compacte, homogene leefgebieden.
+- Stap 4: Tussentijdse drempelfilter (3 ha op 50 m)
+    * Pre-screening via 50 m fuzzy netwerk op minimaal 3 ha (30.000 m2) habitatoppervlak.
+- Stap 5: Hooggroen-storing (100 m buffer rond clusters >= 20 are)
+    * Bron: Groenkaart 2021 (boomopstanden met >= 12 cellen in een 5x5 focal window).
+    * Buffer: 100 m storingszone rond deze bos-/boomkernen wordt integraal 
+      gemaskerd uit het habitat.
+    * Ecologische functie: Kwartelkoningen mijden bomenrijen, bosranden en opgaande 
+      elementen vanwege predatiegevaar door uilen, roofvogels en kraaiachtigen.
+
+
+4. FASE 6 & 7: FUNCTIONEEL LEEFGEBIED (>= 10 HA) & GRASLANDAANDEEL (>= 75%)
+--------------------------------------------------------------------------------
+1. Functionele leefgebiedsdrempel (dist_m = 50 m):
+   - Clustering van het geschoonde biotoop met een zoekstraal van 50 m.
+   - Oppervlaktedrempel: >= 10 ha (100.000 m2) werkelijk habitatoppervlak per complex.
+2. Graslanddominantie-eis (>= 75% grasland):
+   - Binnen elk goedgekeurd complex (>= 10 ha) wordt via 'terra::zonal' het 
+     werkelijke aandeel 'grasland' berekend ten opzichte van het totale biotoop 
+     (grasland + moeras).
+   - Filterregel: Grasland_Pct >= 75% (Tot_Grasland / Tot_Biotoop >= 0.75).
+   - Ecologische functie: Hoewel Kwartelkoningen moeras en ruigte tolereren als 
+     dekking bij aankomst in het voorjaar, vereist een duurzaam broedterritorium 
+     overwegend open grasland (> 75%) met een dichte kruiden- en grassenstructuur 
+     om in te nestelen en kuikens groot te brengen.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses bovenlokaal niveau.
+    * Ecologische functie: Als lange-afstandstrekvogel vestigt de Kwartelkoning 
+      zich zeer dynamisch; roepende mannetjes verplaatsen zich tussen grote 
+      riviervalleien (bv. IJzervallei, Scheldebekken, Demervallei, Maasvallei) 
+      in functie van maaidata en waterpeil.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Kwartelkoning (Crex crex) - broedvogel
+Landschapssturing         : Alluviale valleibodems (profiel p/p+x OF drainage d-i OF ovstrg 1-2)
+Vormfilter                : Majority filter (cirkelstraal 20 m) voor kerncompactheid
+Exclusiezone hooggroen    : 100 m buffer rond bomenclusters >= 20 are
+Leefgebiedsdrempel        : >= 10 ha werkelijk habitat (clustering: 50 m)
+Vegetatiestructuureis     : Minimaal 75% aandeel grasland per 10 ha-complex
+Dispersieradius (ARPL)    : 50000 m
+================================================================================

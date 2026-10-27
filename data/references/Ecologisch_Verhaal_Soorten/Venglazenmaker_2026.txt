@@ -1,0 +1,137 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: VENGLAZENMAKER
+Soort: Aeshna juncea (grote libel / zure heidevennen, veenmoerassen & bosranden)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Venglazenmaker is een forse, boreo-alpiene glazenmaker en habitatspecialist 
+van zure, voedselarme tot matig voedselarme vennen, hoogveenmoerassen en petgaten. 
+De soort vereist wateren met een uitgesproken heide- of veenkarakter, vaak met 
+drijvende veenmosoevers (Sphagnum), snavelzeggen of drijftillen waarin vrouwtjes 
+hun eieren afzetten. De larven tolereren een lage pH, maar zijn gevoelig voor 
+vispredatie en eutrofiëring. De imago's jagen en rijpen in aangrenzende zonnige, 
+luwe bosranden, open plekken in naaldbossen, berkenbroekbossen en heidecomplexen.
+
+A. Voortplantingswater ('waterbiotoop_bwk1' geschoond met 'waterbiotoop_notbwk'):
+   - BWK-selectie (positief):
+       3160%, 3110%
+       (Natuurlijke dystrofe vennen en plassen, oligotrofe kalkarme wateren 
+       met littorale vegetaties)
+   - Negatieve selectie ('waterbiotoop_notbwk'):
+       ad%, ae%, 2190%, 3140%, 3150%, aer%, ap%, kn%
+       (Eutrofe en mesotrofe plassen, zandputten, visvijvers, duinwateren en 
+       overvoede sloten worden afgetrokken via: clamp(water1 - not_water, 0, 1)).
+
+B. Aanpalend Landbiotoop ('landbiotoop_bwk1' geschoond met 'notbwk'):
+   - BWK-selectie (positief):
+       qb%, qs%, vm%, vn%, vo%, vt%, so%, rbbso%, ppm%, rbbppm%, sm%, 
+       rbbsm%, ce%, cm%
+       (Zandige loofbossen, berkenbroekbossen, gagelstruwelen, naaldbossen 
+       en vochtige tot droge heiden)
+   - Negatieve selectie ('landbiotoop_notbwk'):
+       cp%, cd%, dm%, ha%
+       (Open zandverstuivingen, droge struikheiden en pioniergraslanden 
+       zonder beschutting worden afgetrokken via: clamp(land - not_land, 0, 1)).
+   - Noot habitatstatus: Zoals afgesproken blijft 'hg' (en afgeleiden) 
+     consequent uitgesloten als habitat.
+
+C. Boscomponenten & Ruime Omgeving:
+   - Nabije boscomponent ('landbiotoop_nabij_bos'):
+       qb%, qs%, vm%, vn%, vo%, vt%, so%, rbbso%, ppm%, rbbppm%, sm%, rbbsm%
+   - Ruim landbiotoop ('landbiotoop_bwk_ruim'):
+       Bovenstaande typen aangevuld met sf%, rbbsf%, ceb, mm%, ms%, cg%
+   - Ruime boscomponent ('landbiotoop_bos_ruim'):
+       qb%, vm%, vn%, vo%, vt%, so%, rbbso%, ppm%, rbbppm%, sf%, rbbsf%, 
+       sm%, rbbsm%, ceb
+
+
+2. STAP 1: WATERBIOTOOP BEREKENEN & CLUSTEREN (MIN. 0.04 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (dist_m): 50 m
+- Oppervlaktedrempel water: >= 400 m2 (0.04 ha werkelijk voortplantingshabitat)
+- Ecologische functie: Sluit zeer kleine, tijdelijke plassen uit. Een permanent 
+  wateroppervlak van minstens 400 m2 garandeert voldoende diepte om winterse 
+  bevriezing van de veenbodem te weerstaan en biedt voldoende larvale prooien 
+  (waterinvertebraten, kikkervisjes) gedurende de meerjarige larvale cyclus.
+
+
+3. STAP 2 & 3: AANPALEND LANDBIOTOOP (>= 10 HA & >= 40% BOS OP 50 M)
+--------------------------------------------------------------------------------
+Het directe leef- en foerageergebied rond het ven wordt getoetst op oppervlakte 
+en beschutting:
+
+1. Nabije landclustering (dist_m = 50 m):
+   - Clustering van het geschoonde landbiotoop op minimaal 10 ha (100.000 m2) 
+     werkelijk habitat.
+2. 40% Bosaandeel-toets:
+   - Binnen elk goedgekeurd 10 ha landcluster wordt via 'terra::zonal' het 
+     percentage bos ('landbiotoop_nabij_bos') berekend.
+   - Filtervoorwaarde: Minstens 40% van het cluster moet bestaan uit opgaand 
+     bos of struweel (Percentage_Bos >= 40).
+   - Ecologische functie: Venglazenmakers gebruiken bomenrijen, open plekken en 
+     bosranden om op te warmen in de ochtendzon, beschutting te zoeken tegen wind 
+     en storm, en te jagen op grote vliegende insecten. Kale heideterreinen zonder 
+     opgaand hout zijn ongeschikt.
+
+
+4. STAP 4: RUIM LANDBIOTOOP (MIN. 30 HA & >= 40% BOS OP 50 M)
+--------------------------------------------------------------------------------
+Op landschapsniveau wordt de robuustheid van de heide- en bosmatrix geëvalueerd:
+
+- Zoekstraal clustering (dist_m): 50 m
+- Oppervlaktedrempel: >= 30 ha (300.000 m2) werkelijk habitat
+- Samenstellingseis: Bosaandeel binnen het 30 ha-complex moet >= 40% bedragen.
+- Ecologische functie: Sluit geïsoleerde veentjes uit die ingeklemd liggen in 
+  een verstedelijkt of agrarisch landschap; de soort functioneert uitsluitend 
+  in grootschalige, continue heide- en boscomplexen.
+
+
+5. STAP 5: RUIMTELIJKE KOPPELING (20 M) & WATER-FIRST 500 M AFSNIJDING
+--------------------------------------------------------------------------------
+1. Wederzijdse 20 m oeverkoppeling:
+   - Rond het goedgekeurde waterbiotoop wordt een buffer van 20 m getrokken. 
+     Alleen naburige landclusters (>= 10 ha, >= 40% bos) die overlappen met deze 
+     20 m zone worden geselecteerd.
+   - Rond het goedgekeurde landbiotoop wordt eveneens een 20 m buffer getrokken 
+     om het waterbiotoop te maskeren (water moet binnen 20 m van land liggen).
+2. Water-First afsnijding (straal_water_m = 500 m):
+   - Het gekoppelde landbiotoop wordt STRIKT afgesneden op maximaal 500 m 
+     vanaf de goedgekeurde voortplantingswateren.
+   - Ecologische functie: Hoewel imago's uitstekende vliegers zijn, concentreert 
+     hun dagelijkse jacht-, parings- en rustactiviteit zich binnen een straal van 
+     500 m rond de voortplantingsvennen.
+
+
+6. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Additieve samenvoeging (clamp max. 1.0) van:
+    1. Het gekoppelde voortplantingswater (>= 400 m2, gekoppeld op 20 m)
+    2. Het gekoppelde landbiotoop (>= 10 ha, >= 40% bos, binnen 500 m van water)
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (export naar '00_ID_Rasters' en 
+  '01_Werkelijke_Oppervlaktes').
+
+
+7. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses op Vlaams niveau.
+    * Ecologische functie: Modelleert de verbindingen en uitwisseling tussen 
+      de grote heidekernen in Vlaanderen (voornamelijk Kempen en Hoge Kempen), 
+      aangezien individuen bij hoge dichtheden of verdroging kunnen uitzwerven 
+      naar naburige vennensystemen.
+
+
+8. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Venglazenmaker (Aeshna juncea)
+Waterbiotoop drempel      : >= 400 m2 (0.04 ha) dystrofe/oligotrofe vennen (clustering: 50 m)
+Negatieve waterselectie   : Eutrofe plassen, zandputten en visvijvers (notbwk) uitgesloten
+Aanpalend landbiotoop     : >= 10 ha met >= 40% bos (clustering: 50 m)
+Ruim landbiotoop          : >= 30 ha met >= 40% bos (clustering: 50 m)
+Oeverkoppeling            : Wederzijdse interactie binnen <= 20 m van water en land
+Water-First afsnijding    : Landbiotoop strikt begrensd tot <= 500 m van geschikt water
+Dispersieradius (ARPL)    : 5000 m
+================================================================================

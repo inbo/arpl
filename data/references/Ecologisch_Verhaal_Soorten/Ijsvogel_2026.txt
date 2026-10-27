@@ -1,0 +1,103 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: IJSVOGEL (WINTERVOGEL)
+Soort: Alcedo atthis (visetende vogel / waterlopen, plassen & natuurlijke oevers)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De IJsvogel is een gespecialiseerde viseter die gebonden is aan heldere, 
+visrijke, zoete tot zwak brakke wateren (beken, rivieren, kanalen, plassen, 
+wielen en vijvers) met een rijke oeverbegroeiing (zitposten om te stootduiken) 
+en steile, onverstoorde leem- of zandwanden voor het uitgraven van nestpijpen.
+
+A. Vlakvormig Water- en Oeverbiotoop ('bwk'):
+   - BWK-selectie:
+       3260%, ad, ad+, ae, 3140%, 3150%, ae+, aer, aer+, aev, aev+, ah, 
+       ah+, rbbah%, ap, ap+, apo, apo+, app, app+, ka%, kn%, mr%, 1130%, 
+       rbbmr%, mrb%, mru%, ru%, 2180%, 91E0%, 91F0%, sf%, rbbsf%, va%, 
+       vc%, vf%, vm%, vn%, vo%, vt%, 91D0%
+       (Waterlopen met waterplanten, eutrofe en mesotrofe plassen, visvijvers, 
+       rietkragen, alluviale bossen, wilgenstruwelen en broekbossen)
+   - Primaire clustering BWK-water:
+       * Zoekstraal: 50 m.
+       * Oppervlaktedrempel: >= 5 ha (50.000 m2) werkelijk habitat.
+       * Ecologische functie: Filtert kleine, geïsoleerde waterpartijen zonder 
+         duurzaam visbestand vooraf weg.
+
+B. Hydrografische data (Huet-zones waterlopen):
+   - Selectie: Vrijwel alle dynamische en stilstaande watertypen:
+       Bg, BgK, Bk1, Bk2, BkK1, BkK2, KabPKunst, Kan, KanPKunst, Kunst, 
+       Mlz, O1brak, O1o, O2zout, P1, P2, Rg, Rk, Rzg
+       (Beken van de forel-/kopvoornzone, kanalen, riviervakken, estuariene 
+       wateren en polderwaterlopen).
+   - Inclusie: Toegevoegd als nominale basisfractie van 0.01 (1%).
+
+C. Fusie Voortplantingswater:
+   - Additieve samenvoeging (clamp max. 1.0) van het geclusterde BWK-water 
+     (>= 5 ha) en de Huet-waterlopen.
+
+
+2. MORFOLOGISCHE OEVERANALYSE & DE 1 KM OEVERLENGTE-EIS
+--------------------------------------------------------------------------------
+De aanwezigheid van water is op zichzelf onvoldoende; de IJsvogel foerageert 
+en patrouilleert lineair langs de oeverlijn waar kleine visjes in ondiep water 
+zwemmen en overhangende takken als uitkijkpost dienen:
+
+1. Exacte oeverdetectie:
+   - Bron: vlaanderen_watervlakken_2024_10m.tif.
+   - Binnen- en buitenranden (boundaries) van water en land worden geëxtraheerd 
+     om de exacte scheidslijn (oeverlijn) te isoleren.
+2. Oeverclustering & Lente-evaluatie (>= 1.000 m):
+   - De oeverlijn wordt met 25 m gebufferd om kleine onderbrekingen 
+     (duikers, beschoeiingen) te overbruggen en geaggregeerd tot samenhangende 
+     oevertrajecten.
+   - De werkelijke lengte per oeverpolygoon wordt berekend (omtrek / 2).
+   - Filtervoorwaarde: Alleen oeverclusters met een aaneengesloten lengte van 
+     minstens 1.000 m (>= 1 km) worden goedgekeurd (valide_oever_clusters).
+   - Ecologische functie: Een IJsvogelterritorium vereist minimaal 1 km 
+     functionele, doorlopende waterkant om het hele jaar door voldoende 
+     prooivisjes te kunnen bemachtigen zonder uitgeput te raken.
+
+
+3. TOEPASSING 20 M OEVERZONE OP HET WATERHABITAT
+--------------------------------------------------------------------------------
+- Oeverbuffer: Rond de goedgekeurde oevers (>= 1 km) wordt een strook van 
+  maximaal 20 m gemeten (oever_zone_20m).
+- Maskering waterhabitat:
+    * Het samengestelde waterbiotoop (BWK + Huet) wordt STRIKT gemaskerd met 
+      deze 20 m oeverstrook.
+    * Ecologische functie: IJsvogels foerageren niet in het midden van brede 
+      kanalen, diepe meren of rivieren waar ze geen zitposten hebben; alleen de 
+      eerste 20 m water vanaf een geschikte, lange oever is effectief functioneel 
+      leefgebied.
+
+
+4. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Cellen binnen het goedgekeurde waterhabitat die 
+  binnen de 20 m oeverzone van een >= 1 km lange oever vallen.
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (bestandsnaamconventie met '_wv' suffix).
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dispersiecap_m (uit Excel)
+    * Toepassing: ARPL / netwerkanalyses op stroomgebiedsniveau.
+    * Ecologische functie: Hoewel IJsvogels binnen het broedseizoen gebonden 
+      zijn aan hun oeverterritorium, zwerven juvenielen en wintervogels over 
+      tientallen kilometers langs waterlopenstelsels, met name wanneer ondiepe 
+      beken in strenge winters dichtvriezen en ze moeten uitwijken naar 
+      open, stromende rivieren of ijsvrije kanalen.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : IJsvogel (Alcedo atthis) - water/oevervogel (_wv)
+BWK-waterdrempel          : >= 5 ha werkelijk habitat (clustering: 50 m)
+Hydrografie               : Alle beken, rivieren en kanalen (Huet-zones als 0.01)
+Oeverlengte-eis           : Aaneengesloten oevertraject van minstens 1.000 m (1 km)
+Functionele oeverdiepte   : Maximaal 20 m water vanaf de goedgekeurde oeverlijn
+Dispersieradius (ARPL)    : 25000
+================================================================================

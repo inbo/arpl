@@ -1,0 +1,123 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: WESPENDIEF
+Soort: Pernis apivorus (roofvogel / broedvogel van uitgestrekte bos-heidecomplexen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Wespendief is een gespecialiseerde broedvogel en roofvogel met een 
+uniek dieet dat hoofdzakelijk bestaat uit de larven, poppen en raten van sociale 
+wespen (Vespula vulgaris, V. germanica) en hommels, aangevuld met kikkers, 
+jonge vogels en reptielen. De soort vereist een combinatie van uitgestrekte, 
+rustige en gestructureerde loof-, naald- of gemengde bossen met zware kronen 
+voor nestbouw en dekking enerzijds, en een open tot halfopen, bloemrijk en 
+insectenrijk foerageerlandschap (heiden, open kapvlaktes, schrale graslanden, 
+zandige overgangen en bosranden) anderzijds waar wespen hun ondergrondse nesten 
+aanleggen.
+
+A. Voortplantingsbiotoop / Broedbos ('voortplanting_bwk'):
+   - BWK-selectie:
+       fa%, 9120%, 9130%, fe%, fk%, 9150%, fl%, 9110%, fm%, fs%, lh%, ls%, 
+       n, n-, n+, pa%, pi%, pm%, pp%, ppa%, ppi%, ppmb%, rbbppm%, ppmh%, 
+       ppms%, qa%, 9160%, qb%, 9190%, qe%, qk%, 9150%, ql%, qs%, va%, 
+       91E0%, vc%, vf%, vm%, vn%, vo%, vt%, 91D0%, 91F0%
+       (Zomereiken- en beukenbossen, alluviale loofbossen, grove dennen- en 
+       corsicaanse dennenbossen, sparren- en lariksbossen, berken- en veenbossen)
+   - Externe verificatie: Maskering met Groenkaart 2021 (r_groen == 1 / hooggroen) 
+     garandeert dat uitsluitend effectief opgaand, volgroeid boombestand behouden blijft.
+   - Noot habitatstatus: Zoals afgesproken blijft 'hg' (en afgeleiden) 
+     consequent uitgesloten als habitat.
+
+B. Open Foerageerbiotoop ('foerageer_open'):
+   - BWK-selectie:
+       3260%, cd%, 2310%, 4030%, cdb%, cg%, 5130%, cgb%, cm%, 4010%, cmb%, 
+       cp%, 9120%, cpb%, cv%, cvb%, ha%, 2330%, 6230_ha%, hab%, hc%, 6410%, 
+       rbbhc%, hcb%, hk%, 6210%, hm%, 6230%, hmb%, hme%, hmm%, hmo%, hn%, 
+       hp%, hp+%, rbbkam%, rbbzil%, hpr%, hpr+%, hr%, 6430%, hu%, 6120%, 
+       6510%, hub%, kb%, kh%, kn%, 3140%, kp%, kpa%, kpk%, kw%, mdb%, n, 
+       n+, n-, sf%, 2180%, 91E0%, rbbsf%, sg%, 2310%, rbbsg%, sgb%, sk%, 
+       sm%, 7140%, 7230%, 91E0%, rbbsm%
+       (Droge en vochtige heiden, stuifzanden, kalkgraslanden, heischrale 
+       graslanden, bloemrijke soortenrijke graslanden, gagelstruwelen en 
+       brede grazige bermcomplexen)
+
+
+2. STAP 1 & 2: INDIVIDUELE CLUSTERING VAN BOS EN OPEN HABITAT
+--------------------------------------------------------------------------------
+Beide basispijlers worden onderworpen aan een specifieke landschapsdrempel:
+
+1. Broedbos (>= 50 ha op 100 m):
+   - Het met hooggroen gemaskerde bosbiotoop wordt geclusterd met dist_m = 100 m.
+   - Oppervlaktedrempel: >= 50 ha (500.000 m2) werkelijk bosoppervlak 
+     (r_wespendief_bos_opp).
+   - Ecologische functie: Sluit kleine, versnipperde bosjes en smalle lappen 
+     uit; de Wespendief is extreem storingsgevoelig rond de nestlocatie en nestelt 
+     bij voorkeur in rustige kernen van substantiële boscomplexen.
+2. Open Foerageerhabitat (>= 50 ha op 500 m):
+   - Open heiden en schraallanden worden geclusterd met dist_m = 500 m.
+   - Oppervlaktedrempel: >= 50 ha (500.000 m2) werkelijk open habitat 
+     (r_wespendief_open_opp).
+   - Ecologische functie: Wespendieven foerageren over grote oppervlakten; 
+     een 500 m aggregatiestraal weerspiegelt de overbrugging van agrarische 
+     enclaves tussen heiderelicten en graslandcomplexen.
+
+
+3. STAP 3: COMPOSIET FOERAGEERLANDSCHAP (MIN. 250 HA OP 500 M)
+--------------------------------------------------------------------------------
+In werkelijkheid foerageert de Wespendief niet uitsluitend in het open veld, maar 
+graaft hij ook wespennesten uit langs open boswegen, bosranden en kapvlaktes:
+
+- Fusie: Additieve samenvoeging van het goedgekeurde broedbos en het goedgekeurde 
+  open foerageerhabitat (clamp max. 1.0).
+- Landschapsclustering (dist_m = 500 m):
+    * Het gecombineerde mozaïek (bos + heide + grasland) wordt samengevoegd 
+      met een 500 m zoekafstand.
+    * Drempelwaarde: >= 250 ha (2.500.000 m2) werkelijk totaal habitat 
+      (r_foerageer2_opp).
+- Ecologische functie: Een broedpaar Wespendieven heeft een enorm home range 
+  nodig (minimaal 250 ha aaneengesloten halfnatuurlijke matrix) om gedurende de 
+  kuikenfase in juli en augustus dagelijks tientallen wespennesten te lokaliseren.
+
+
+4. STAP 4: ACTIERADIUS-KOPPELING (5 KM) NAAR FINALE BROEDBOSSEN
+--------------------------------------------------------------------------------
+De finale selectie van het leefgebied richt zich op de broedlocaties die zijn 
+ingebed in dit grootschalige foerageerlandschap:
+
+- 5 km Foerageerbuffer:
+    * Rond het gevalideerde foerageercomplex (>= 250 ha) wordt een buffer van 
+      5.000 m (5 km) berekend (buffer_5000m_foer_opp).
+- Broedbos-maskering:
+    * Alleen het goedgekeurde broedbos (>= 50 ha) dat binnen deze 5 km straal van 
+      het 250 ha foerageercomplex ligt, wordt definitief geselecteerd (final_opp).
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (export naar '00_ID_Rasters' en 
+  '01_Werkelijke_Oppervlaktes').
+- Ecologische functie: 5 kilometer weerspiegelt de maximale reguliere vliegafstand 
+  die adulte wespendieven vanaf het nest afleggen naar rijke foerageergronden. 
+  Bossen die verder dan 5 km van substantiële heide- of foerageercomplexen liggen, 
+  zijn energetisch onrendabel om jongen groot te brengen.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses op Vlaams niveau.
+    * Ecologische functie: Als lange-afstandstrekker (overwinteraar in tropisch 
+      Afrika) en mobiele roofvogel overbrugt de Wespendief gemakkelijk tientallen 
+      tot honderden kilometers tussen de grote boskernen in Vlaanderen 
+      (o.a. Kempen, Brabantse Wouden, Bos ter Rijst, Houtland).
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Wespendief (Pernis apivorus) - broedvogel
+Broedbos basislaag        : Loof-, naald- en gemengd bos gevalideerd met Groenkaart (hooggroen)
+Broedbos drempel          : >= 50 ha werkelijk bosoppervlak (clustering: 100 m)
+Open foerageerhabitat     : Heiden, stuifzanden & schrale/bloemrijke graslanden
+Open foerageer drempel    : >= 50 ha werkelijk open habitat (clustering: 50 m)
+Gecombineerd landschap    : >= 250 ha totaal foerageerareaal (bos + open, clustering: 500 m)
+Actieradiuskoppeling      : Broedbos moet liggen binnen <= 5.000 m (5 km) van 250 ha landschap
+Dispersieradius (ARPL)    : 5000 m
+================================================================================

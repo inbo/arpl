@@ -1,0 +1,84 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: BEEKROMBOUT
+Soort: Gomphus vulgatissimus (libel / stromend water)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING WATERBIOTOOP (VOORTPLANTING & LARVEN)
+--------------------------------------------------------------------------------
+- Type habitat: Stromende, zuurstofrijke waterlopen met zand/slibbodem.
+- BWK-selectie: 3260% (Subatlantische en Midden-Europese beken en kleine rivieren)
+- Hydrografische data (Huet-zones):
+    Bg, BgK, Bk1, Bk2, BkK1, BkK2 (Barbeel-, Beekforel- en Kopvoornzones)
+- Fusiemethode: Max-fusie (cover) van BWK en Huet-zones (Huet = min. 1% fractie).
+- Ruimtelijke clustering water:
+    * Overbruggingsafstand (focal 3x3): 10 m (overbrugt 1 pixel leemtes zoals duikers).
+    * Oppervlaktedrempel: >= 0.4 ha werkelijke wateroppervlakte per cluster.
+- Ecologische functie: Eiafzet, meerjarige larvale ontwikkeling ingegraven in
+  ongestoord beeksubstraat, en uitsluiping langs natuurlijke oevers.
+
+
+2. KARAKTERISERING LANDBIOTOOP (KAMP- EN RIJPINGSHABITAT)
+--------------------------------------------------------------------------------
+De jonge imago's kennen na uitsluiping een rijpings- en zwerffase van ca. 2-3 
+weken waarin ze beschutting, warmte en een hoog prooiaanbod zoeken.
+
+A. Landbiotoop Kern (Bos):
+   - BWK-codes:
+       ru%, 9160%, 91E0%, 91F0%, sf%, rbbsf%, sg%, rbbsg%, sk%, 6210%, sm%, 
+       7140%, 7230%, so%, sp%, rbbsp%, sz%, v%, q%, 2180%, 9110%, 9120%, 
+       9130%, 9150%, 9190%, f%, l%, p%, rbbppm%, n, n+, n-, kp%
+   - Ruimtelijke clustering: Zoekstraal van 50 m.
+   - Oppervlaktedrempel: >= 5 ha werkelijke bosoppervlakte per cluster.
+   - Ecologische functie: Windluwe luwteplekken, thermoregulatie langs zonnige 
+     bosranden/open plekken en nachtrust- en schuilplaats tegen predatoren.
+
+B. Landbiotoop Omgevende Matrix (Rest):
+   - BWK-codes: Alle bostypen uit A aangevuld met halfnatuurlijke graslanden, 
+     moerassen, heischrale milieus en ruigten:
+       h%, 6410%, 6430%, 6510%, rbbhc%, ku%, s%, b%, a%, 3150%, m%, 6430_hw%, 
+       7210%, rbbmc%, rbbmr%, rbbms% (+ rbb-varianten)
+   - Ruimtelijke clustering: Zoekstraal van 50 m.
+   - Oppervlaktedrempel: >= 50 ha werkelijke habitatoppervlakte per cluster.
+   - Ecologische functie: Dragend, extensief foerageerlandschap met hoge 
+     prooidichtheid aan vliegende insecten.
+
+
+3. TOPOLOGISCHE INTERACTIES & AFSTANDSFILTERS
+--------------------------------------------------------------------------------
+- Inbedding Bos in Matrix (Optie A: 100% inclusie met 10 m speling):
+    * Filterregel: Elk goedgekeurd boscluster (>= 5 ha) moet voor 100% van zijn 
+      oppervlakte binnen de goedgekeurde rest-matrix (>= 50 ha) vallen 
+      (met een tolerantiezone van 10 m rond de matrix via 3x3 focal filter).
+    * Ecologische functie: Sluit versnipperde of geïsoleerde bosjes uit die 
+      in een intensieve landbouw- of stedelijke matrix liggen.
+
+- Interactie Water - Land (Wederzijdse filter op 500 m):
+    1. Waterselectie: Alleen waterlopen binnen <= 500 m van goedgekeurd bos 
+       blijven behouden als functioneel voortplantingswater.
+    2. Afkapping landbiotoop: Het goedgekeurde bosareaal wordt vervolgens 
+       afgetopt op maximaal 500 m afstand van dit geselecteerde water.
+    * Ecologische functie: Zorgt voor de functionele koppeling tussen water 
+      en land; voorkomt dat uitgestrekte boscomplexen die buiten de dagelijkse 
+      vliegradius van de beek liggen, onterecht worden meegerekend.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): 10.000 m (10 km)
+    * Toepassing: ARPL / netwerkanalyses op metapopulatieniveau.
+    * Ecologische functie: Waar 500 m de dagelijkse foerageerpendel begroot,
+      vertegenwoordigt 10 km de maximale dispersieafstand van zwerfende 
+      individuen tussen verschillende beeksystemen.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Beekrombout (Gomphus vulgatissimus)
+Waterbiotoop drempel      : >= 0.4 ha (clustering: 10 m)
+Landbiotoop bos drempel   : >= 5 ha (clustering: 50 m)
+Landbiotoop rest drempel  : >= 50 ha (clustering: 50 m)
+Matrix-inbedding          : Bos moet voor 100% binnen rest-matrix liggen (+10 m speling)
+Water-Land koppelafstand  : 500 m wederzijds (water selecteert bos; land afgekapt op 500 m)
+Dispersieradius (ARPL)    : 10 km (10.000 m)
+================================================================================

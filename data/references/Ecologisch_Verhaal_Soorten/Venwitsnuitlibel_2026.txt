@@ -1,0 +1,130 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: VENWITSNUITLIBEL
+Soort: Leucorrhinia dubia (libel / zure heidevennen, veenputten & hoogveen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Venwitsnuitlibel is een koudeminnende, boreo-montane soort en een uitgesproken 
+habitatspecialist van zure, uiterst voedselarme (dystrofe tot oligotrofe) 
+heidevennen, veenpoelen en petgaten met dikke, drijvende veenmosoevers (Sphagnum). 
+De larven leven verscholen tussen de ondergedoken veenmossen en zijn zeer 
+kwetsbaar voor predatie door vis; de voortplantingswateren zijn dan ook typisch 
+visvrij en zuur. De volwassen imago's benutten de direct aanpalende, windluwe 
+heide-, struweel- en bosranden (met name berkenbroekbossen, vliegdennen en 
+gagelstruwelen) voor beschutting, rijping, zonnen en jacht op kleine insecten.
+
+A. Voortplantingsbiotoop ('waterbiotoop_bwk1' geschoond met 'waterbiotoop_notbwk'):
+   - BWK-selectie (positief):
+       3160%, 3110%, aoo, aoo+, aoo-
+       (Natuurlijke dystrofe vennen en plassen, oligotrofe kalkarme wateren 
+       en natuurlijke veenputten/verlandingen)
+   - Negatieve selectie ('waterbiotoop_notbwk'):
+       kn%, ap%, ad%, ah%
+       (Mesotrofe tot eutrofe plassen, visvijvers, verrijkte sloten en 
+       recreatiewateren worden integraal afgetrokken via: clamp(water1 - not_water, 0, 1)).
+
+B. Aanpalend Landbiotoop ('landbiotoop_bwk'):
+   - BWK-selectie:
+       qb%, vn%, vo%, vt%, so%, rbbso%, ppm%, rbbppm%, sf%, rbbsf%, sm%, 
+       rbbsm%, ceb%, cg%, ce%, cm%, ms%, rbbms%, mk%
+       (Vochtige en droge heiden, moerasberkenbossen, gagelstruwelen, 
+       zandige naaldbossen, veenmosrietlanden en dopheivegetaties)
+   - Noot habitatstatus: Zoals afgesproken blijft 'hg' (en afgeleiden) 
+     consequent uitgesloten als habitat.
+
+C. Ruim Landbiotoop & Boscomponent:
+   - Ruime selectie ('landbiotoop_bwk_ruim'):
+       Bovenstaande typen aangevuld met vm% en mm% (grote heide- en laagveenmozaïeken).
+   - Houtige component ('landbiotoop_bwk_ruim_bos'):
+       qb%, vm%, vn%, vo%, vt%, so%, rbbso%, ppm%, rbbppm%, sf%, rbbsf%, 
+       sm%, rbbsm%, ceb%
+
+
+2. WATERBIOTOOP BEREKENEN & CLUSTEREN (MIN. 0.01 HA / 100 M²)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (dist_m): 50 m
+- Oppervlaktedrempel water: >= 100 m2 (0.01 ha werkelijk voortplantingshabitat)
+- Ecologische functie: Venwitsnuitlibellen kunnen zich al in zeer kleine, 
+  ondiepe veenpoelen en hoogveenslenken vanaf 100 m2 succesvol voortplanten, 
+  mits er levend veenmos aanwezig is en het water niet permanent droogvalt 
+  of door vis bevolkt wordt.
+
+
+3. AANPALEND LANDBIOTOOP: NABIJE OMGEVING (MIN. 5 HA OP 20 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (dist_m): 20 m
+- Oppervlaktedrempel: >= 5 ha (50.000 m2) werkelijk landhabitat
+- Ecologische functie: Garandeert een aaneengesloten terrestrische mantel direct 
+  rond het ven die voldoende dekking en luwte biedt tijdens de rijpingsfase 
+  van de uitgeslopen juffers en libellen.
+
+
+4. RUIM LANDBIOTOOP: LANDSCHAPPELIJKE KERN (MIN. 20 HA & >= 60% BOS)
+--------------------------------------------------------------------------------
+Het landschap rond het ven wordt getoetst op robuustheid en bosbedekking:
+
+1. Ruime clustering (dist_m = 50 m):
+   - Clustering van het ruime landbiotoop op minimaal 20 ha (200.000 m2) 
+     werkelijk habitat.
+2. 60% Bos-samenstellingstoets:
+   - Binnen het goedgekeurde 20 ha-cluster wordt via 'terra::zonal' het 
+     percentage bos ('landbiotoop_bwk_ruim_bos') berekend.
+   - Filtervoorwaarde: Het bosaandeel moet minstens 60% bedragen (Percentage_Bos >= 60).
+   - Ecologische functie: In tegenstelling tot de Noordse witsnuitlibel (die een 
+     40% drempel kent over 40 ha) vereist de Venwitsnuitlibel een compactere, 
+     maar sterker door bos en struweel ingesloten matrix (>= 60% bos) om 
+     turbulentie en afkoeling door wind op de kleine heidevennen te minimaliseren.
+
+
+5. RUIMTELIJKE INTERACTIES & WATER-FIRST 500 M AFSNIJDING
+--------------------------------------------------------------------------------
+De finale habitatschaal wordt bepaald door gerichte koppelingen tussen water en land:
+
+1. Wederzijdse 10 m koppeling:
+   - Waterbiotoop moet binnen 10 m van het aanpalende landbiotoop (>= 5 ha) liggen.
+   - Landbiotoop moet binnen 10 m van het geschikte waterbiotoop liggen.
+   - Ecologische functie: Waarborgt directe interactie tussen oevervegetatie en 
+     het open wateroppervlak.
+2. Inbedding in ruim boscomplex (500 m buffer):
+   - Zowel water als land moeten liggen binnen een buffer van 500 m rond het 
+     goedgekeurde ruime bosrijke complex (>= 20 ha met >= 60% bos).
+3. Water-First afsnijding (straal_water_m = 500 m):
+   - Het goedgekeurde landbiotoop wordt STRIKT afgesneden op maximaal 500 m 
+     vanaf de goedgekeurde voortplantingswateren.
+   - Ecologische functie: Begrenst het landhabitat tot de werkelijke actieradius 
+     waarbinnen mannetjes en vrouwtjes tussen de voortplantingswateren en de 
+     omliggende foerageer- en roestplekken pendelen.
+
+
+6. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Additieve samenvoeging (clamp max. 1.0) van:
+    1. Het goedgekeurde voortplantingswater (>= 100 m2, gekoppeld op 10 m en 500 m)
+    2. Het goedgekeurde landbiotoop (>= 5 ha, binnen 500 m van water)
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gecombineerde water-landlaag (export naar '00_ID_Rasters' en 
+  '01_Werkelijke_Oppervlaktes').
+
+
+7. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses op Vlaams niveau.
+    * Ecologische functie: Modelleert de ruimtelijke samenhang en potentiële 
+      genetische uitwisseling tussen de geïsoleerde hoogveen- en heidekernen 
+      (vnl. Antwerpse en Limburgse Kempen).
+
+
+8. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Venwitsnuitlibel (Leucorrhinia dubia)
+Waterbiotoop drempel      : >= 100 m2 (0.01 ha) dystrofe vennen/veenputten (clustering: 50 m)
+Negatieve waterselectie   : Eutrofe/mesotrofe plassen en visvijvers (notbwk) uitgesloten
+Aanpalend landbiotoop     : >= 5 ha heide/bos binnen 10 m van water (clustering: 20 m)
+Ruime landschapseis       : Complex >= 20 ha met >= 60% bos/struweel (clustering: 50 m)
+Landschapsinbedding       : Water en land binnen <= 500 m van ruim boscomplex
+Water-First begrenzing    : Landbiotoop strikt afgesneden op <= 500 m van geschikt water
+Dispersieradius (ARPL)    : 10000 m
+================================================================================

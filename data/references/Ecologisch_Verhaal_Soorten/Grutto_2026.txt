@@ -1,0 +1,102 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: GRUTTO
+Soort: Limosa limosa (weidevogel / vochtige graslanden & poldercomplexen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Grutto is een uitgesproken kritische weidevogel die gebonden is aan open, 
+vochtige tot natte, extensieve graslanden (met name dotterbloemgraslanden, 
+glanshaverhooilanden en soortenrijke poldergraslanden) met een hoog bodemleven 
+(regenwormen, emelten) en plas-draszones, zonder opgaande landschapselementen.
+
+A. Kernbiotoop ('kern1' + 'kern2'):
+   - BWK kern1: hj+, hp+, rbbkam%, rbbzil%, hpr, hpr+, 2190%, 1330_hpr%, 
+     rbbvos%, rbbah%
+   - BWK kern2: hp, hj, 2190%
+     (Bloem- en kruidenrijke graslanden, zilte graslanden, vochtige kamgrasweiden)
+   - Bodemdrainage-eis op kernen:
+       * Bron: Drainagekaart Vlaanderen (vlaanderen_drainage_n2khab_10m.tif)
+       * Selectieklassen: d, e, f, h, i, g, e-f, h-i, e-i (uitsluitend matig 
+         natte tot zeer natte bodems met een hoge grondwaterstand in het voorjaar).
+
+B. Bouwstenen en Matrix ('cultuur0a', 'hooiland', 'cultuurhooi1b'):
+   - Graslanden & hooilanden: hc, hc+, 6410%, rbbhc%, hj, hj+, hm, hm+, hme, 
+     hme+, hmo, hmo+, 6230%, hp+, rbbkam%, rbbzil%, hpr, hpr+, hu, 6510%, 
+     hu+, hmm, hx%, hp, hr+, 6430%, hr-, hr
+   - Akkeruitsluiting ('akker'): bc%, bg%, bk%, bl%, bs%, bu% worden integraal 
+     verwijderd uit de cultuurgraslandlaag.
+
+C. Klein Water & Plas-dras ('kleinwater_bwk' + GRB-water):
+   - BWK: ae, 2190%, 3140%, 3150%, ae+, ae-, aer%, aev%, kn%
+   - GRB-water (vlaanderen_grb_water_10m.tif): Alleen kleine waterpartijen en 
+     sloten (clusters <= 50 pixels / 5.000 m2) worden meegenomen (als 1% fractie).
+
+
+2. NEGATIEVE FILTERS (VERSTORING, PREDATIE & VERBOSSING)
+--------------------------------------------------------------------------------
+Grutto's zijn extreem gevoelig voor predatiedruk (kraaiachtigen, roofvogels, 
+vossen) en vermijden elke vorm van horizonvervuiling en opgaande structuren:
+
+- Bebouwingsfilter (100 m buffer rond grote kernen):
+    * Bron: BWK-bebouwing ('u*'-codes, excl. 'ulm').
+    * Selectie: Bebouwingsclusters >= 10 ha (gebufferd met 100 m).
+    * Exclusie: Zone van 100 m rond grote bebouwing wordt volledig uitgesloten.
+- Hooggroen- en bomenfilter (50 m buffer rond clusters >= 20 are):
+    * Bron: Groenkaart 2021 (hooggroen/bomen).
+    * Filter: Boomclusters met een dichtheid >= 12 cellen binnen een 5x5 focal window 
+      (>= 20 are aaneengesloten bomen) worden geselecteerd en met 50 m gebufferd.
+    * Exclusie: Zowel het kernbiotoop als de bouwstenen worden integraal geschoond 
+      van hooggroen en de 50 m storingsbuffer eromheen (voorkomt zitposten voor predatoren).
+
+
+3. CLUSTERING KERNBIOTOOP (MINIMAAL 10 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (dist_m): 50 m
+- Oppervlaktedrempel kern (drempel_kern_m2): >= 10 ha (100.000 m2)
+    * Het natte, open kernbiotoop moet na filtering van bebouwing en bomen 
+      minstens 10 ha aaneengesloten werkelijke habitatoppervlakte omvatten.
+    * Ecologische functie: Een broedkolonie Grutto's vestigt zich vrijwel nooit 
+      solitair; er is een compacte, veilige kern van minstens 10 ha nat grasland 
+      nodig voor gezamenlijke predatorverdediging en succesvol nestelen.
+
+
+4. WEDERZIJDSE KOPPELING KERN & BOUWSTENEN (200 M / 10 HA KERN & 25 HA TOTAAL)
+--------------------------------------------------------------------------------
+Een duurzaam weidevogelgebied vereist naast de natte broedkern een voldoende 
+grote, open foerageermatrix voor opgroeiende kuikens:
+
+- Koppelingsafstand: 200 m (via focal moving window, directions = 8).
+    * Kernbiotoop (>= 10 ha) en omgevende bouwstenen (cultuurgrasland, hooiland, 
+      klein water) worden over tussenafstanden tot 200 m met elkaar verbonden.
+- Criterium 1 (Kernoppervlakte in netwerk): >= 10 ha werkelijk kernbiotoop.
+- Criterium 2 (Totale oppervlakte netwerk): >= 25 ha (250.000 m2) totaal habitat.
+    * Filterregel: Zowel de kern als de omgevende bouwstenen worden ALLEEN 
+      goedgekeurd indien ze deel uitmaken van een gecombineerd complex van 
+      minstens 25 ha dat tevens een volwaardige 10 ha-kern bevat.
+    * Ecologische functie: Kuikens moeten vanaf de natte nestlocatie kunnen 
+      uitwijken naar insectenrijke hooilanden en extensieve weiden binnen 200 m 
+      zonder barrières van akkers, bosranden of bebouwing te kruisen.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): 10.000 m (10 km)
+    * Toepassing: ARPL / netwerkanalyses op landschapsniveau.
+    * Ecologische functie: Grutto's vertonen een hoge plaatstrouw aan hun 
+      geboortepolder, maar jongen en adulte vogels wisselen over afstanden tot 
+      10 km uit tussen verschillende polder- en beekdalsystemen.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Grutto (Limosa limosa) - broedvogel (let op bestandsnaam _wv)
+Kernbiotoop bodem         : Nat/zeer nat (drainage d, e, f, h, i, g, e-f, h-i, e-i)
+Exclusiezone bebouwing    : 100 m buffer rond bebouwingskernen >= 10 ha
+Exclusiezone hooggroen    : 50 m buffer rond boomopstanden >= 20 are
+Minimale kerndrempel      : >= 10 ha werkelijk habitat (clustering: 50 m)
+Netwerk koppelafstand     : 200 m tussen kern en omgevende bouwstenen
+Drempelwaarde totaal      : Netwerk >= 25 ha totaal habitat EN >= 10 ha natte kern
+Dispersieradius (ARPL)    : 10 km (10.000 m)
+================================================================================

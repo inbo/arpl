@@ -1,0 +1,109 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: KWAK
+Soort: Nycticorax nycticorax (koloniebroedende reiger / moeras- & alluviaal bos)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Kwak is een schuwe, nachtactieve reigerachtige met een uitgesproken tweeledig 
+leefgebied: overdag zoekt de soort dichte, veilige rust- en broedplaatsen in 
+onverstoorde, waterrijke moeras- en alluviale broekbossen; 's nachts foerageert 
+hij op vis, amfibieën en watermacrofauna langs open waterkanten, moerasoevers 
+en verlandingszones.
+
+A. Voortplantingsbiotoop / Nestlocaties ('voortplanting0'):
+   - BWK-selectie:
+       ru%, 2180%, 9160%, 91E0%, 91F0%, rud%, sf%, rbbsf%, 4010%, 7140%, 
+       7230%, so%, rbbso%, sz%, va%, vc%, vf%, vm%, vn%, vo%, vt%, 91D0%
+       (Alluviale elzen-essenbossen, wilgenvloedbossen, moeras- en broekbossen, 
+       vochtige berkenbossen en dichte moerasstruwelen)
+   - Negatieve filter ('not_eikenbos'):
+       f%, 9110%, 9120%, 9130%, 9150%, q%, 2180%, 9160%, 9190%
+       (Droge eikenbossen, beukenbossen en zandige bostypen worden integraal 
+       uitgesloten via inverse maskering).
+   - Clustering broedhabitat:
+       * Zoekstraal (dist_m): 100 m
+       * Oppervlaktedrempel: >= 5 ha (50.000 m2) werkelijk habitatoppervlak.
+       * Ecologische functie: De soort broedt in dichte struiken of bomen 
+         boven (of pal naast) water; een kern van minstens 5 ha nat broekbos 
+         voorkomt grondpredatie door zoogdieren en menselijke verstoring.
+
+B. Foerageerhabitat ('moeras' & 'openwater'):
+   - Moerasbiotoop ('moeras'):
+       3260%, ad%, ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, aom%, 
+       3110%, 3130%, 3160%, 7140%, 7150%, apo%, hf, 6430%, rbbhf%, hf+, 
+       hpr+, 1310%, 1330%, rbbkam%, rbbzil%, kn%, ku%, 3270%, kub%, kz%, 
+       mc%, rbbmc%, mcb%, md%, 91E0%, mdb%, mr%, 1130%, 6430_hw%, 6430_mr%, 
+       7140_mrd%, rbbmr%, mrb%, mru%, mz%, 1330%, 1330_da%, 1330_hpr%
+       (Rietmoerassen, verlandingszones, slikken, schorren, ruigten en vennen)
+   - Open water ('openwater'):
+       ad%, ae%, 2190%, 3140%, 3150%, aev%, ah%, rbbah%, aom%, 3160%, 
+       7140%, 7150%, apo%
+       (Open plassen, vijvers, kreken, polderwateren en spaarbekkens)
+
+
+2. FOERAGEERHABITAT FILTERING: MOERASCLUSTERING & WATERAANDEEL (>= 20%)
+--------------------------------------------------------------------------------
+Kwakken foerageren niet in drooggevallen rietlanden zonder open water:
+
+1. Moerasclustering (50 m zoekstraal):
+   - Het moerasbiotoop wordt geclusterd met dist_m = 50 m.
+   - Oppervlaktedrempel: >= 10 ha (100.000 m2) werkelijk habitat per complex.
+2. Procentuele water-in-moeras toets (>= 20% open water):
+   - Binnen elk goedgekeurd moerascluster (>= 10 ha) wordt via 'terra::zonal' 
+     de oppervlakte 'openwater' gemeten.
+   - Filtervoorwaarde: Het open water moet minstens 20% van de moerasoppervlakte 
+     bedragen (Water_Aandeel >= 0.20).
+   - Ecologische functie: Garandeert een fijne afwisseling van riet/vegetatiedekking 
+     en open water (plas-moerasmozaïek); dichte, homogene rietvelden zonder 
+     open wateroevers bieden geen bereikbare vis- of amfibieënprooien.
+
+
+3. WEDERZIJDSE COMMUTER-KOPPELING (5 KM AFSTANDSRADIUS)
+--------------------------------------------------------------------------------
+De functionele eenheid van een kolonie wordt bepaald door de dagelijkse 
+vliegbeweging (pendelafstand / commuting) tussen kolonie en voedselgronden:
+
+- Commuterafstand: 5.000 m (5 km).
+    * Broedbos (>= 5 ha, geschoond van droge bossen) moet binnen <= 5.000 m 
+      van een goedgekeurd foerageercomplex liggen.
+    * Foerageercomplex (>= 10 ha met >= 20% water) moet binnen <= 5.000 m 
+      van een goedgekeurd broedbos liggen.
+    * Ecologische functie: Kwakken broeden sociaal in kolonies maar vliegen 
+      in de schemering tot 5 km uit om te foerageren. Geïsoleerde broedbosjes 
+      zonder foerageermoeras binnen 5 km, of moerassen zonder veilig broedbos 
+      binnen 5 km, zijn niet duurzaam bezetbaar.
+
+
+4. FINALE SAMENVOEGING & NETWERKDREMPEL (>= 10 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Het gekoppelde broed- en foerageerhabitat wordt additief samengevoegd 
+  (clamp max. 1.0).
+- Finale clusterfilter:
+    * Zoekstraal (dist_m): 50 m
+    * Minimale oppervlakte: >= 10 ha (100.000 m2) werkelijk gecombineerd leefgebied.
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op het 
+  gefilterde eindresultaat (let op: bestandsnaamconventie gebruikt '_wv' suffix).
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Bovenlokaal kolonisatiebereik
+    * Toepassing: ARPL / netwerkanalyses op Vlaams niveau.
+    * Ecologische functie: Jonge reigers en zwervers kunnen tientallen kilometers 
+      afleggen langs grote riviersystemen (Scheldebekken, Dijle- en Demervallei, 
+      Maasvallei) om nieuwe broedkolonies te stichten in geschikte moerasboskernen.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Kwak (Nycticorax nycticorax) - broed- & watervogel (_wv)
+Broedbiotoop drempel      : >= 5 ha moeras-/broekbos (clustering: 100 m)
+Uitsluiting broedbiotoop  : Droge eiken- en beukenbossen ('not_eikenbos') uitgesloten
+Foerageerbiotoop drempel  : >= 10 ha moerascomplex (clustering: 50 m)
+Moerasstructuureis        : Minimaal 20% open wateroppervlak binnen het foerageercluster
+Functionele pendelafstand : Wederzijds binnen <= 5.000 m (5 km commuter-toets)
+Totale leefgebiedsdrempel : >= 10 ha (clustering: 50 m op samengevoegd leefgebied)
+Dispersieradius (ARPL)    : 25000 m
+================================================================================

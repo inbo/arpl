@@ -1,0 +1,103 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: GRAUWE KLAUWIER
+Soort: Lanius collurio (broedvogel / heide, heischraal landschap & KLE-mozaïeken)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Grauwe klauwier is een uitgesproken mozaïekvogel van open tot halfopen, 
+extensieve cultuur- en natuurlandschappen. De soort combineert doornstruwelen 
+en heggen (voor nestplaats, prooispiezen en uitkijkposten) met schrale, lage 
+kruiden- en graslandvegetaties (rijk aan grote insecten en kleine gewervelden).
+
+A. Voortplantingsbiotoop ('voortplanting_bwk'):
+   - BWK-selectie:
+       ce%, 4010%, 7150%, 7140_oli%, cg%, 2310%, 4030%, 5130%, ha%, 2330%, 
+       6230_ha%, 2130_had%, 2150%, hd%, hk%, 6210%, hm%, 6410%, hn%, 6230%, 
+       hp+, hpr+, rbbkam%, rbbzil%, hu%, 2190%, 6120%, 6510%, sd%, 2160%, 
+       2170%, sg%, 6230%, rbbsg%, sk%, sp%, rbbsp%, sz%
+       (Droge en vochtige heiden, heischrale graslanden, kalkgraslanden, 
+       duingraslanden en bloemrijke soortenrijke graslanden)
+
+B. Foerageerbiotoop ('foerageerbiotoop'):
+   - BWK-selectie: Brede selectie van open en halfopen graslanden, duinen, 
+     heiden en ruigten:
+       cd%, 2310%, ce, 4010%, 7150%, ce-, ce+, ceb, ceb-, ceb+, cg%, 4030%, 
+       5130%, cm%, cp%, cv%, dd%, 2120%, dm%, 2330%, ha%, 6230_ha%, 2130%, 
+       2130_had%, 2150%, hc%, 2190%, 6410%, rbbhc%, hd%, 2130_hd%, hf%, 
+       6430%, rbbhf%, hj%, hk%, 6210%, hm%, hn%, 6230%, hp+, hpr+, rbbkam%, 
+       rbbzil%, hr%, hu%, 6120%, 6510%, ku%, kw%, mr%, 6430_hw%, 7140%, 
+       rbbmr%, sd%, 2160%, 2170%, sg%, 6230%, rbbsg%, sk%, 6210%, sp%, 
+       rbbsp%, sz%
+
+
+2. NEGATIEVE STOORFACTOREN (BEBOUWING & WEGENMETING)
+--------------------------------------------------------------------------------
+Grauwe klauwieren zijn gevoelig voor zware menselijke verstoring en visuele onrust:
+
+- Grote bebouwingskernen (100 m buffer):
+    * Bron: BWK-bebouwing (u, ua, uc, ud, ui, un, ur, uv; fractie > 0).
+    * Filter: Aaneengesloten bebouwingsclusters (gebufferd met 25 m) met een 
+      totale omvang >= 10 ha worden geselecteerd.
+    * Exclusie: Rond deze grote kernen geldt een exclusiezone van 100 m.
+- Verkeersaders (100 m buffer):
+    * Bron: GRB_Wegverbinding_at.tif (autosnelwegen en wegen met gescheiden rijbanen).
+    * Exclusie: Zone van 100 m langs beide zijden van deze drukke wegen wordt 
+      volledig uitgesloten wegens aanrijdingsrisico en geluids-/visuele verstoring.
+
+
+3. KERNBIOTOOP & KLE-STRUCTUUREIS (MINSTENS 500 M KLE)
+--------------------------------------------------------------------------------
+1. Kernclustering (50 m zoekstraal):
+   - Gezuiverd voortplantingshabitat wordt geclusterd met dist_m = 50 m.
+   - Oppervlaktedrempel: >= 10 ha (100.000 m2) werkelijk habitat per cluster.
+2. Evaluatie van Kleine Landschapselementen (KLE-eis):
+   - Bron: Vlaamse Groenkaart 2021 (waarde 1 en 2 = bomenrijen, houtkanten, 
+     heggen en struwelen).
+   - Eis: Binnen de patchcontour van het 10 ha-cluster moeten minstens 50 pixels 
+     (= 500 m lineaire lengte) aan opgaande KLE's aanwezig zijn.
+   - Ecologische functie: De Grauwe klauwier kan niet broeden in een boomloos, 
+     kaal grasland. Struwelen en houtkanten zijn strikt vereist als nestlocatie 
+     en als uitkijkpost om prooien vanaf te lokaliseren en te spietsen.
+
+
+4. FOERAGEERKOPPELING & GRASLANDTEST (< 90% HP-GRASLAND)
+--------------------------------------------------------------------------------
+1. Foerageerbuffer (100 m):
+   - Rond het goedgekeurde kernbiotoop wordt een buffer van 100 m gelegd. 
+     Aangrenzend foerageerbiotoop binnen deze 100 m zone wordt meegenomen.
+2. Totaal leefgebied clustering:
+   - Het gecombineerde geheel (kern + foerageer) wordt opnieuw geclusterd 
+     (dist_m = 50 m) op een drempel van minstens 15 ha (150.000 m2).
+3. Graslandstructuur / Homogeniteitstest (< 90% HP-grasland):
+   - Binnen elk goedgekeurd complex (>= 15 ha) wordt het aandeel van 'hp' 
+     (productiegrasland/intensief grasland) gemeten via de BWK.
+   - Filterregel: Het aandeel hp mag maximaal 90% bedragen van de totale 
+     oppervlakte (GraslandAandeel < 0.90).
+   - Ecologische functie: Grote, uniforme percelen intensief raaigrasland zijn 
+     ecologische woestijnen voor de Grauwe klauwier door een gebrek aan 
+     kruiden en grote insecten. Het landschap moet divers en structuurrijk zijn.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): 10.000 m (10 km)
+    * Toepassing: ARPL / netwerkanalyses bovenlokaal niveau.
+    * Ecologische functie: Grauwe klauwieren vertonen een zekere mate van 
+      nestplaatstrouw maar vestigen zich geregeld in losse 'kolonies' of 
+      clusters van territoria over een landschapsschaal van 10 km.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Grauwe klauwier (Lanius collurio) - broedvogel
+Stoorfactoren             : Exclusiezone van 100 m rond grote bebouwing (>= 10 ha) 
+                            en snelwegen/gescheiden rijbanen
+Kernbiotoop drempel       : >= 10 ha werkelijk habitat (clustering: 50 m)
+KLE-lengte-eis in kern    : Minstens 500 m (50 pixels) heggen/struwelen
+Foerageerzone             : 100 m buffer rond de kern
+Totaal leefgebied drempel : >= 15 ha (kern + foerageer)
+Landschapsdiversiteit     : Maximaal 90% aandeel intensief grasland (hp) per complex
+Dispersieradius (ARPL)    : 10 km (10.000 m)
+================================================================================

@@ -1,0 +1,65 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: EIKELMUIS
+Soort: Eliomys quercinus (zoogdier / slaapmuis van kleinschalige loofbossen & houtkanten)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITAT & SELECTIE
+--------------------------------------------------------------------------------
+- Type habitat: Zeer structuurrijke, thermofiele loofbossen, bosranden, 
+  struwelen, holle wegen, heggen, hoogstamboomgaarden, spoorwegtaluds en 
+  halfopen landschapselementen met een dicht struik- en boomkronendak.
+- BWK-selectie (bwk):
+    9150%, 9160%, ek%, es%, f%, 9110%, 9120%, 9130%, gml%, gmn%, hab%, 
+    hcb%, hdb%, 2190%, hjb%, hkb%, hmb%, hnb%, hrb%, hub%, k(cg%, k(cp%, 
+    k(hf%, k(hr%, k(cdb%, k(cmb%, k(hab%, k(hjb%, k(kub%, k(mcb%, k(mrb%, 
+    kb%, kg%, kh%, khw%, kj%, kp%, kpa%, kpk%, ks%, kr%, kw%, l%, n%, p%, 
+    q%, ru%, s%, ua%, un%, v%, mc%, ur%, uv%, ui%, kf%, kf-%, kc%, kk%, 
+    kl%, km%, ko%, kq%, kt(cg%, kt(cgb%, kt(cmb%, kt(cp%, kt(cpb%, kt(fa%, 
+    kt(fe%, kt(fk%, kt(fl%, kt(fm%, kt(fs%, kt(hab%, kt(hf%, kt(hfb%, 
+    kt(hjb%, kt(hr%, kt(hrb%, kt(ku%, kt(kub%, kt(mc%, kt(mcb%, kt(mr%, 
+    kt(mrb%, kt(qa%, kt(qb%, kt(qe%, kt(qk%, kt(ql%, kt(qs%, kt(ru%, 
+    kt(sf%, kt(sg%, kt(sgb%, kt(sgu%, kt(sk%, kt(sp%, kt(sz%, kt(va%, 
+    kt(vm%, kt(vn%, spoor%, 2180%, 91E0%
+    (Eiken-beukenbossen, alluviale bossen, kalkminnende bossen, struwelen 'k(...)', 
+    houtkanten/heggen 'kt(...)', boomgaarden, struweelrijke bermen en taluds)
+- Fusie / Brondata: Enkelvoudige BWK-laag met werkelijke oppervlaktefracties 
+  (0.0 - 1.0) per 10m-cel via Parquet.
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+- Overbruggingsafstand (dist_m): Dynamisch via Excel (afstand_m / AfstandBiotopen_m)
+    * Cellen binnen deze afstand worden via een buffer- en patch-analyse 
+      (directions = 4) geaggregeerd tot functionele leefgebiedclusters.
+    * Ecologische functie: Eikelmuizen zijn boombewonende en struweelgebonden 
+      klimmers die zich bij voorkeur via aaneengesloten kronen en heggen 
+      verplaatsen. Ze mijden open kale bodem wegens predatierisico (uilen, marters, 
+      vossen, huiskatten). De zoekstraal overbrugt kleine hiaten (veldoversteken, 
+      smalle wegen) tussen houtkanten en bospercelen.
+- Minimale oppervlakte (oppervlakte_ha): Dynamisch via Excel (MinOpp_ha)
+    * Drempelwaarde: drempel_m2 = 5 * 10.000 m2 werkelijk habitat.
+    * Ecologische functie: Waarborgt voldoende nestgelegenheid (holtes, 
+      oude vogelnestjes, spleten) en een aaneengesloten voedselvoorziening 
+      (bessen, zaden, noten, slakken, kevers) om een familiegroep of kleine 
+      lokale populatie in stand te houden.
+
+
+3. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses bovenlokaal niveau.
+    * Ecologische functie: Bepaalt de mate van isolatie en potentiële genetische 
+      uitwisseling tussen relictpopulaties (zoals in Zuid-Limburg, de Vlaamse Ardennen 
+      en het Kustgebied) via het tussenliggende kleine-landschapselementennetwerk (KLE).
+
+
+4. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Eikelmuis (Eliomys quercinus)
+Doelbiotoop               : Structuurrijke loofbossen, struwelen, heggen & taluds
+Bronlagen                 : BWK (werkelijke fracties)
+Minimale clusteroppervlak : 5 ha
+Functionele zoekstraal    : 20 m
+Dispersieradius (ARPL)    : 1000 m
+================================================================================

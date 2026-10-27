@@ -1,0 +1,5 @@
+voortplanting: 2120%, dd%, dm%, 2330%
+
+MinOpp_ha: 5
+AfstandBiotopen_m:  50
+Dispersiecap_m: 5000

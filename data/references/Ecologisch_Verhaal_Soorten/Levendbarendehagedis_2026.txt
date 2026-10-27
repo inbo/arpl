@@ -1,0 +1,89 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: LEVENDBARENDE HAGEDIS
+Soort: Zootoca vivipara (reptiel / vochtige en droge heiden, venen & schraallanden)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Levendbarende hagedis is een bodembewonend, koudbloedig reptiel met een brede 
+ecologische amplitude binnen open tot halfopen, structuurrijke natuurlandschappen. 
+De soort prefereert vochtige tot natte overgangszones (vochtige heide, veenranden, 
+slenken, broekbosranden) maar komt ook voor op drogere schrale gronden (droge heide, 
+duingrasland, bermen en spoorwegtaluds). Belangrijke microhabitats zijn open 
+zonplekken (oude graspollen, dood hout, stronken) voor thermoregulatie, gecombineerd 
+met een dichte kruid- of moslaag voor beschutting tegen predatoren en uitdroging.
+
+A. Doelbiotoop ('bwk'):
+   - BWK-selectie:
+       cd%, 2310%, ce%, 4010%, 7150%, 7140_oli%, cg%, 4030%, 5130%, cm%, 
+       ct%, 7110%, 7120%, cv%, ha%, 2330%, 6230_ha%, 2130%, 2150%, hc%, 
+       2190%, 6410%, rbbhc%, hd%, hj%, hk%, 6210%, hn%, 6230%, hp+, 
+       rbbkam%, hu%, 6120%, 6510%, ks%, ku%, 3270%, 6430%, k(ku%, k(cg%, 
+       k(cv%, k(cm%, k(cd%, k(ce%, k(hu%, k(ha%, k(hk%, k(hc%, k(hj%, 
+       k(hd%, se%, spoor%
+       (Droge en vochtige heiden, hoogvenen, duingraslanden, heischrale en 
+       kalkgraslanden, bloemrijke soortenrijke graslanden, ruderale vegetaties 
+       op zand, lineaire struwelen 'k(...)' en spoorwegzatevegetaties)
+   - Verwerking: Directe collectie van werkelijke dekkingsfracties op 10 m 
+     resolutie (BWK_FRAC gesommeerd tot maximaal 1.0).
+
+
+2. DUBBELE DREMPELFILTERING OP TWEE SCHAALNIVEAUS
+--------------------------------------------------------------------------------
+De soort heeft een beperkte dispersiecapaciteit en een uitgesproken lokale 
+populatiedynamiek. Het habitatmodel hanteert daarom een getrapte dubbele 
+drempeltoets (lokale patchgrootte versus netwerkomvang):
+
+A. Stap 1: Voorfilter individuele vlekken (>= 5 ha, afstand_m = 0 m):
+   - Ruimtelijke identificatie van losse aaneengesloten vlekken via 
+     8-richtingen rasterbuurcellen (zonder overbruggingsafstand, afstand_m = 0 m).
+   - Drempelwaarde: drempel_vlek_m2 = 5 ha * 10.000 m2 = 50.000 m2 werkelijk habitat.
+   - Filterregel: Alleen aaneengesloten patches met minstens 5 ha werkelijke 
+     habitatoppervlakte blijven behouden (opp_gefilterd).
+   - Ecologische functie: Snippers kleiner dan 5 ha bieden onvoldoende 
+     draagkracht voor een zelfstandige, inteeltvrije voortplantingsgroep en 
+     zijn te kwetsbaar voor predatiedruk (o.a. Fazant, Kat, Kraaiachtigen) 
+     en randeffecten.
+
+B. Stap 2: Netwerkclustering & metapopulatiedrempel (>= 10 ha op 100 m):
+   - De goedgekeurde vlekken (>= 5 ha) worden geclusterd met een koppelingsafstand 
+     van 100 m (buffer_m = 100 m, directions = 4).
+   - Drempelwaarde: drempel_netwerk_m2 = 10 ha * 10.000 m2 = 100.000 m2 totaal habitat.
+   - Filterregel: Het totale netwerk van onderling verbonden vlekken binnen 100 m 
+     moet minstens 10 ha werkelijk habitat omvatten.
+   - Ecologische functie: Garandeert dat lokale clusters niet als geïsoleerde 
+     5 ha-eilandjes overblijven, maar ingebed zijn in een groter metapopulatiesysteem 
+     van minstens 10 ha waarbinnen genetische uitwisseling tussen naburige kernen 
+     mogelijk blijft.
+
+
+3. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Cellen die voldoen aan de individuele vlekdrempel (>= 5 ha) 
+  EN deel uitmaken van een 100 m-netwerk van minstens 10 ha werkelijke oppervlakte.
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (export naar '00_ID_Rasters' en 
+  '01_Werkelijke_Oppervlaktes').
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): 100 m
+    * Toepassing: Vormt direct de functionele aggregatiestraal in stap 2.
+    * Ecologische functie: Levendbarende hagedissen zijn honkvast en bewegen 
+      zich traag en voorzichtig door dichte vegetatie; open akkers, brede wegen 
+      of waterlopen vormen absolute barrières. Een afstand van 100 m door 
+      halfopen tussenland is de maximale realistische afstand waarover 
+      subadulte individuen tussen heidekernen migreren.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Levendbarende hagedis (Zootoca vivipara)
+Doelbiotoop               : Vochtige/droge heide, vennen, schraalgrasland & spoorwegzates
+Individuele vlekdrempel   : >= 5 ha werkelijk habitat per patch (directions = 8, 0 m)
+Koppelafstand netwerk     : 100 m (buffer_m / Dispersiecapaciteit)
+Totale netwerkoppervlakte : >= 10 ha totaal werkelijk habitat binnen het 100 m-netwerk
+Dispersieradius (ARPL)    : 100 m
+================================================================================

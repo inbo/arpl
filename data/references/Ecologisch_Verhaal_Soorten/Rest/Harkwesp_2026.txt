@@ -1,0 +1,3 @@
+bwk_Duinen: da+, dm%, 2130%, 2330%
+bwk_Kempen: cg+, dm%, hmo%, had%, 2310%, 4030%, 6230%, dm%, hmo%, had%, 2310%, 6230%
+bwk_Rest: cg+, dm%, hmo%, had%, 2310%, 4030%, 6230%

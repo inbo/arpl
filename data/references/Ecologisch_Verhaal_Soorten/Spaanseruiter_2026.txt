@@ -1,0 +1,5 @@
+biotoop: hm-, hm+, hm, hme%, hmm%, 6410_mo
+
+MinOpp_ha: 0.16
+AfstandBiotopen_m:  20
+Dispersiecap_m: 100

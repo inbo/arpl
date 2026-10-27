@@ -1,0 +1,113 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: ZOMPSPRINKHAAN
+Soort: Mecostethus parapleurus / Stethophyma grossum (moerassprinkhaanachtigen / 
+       natte venen, broeklanden, zeggenmoerassen & vochtige heiden)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Zompsprinkhaan (ook ecologisch nauw verwant aan de Moerassprinkhaan) is een 
+uitgesproken hygroscopische habitatspecialist van kletsnatte, ondiep geïnundeerde 
+of permanent waterverzadigde open vegetaties. De soort is typerend voor intacte 
+hoogvenen, trilvenen, overgangsvenen, slenken met veenpluis/wollegras, natte 
+dopheidevegetaties, moerasspirea-ruigten, dotterbloemgraslanden en grote 
+zeggenmoerassen. Vrouwtjes leggen hun eieren uitsluitend in doorweekte moskussens 
+(vooral Sphagnum) of in de met vocht verzadigde basis van zeggen- en russenpollen; 
+de eieren drogen snel uit bij waterpeildalingen.
+
+A. Doelbiotoop Natte Vegetaties & Veencomplexen ('bwk'):
+   - BWK-selectie:
+       6230_hmo%, 6410_mo%, 6410_ve%, 6430_hf%, 7110%, 7120%, 7140%, 7150%, 
+       ce%, hc%, hm%, ms%, md%, mc%, t%, rbbhc%, rbbms%, rbbmc%, k(hc)%, 
+       k(hm)%, k(ms)%, k(md)%, k(mc)%, k(t)%
+       (Actieve en herstellende hoogvenen, overgangs- en trilvenen, vochtige 
+       heiden, soortenrijke dotterbloemgraslanden, moerasspirea-ruigten, 
+       blauwgraslanden, grote zeggenvegetaties en karteringseenheden langs 
+       venige spoorzomen/bermen)
+   - Noot habitatstatus: Zoals afgesproken blijft 'hg' (en afgeleiden) 
+     consequent uitgesloten als habitat.
+
+
+2. BODEMDRAINAGE-CONFIGURATIE: STRIKT NATTE BODEMS (STAP 1)
+--------------------------------------------------------------------------------
+In tegenstelling tot de Veldkrekel en de Zadelsprinkhaan (die strikte droogte eisen), 
+is voor de Zompsprinkhaan permanente bodemvochtigheid en een hoge grondwaterstand 
+de belangrijkste sturende factor:
+
+- Drainagekaart: vlaanderen_drainage_n2khab_10m.tif
+- Selectieklassen: "d", "e", "f", "g", "h", "i", "e-f", "h-i", "e-i"
+    * Matig natte tot zeer natte bodems met continue grondwaterinvloed in de 
+      wortel- en moslaag (inclusief alluviale gronden en veenbodems 'g').
+- Verwerking: Het BWK-oppervlak ('bwk_opp') wordt direct gemaskerd met deze 
+  natte drainageklassen (zompsprinkhaan_basis_opp).
+- Ecologische functie: Sluit ontwaterde heidestukken, droge zandruggen en 
+  agrarisch gedraineerde percelen direct uit; eipakketten kunnen hier immers 
+  geen levensvatbare diapauze voltooien.
+
+
+3. PRIMAIRE CLUSTERING OP LANDSCHAPSNIVEAU (>= 1 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Overbruggingsafstand (dist_m): 50 m
+    * Cellen van het natte biotoop worden samengevoegd via focal moving 
+      window buffering (directions = 4).
+    * Ecologische functie: Overbrugt sloten, wadi's, smalle veendijkjes en 
+      lage greppelranden binnen het beekdal of heideveensysteem.
+- Minimale drempelwaarde: >= 1 ha (10.000 m2) werkelijk habitatoppervlak 
+  (zompsprinkhaan_clusters_opp).
+- Ecologische functie: Sluit sterk versnipperde slootkanten en geïsoleerde 
+  plukjes zegge < 1 ha uit die onvoldoende verberging en voedsel bieden 
+  voor een levensvatbare voortplantingskern.
+
+
+4. METAPOPULATIE STRUCTUUR ANALYSE (STAP 3)
+--------------------------------------------------------------------------------
+Hoewel Zompsprinkhanen gevleugeld zijn, zijn het trage en zware vliegers die 
+slechts over beperkte afstanden vlieg- en sprongverplaatsingen maken:
+
+1. Grote Kwaliteitskernen (>= 5 ha):
+   - Clusters met een geaccumuleerd werkelijk oppervlak >= 5 ha (50.000 m2) 
+     worden direct goedgekeurd als zelfstandig duurzaam leefgebied 
+     (r_leefgebied_5ha_opp).
+2. Kleine Netwerkpatches (1 tot 5 ha):
+   - Patches tussen 1 ha en 5 ha worden getoetst aan metapopulatie-eisen:
+       * Methode: Polygoonconversie per patch en berekening van een buffer 
+         gelijk aan de dispersiecapaciteit (buffer_m = 250 m).
+       * Criterium: Een kleine patch moet minstens 3 overlappende buren 
+         (inclusief zichzelf, unieke_buren_count >= 3) binnen een straal 
+         van 250 m hebben.
+       * Ecologische functie: Een compact mozaïek van minstens 3 vochtige 
+         stapstenen binnen 250 m vangt lokale peilschommelingen en incidentele 
+         verdroging op en voorkomt genetische isolatie.
+
+
+5. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Additieve samenvoeging (clamp max. 1.0) van:
+    1. Grote kernen (>= 5 ha)
+    2. Goedgekeurde netwerkpatches (1-5 ha met >= 3 buren binnen 250 m)
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (export naar '00_ID_Rasters' en 
+  '01_Werkelijke_Oppervlaktes').
+
+
+6. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m, 250 m)
+    * Toepassing: ARPL / netwerkanalyses bovenlokaal niveau.
+    * Ecologische functie: Brengt de verbindingen tussen natte valleisystemen 
+      en hoogveenkernen in beeld (vooral in de Kempen, vallei van de Zwarte Beek, 
+      Demerbroeken en Hoge Kempen) en toont de knelpunten waar drainage of 
+      bebossing migratie over afstanden groter dan 250 m blokkeert.
+
+
+7. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Zompsprinkhaan (Mecostethus parapleurus / Stethophyma grossum)
+Doelbiotoop               : Veenmosvegetaties, trilvenen, moerasruigten & natte heiden
+Bodemdrainage             : Beperkt tot natte bodems (klassen d, e, f, g, h, i, e-f, h-i, e-i)
+Primaire clustering       : >= 1 ha werkelijk habitat (clustering: 50 m)
+Direct goedgekeurd        : Patches >= 5 ha werkelijk habitat
+Metapopulatie-eis (1-5 ha): Moet >= 3 buurpatches hebben binnen een straal van <= 250 m
+Dispersieradius (ARPL)    : 250 m
+================================================================================

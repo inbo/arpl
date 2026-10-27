@@ -1,0 +1,68 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: BLAUWE KIEKENDIEF (WINTERVOGEL)
+Soort: Circus cyaneus (winterhalfjaar / doortrekker & overwinteraar)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITAT & SELECTIE
+--------------------------------------------------------------------------------
+- Type habitat: Uitsluitend foerageergebied (geen voortplanting in de winter).
+- BWK-foerageercodes:
+    hp%, rbbhp%, hu%, hc%, rbbhc%, ha%, rbbha%, cg%, rbbcg%, p%, hk%, h%, 
+    hf%, hpr%, huf%, bf%, bfr%, k%, mr%, m%
+    (Heischrale graslanden, vochtige/droge heiden, moerassen, duingraslanden)
+- Landbouwgebruikspercelen (LGP) wintergewassen:
+    100, 101, 102 (granen/wintergranen)
+    201, 202 (peulvruchten/vlinderbloemigen)
+    311, 321 (knol- en wortelgewassen)
+    601, 602, 603 (groenbedekkers, stoppelvelden)
+    800, 801, 810 (tijdelijk en blijvend grasland)
+    900, 910, 931, 951 (braakland, akkerranden, vogelakkers)
+- Fusiemethode: BWK-fractie + LGP-fractie per 10m-cel, afgetopt op max. 1.0 (100%).
+
+
+2. NEGATIEVE FILTERS (VERSTORING & VERBOSSING)
+--------------------------------------------------------------------------------
+- Bebouwingsfilter (75 m buffer):
+    * Bron: BWK-klassen startend met 'u' (bebouwing) en 'gh' geen habitat, 
+      met een bedekking >= 30%.
+    * Filter: Bebouwde cellen inclusief een bufferzone van 75 m worden 
+      volledig uitgesloten als foerageerhabitat.
+- Verbossingsfilter (> 20 are):
+    * Bron: Vlaamse Groenkaart 2021 (kruinlaag/hooggroen >= 30%).
+    * Filter: Aaneengesloten boom- en bosopstanden groter dan 2.000 m2 (20 are)
+      worden geëlimineerd om openheid te garanderen en zitposten van 
+      predatoren/rivalen te vermijden.
+
+
+3. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+- Overbruggingsafstand (dist_m): 400 m
+    * Cellen binnen 400 m worden samengevoegd tot één functioneel cluster.
+    * Ecologische functie: Kiekendieven overbruggen kleine barrières (wegen,
+      bomenrijen, kanalen) moeiteloos tijdens lage zoekvluchten.
+- Minimale oppervlakte (MinOpp_ha): 50 ha (500.000 m2)
+    * Drempel berekend op werkelijke habitatoppervlakte per cluster.
+    * Ecologische functie: Energetisch minimumoppervlak dat nodig is voor 
+      een overwinterend individu om rendabel te kunnen foerageren.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m): 50.000 m (50 km)
+    * Toepassing: ARPL / netwerkanalyses bovenlokaal niveau.
+    * Ecologische functie: Weerspiegelt de grote actieradius in de winter tussen 
+      gemeenschappelijke slaapplaatsen (moerassen/heides) en verafgelegen 
+      open akker- en poldercomplexen.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Winterhalfjaar (extensie: _wv)
+Doelbiotoop               : Open foerageergebied (BWK + LGP)
+Exclusiezone bebouwing    : 75 m buffer rond bebouwde cellen
+Exclusiezone bomen/bos    : Opstanden > 20 are (2.000 m2)
+Functionele zoekstraal    : 400 m
+Minimale clusteroppervlak : 50 ha werkelijk habitat
+Dispersieradius (ARPL)    : 50 km (50.000 m)
+================================================================================

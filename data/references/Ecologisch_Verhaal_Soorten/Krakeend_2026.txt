@@ -1,0 +1,76 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: KRAKEEND (WINTERVOGEL)
+Soort: Mareca strepera (grondelende eend / overwinteraar & doortrekker)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+In het winterhalfjaar is de Krakeend een wijdverbreide, vegetarische grondel- 
+en slobbereend. De soort foerageert hoofdzakelijk op waterplanten (kranswieren, 
+fonteinkruiden, draadalgen), zaden en scheuten in ondiepe, voedselrijke tot 
+matig voedselrijke zoete en brakke wateren, overstroomde polderweiden, slikken, 
+schorren en traag stromende waterlopen en getijdenrivieren.
+
+A. Vlakvormig Foerageerhabitat ('foerageer_bwk'):
+   - BWK-selectie:
+       ad%, ae%, 2190%, 3140%, 3150%, aer%, aev%, ah%, rbbah%, aom%, 3110%, 
+       3130%, ap%, ds%, 1130%, 1140%, 1310%, 3270%, hp+%, hp%, kn%, 
+       rbbkam%, rbbzil%, hpr%, hpr+%
+       (Eutrofe en mesotrofe plassen, zand- en kleiwinputten, spaarbekkens, 
+       visvijvers, brakke en zilte wateren, getijdenslikken, overstroomde 
+       poldergraslanden en soortenrijke graslandcomplexen)
+
+B. Hydrografische data (Huet-zones waterlopen):
+   - Bron: vlaanderen_huetzon_10m.tif
+   - Selectieklassen: "Mlz", "O1brak", "O1o", "O2zout", "Rg", "Rk"
+       * Grote estuariene waterlichamen, brakke en zilte overgangswateren, 
+         laaglandrivieren en grote getijdenrivieren (bv. Schelde, Rupel, Durme, 
+         IJzer estuarium).
+   - Inclusie: Geselecteerde Huet-waterlopen krijgen een dekkingsfractie van 1.0 (100%).
+
+C. Fusiemethode:
+   - Rechtstreekse cover-operatie van BWK-oppervlaktefracties ('foerageer_bwk') 
+     en de geselecteerde Huet-waterlopen.
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+- Overbruggingsafstand (dist_m): Geen clustering / drempelfilter toegepast
+    * Hoewel de algemene helperfunctie in het script aanwezig is, wordt deze 
+      voor de Krakeend niet aangeroepen in de workflow.
+- Oppervlaktedrempel: 0 ha (alle geschikte watercellen en graslandfracties 
+  blijven behouden).
+- Ecologische functie: Als mobiele, watervaste wintergast benut de Krakeend 
+  zowel uitgestrekte waterbekkens en riviervakken als kleinschalige sloten, 
+  inundaties en veedrinkpoelen. Er geldt daarom geen minimumdrempel op 
+  de habitatgrootte.
+
+
+3. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Integrale cover van het BWK-foerageerhabitat en de 
+  geselecteerde Huet-waterlopen.
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  samengevoegde laag (bestandsnaamconventie met '_wv' suffix).
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Geen functionele beperking (wintervogel)
+    * Toepassing: ARPL / netwerkanalyses bovenlokaal niveau.
+    * Ecologische functie: Krakeenden verplaatsen zich in het winterseizoen 
+      vrijelijk over het volledige Vlaamse water- en polderstelsel tussen 
+      slaapwateren (grote plassen/bekkens) en foerageerlocaties (ondiepe sloten 
+      en geïnundeerde graslanden).
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Krakeend (Mareca strepera) - wintervogel (_wv)
+Aquatisch biotoop         : BWK-plassen, vijvers, slikken & natte polderweiden
+Hydrografie               : Estuariene en grote rivierzones (Mlz, O1brak, O1o, O2zout, Rg, Rk)
+Minimale clusteroppervlak : 0 ha (geen restrictie; directe cover)
+Overbruggingsafstand      : Niet van toepassing (geen clusterfilter)
+Dispersieradius (ARPL)    : Geen functionele beperking in winterhalfjaar
+================================================================================

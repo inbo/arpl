@@ -1,0 +1,120 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: SPAANSE VLAG
+Soort: Euplagia quadripunctaria (dagactieve nachtvlinder / bosranden & ruigten)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Spaanse vlag is een opvallende, warmteminnende en Europees beschermde 
+nachtvlinder (Habitatrichtlijn Bijlage II) die hoofdzakelijk overdag actief is. 
+De soort is een uitgesproken ecotoonspecialist van zonbeschenen, warme en windluwe 
+bosranden, kapvlaktes, open plekken in bossen, kalkhellingen en beekbegeleidende 
+ruigten. Rupsen leven polyfaag op lage kruiden en struiken (o.a. Gewone hennepnetel, 
+Braam, Hazelaar, Brandnetel en Weegbree), terwijl de volwassen vlinders grote 
+hoeveelheden nectar opnemen op bloemrijke scherm- en composietbloemigen, met een 
+zeer sterke voorkeur voor Koninginnenkruid (Eupatorium cannabinum).
+
+A. Voortplantings- en Nectarbiotoop ('voortplanting_bwk'):
+   - BWK-selectie:
+       ha%, 2330%, 6230_ha%, hc%, 6410%, rbbhc%, hf%, 6430%, rbbhf%, hj%, 
+       hp%, hp+%, rbbkam%, rbbzil%, hpr%, hr%, hu%, 6120%, 6510%, kc%, kl%, 
+       kp%, kpk%, ks%, kt%, ku%, 3270%, kub%, kw%, kz%, mr%, 6430_hw%, 
+       6430_mr%, rbbmr%, se%, sz%
+       (Bloemrijke ruigten, natte en droge soortenrijke graslanden, zoom- en 
+       mantelvegetaties, heischrale graslanden, kalkgraslanden en ruderale 
+       verruigingen)
+   - Noot habitatstatus: Zoals afgesproken blijft 'hg' (en afgeleiden) 
+     consequent uitgesloten als habitat.
+
+B. Houtige Opstanden en Bosbiotoop ('bos_bwk'):
+   - BWK-selectie:
+       fs%, 9120%, lhb%, n, n+, n-, pa%, pmb%, ppmb%, rbbppm%, qa%, 9130%, 
+       9160%, qb%, 9120%, 9190%, qs%, va%, vm%, 91E0%
+       (Zomereiken- en wintereikenbossen, beukenbossen, alluviale elzenbossen, 
+       inheemse houtkanten en struweelcomplexen)
+
+
+2. STAP 1 & 2: KERNDREMPELS VOOR BASISBIOTOPEN (MIN. 1 HA OP 50 M)
+--------------------------------------------------------------------------------
+Zowel het open kruiden-/voortplantingsbiotoop als het bosbiotoop moeten lokaal 
+voldoende omvang hebben:
+
+1. Voortplantingshabitat (rupsen & nectar):
+   - Zoekstraal clustering (dist_m): 50 m
+   - Minimale oppervlaktedrempel: >= 1 ha (10.000 m2) werkelijk habitatoppervlak 
+     (spaansevlag_voortplanting2_opp).
+2. Boshabitat (microklimaat, beschutting & roestplaatsen):
+   - Zoekstraal clustering (dist_m): 50 m
+   - Minimale oppervlaktedrempel: >= 1 ha (10.000 m2) werkelijk bos 
+     (spaansevlag_bos_opp).
+- Ecologische functie: Sluit sterk versnipperde bermstrookjes of losse bomen 
+  zonder microklimatologische buffering uit. Een duurzame populatie vereist een 
+  stevige functionele kern van zowel bos als bloemrijk open land.
+
+
+3. STAP 3 & 4: CONTACTZONES (10 M) & AANEENGESLOTEN BOSRANDLENGTE (>= 0.25 HA)
+--------------------------------------------------------------------------------
+De Spaanse vlag leeft strikt op het grensvlak tussen het bos en het open terrein:
+
+1. Scherpe contactzone-identificatie (10 m afstand):
+   - Voortplantingsbiotoop binnen <= 10 m van goedgekeurd bos wordt geselecteerd 
+     (spaansevlag_bosrand_vpt_opp).
+   - Bosbiotoop binnen <= 10 m van goedgekeurd voortplantingshabitat wordt 
+     geselecteerd (spaansevlag_bosrand_bos_opp).
+   - Beide stroken worden additief samengevoegd (clamp max. 1.0) tot één scherpe 
+     ecotoonstrook (spaansevlag_bosrand1_opp).
+2. Filter op aaneengesloten lengte (>= 0.25 ha / 100 m):
+   - De contactzone wordt via 8-richtingen buurcellen gegroepeerd in patches 
+     (zonder extra bufferafstand).
+   - Filterregel: Het aaneengesloten contactzonecluster moet minstens 0.25 ha 
+     (2.500 m2) werkelijke oppervlakte omvatten.
+   - Ecologische functie: Een strook van 2.500 m2 op een breedte van circa 20 m 
+     vertegenwoordigt minstens 100 tot 150 meter aaneengesloten, ononderbroken 
+     bosrand. Korte, geïsoleerde inkepingen in het bos bieden onvoldoende 
+     luwtecorridor en te weinig oppervlakte aan Koninginnenkruid.
+
+
+4. STAP 5: FINAAL LEEFGEBIED VIA 100 M BOSRANDBUFFER
+--------------------------------------------------------------------------------
+Vanuit de gevalideerde bosrandstroken (>= 0.25 ha) wordt het functionele leefgebied 
+samengesteld:
+
+- 100 m Bosrandbuffer:
+    * Rond de goedgekeurde bosranden wordt een buffer van 100 m berekend 
+      (bosrand_buffer_100m_opp).
+- Maskering en samenvoeging:
+    * Zowel het goedgekeurde voortplantingshabitat (stap 1) als de bosrand zelf 
+      worden afgebakend binnen deze 100 m buffercontour.
+    * Beide lagen worden additief opgeteld (clamp max. 1.0).
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (export naar '00_ID_Rasters' en 
+  '01_Werkelijke_Oppervlaktes').
+- Ecologische functie: Vlinders vliegen tijdens warme middaguren uit tot 
+  ongeveer 100 m in het aanpalende bloemrijke grasland of de ruigte om te 
+  nectaren, maar keren voor rust, paring en de nacht direct terug naar de luwe 
+  bosrand en boskruinen.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses bovenlokaal niveau.
+    * Ecologische functie: Hoewel adulten zeer mobiele vliegers zijn langs 
+      valleisystemen en spoorwegcorridors, brengt de dispersiecapaciteit de 
+      uitwisseling in beeld tussen relictpopulaties in het oosten en zuiden 
+      van Vlaanderen (o.a. Maasvallei, Voerstreek, Dijlevallei) en recente 
+      kolonisatiekernen.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Spaanse vlag (Euplagia quadripunctaria)
+Voortplantingsbiotoop     : Bloemrijke ruigten, zomen, mantels & schraalgraslanden
+Bosbiotoop                : Eiken-, beuken- en alluviale loofbossen & struwelen
+Kerndrempels basislagen   : Zowel bos als ruigte >= 1 ha (clustering: 50 m)
+Contactzone detectie      : Wederzijdse interactie binnen <= 10 m
+Bosrandlengte-eis         : Aaneengesloten ecotoon >= 0.25 ha (minimaal 100 m lengte)
+Functionele actieradius   : Binnen <= 100 m van de goedgekeurde bosrand
+Dispersieradius (ARPL)    : 1000 m
+================================================================================

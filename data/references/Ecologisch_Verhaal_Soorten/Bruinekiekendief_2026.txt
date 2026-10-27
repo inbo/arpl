@@ -1,0 +1,95 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: BRUINE KIEKENDIEF
+Soort: Circus aeruginosus (broedvogel / rietmoerassen, graanakkers & open jachtgebied)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Bruine kiekendief is een moeras- en landschapsroofvogel die gebonden is aan 
+uitgestrekte, natte rietlanden of graangewassen voor de nestplaats (voortplanting), 
+in combinatie met een zeer uitgestrekt, open landschap om te jagen (foerageren).
+
+A. Voortplantingsbiotoop ('voortplanting_bwk' + Landbouw 'LGP'):
+   - BWK-selectie (moeraskernen):
+       ku%, 3270%, 6430%, k(mc%, k(mr%, k(mz%, mc%, rbbmc%, mr%, 1130%, 
+       1330%, 6430_hw%, 6430_mr%, 7140%, 7140_mrd%, rbbmr%, mz%
+       (Rietlanden, rietkragen, verruigde rietmoerassen, zilte slikken/schorren, 
+       moerasstruwelen en verlandingsvegetaties)
+   - Landbouwgebruikspercelen (LGP) gewascodes:
+       311, 321, 331 (wintertarwe, wintergerst, spelt/graangewassen)
+       Ecologische functie: Dient als secundair broedhabitat in polder- en 
+       akkerbouwlandschappen waar natuurlijke moerassen ontbreken.
+   - Fusie: Cover van LGP-graanakkers over de BWK-moerasfracties.
+
+B. Foerageerbiotoop ('foerageer'):
+   - BWK-selectie:
+       2310%, ce%, 4010%, 7150%, 7140_oli%, da%, 1310%, 1320%, 1330%, ha%, 
+       2330%, 6230_ha%, 2130%, 2130_hd%, 2150%, hc%, 2190%, 6410%, rbbhc%, 
+       hf%, 6430%, rbbhf%, hj%, hp%, hp+%, rbbkam%, rbbzil%, hpr%, hpr+%, hr%, 
+       hu%, 6120%, 6510%, hx%, ku%, 3270%, mc%, rbbmc%, mr%, 1130%, 7140%, 
+       6430_hw%, 6430_mr%, 7140_mrd%, rbbmr%, mrb%, mz%, 1330_da%, 1330_hpr%, 
+       mru%, cdb%, ceb%, cgb%, cmb%, cpb%, cvb%, hab%, hcb%, hfb%, hjb%, hft%, 
+       hfc%, hrb%, hub%, kub%, mcb%, ka%, bl%, bs%, bu%, rbbvos%
+       (Extensieve graslanden, polderweiden, schorren, ruigten, open wateren, 
+       heiden en moerassen; rijk aan watervogels, muizen en amfibieën)
+
+
+2. MORFOLOGISCHE ZUIVERING & CLUSTERING VOORTPLANTING
+--------------------------------------------------------------------------------
+- Morfologische opening / breedte-eis (straal_m = 20 m):
+    * Voortplantingsvlakken ondergaan een erosie-dilatatie cyclus met straal 20 m 
+      (erosie width = -20 m, daarna dilatatie width = +20 m).
+    * Ecologische functie: Elimineert smalle, lineaire rietkragen (< 40 m breed) 
+      langs sloten en grachten. Bruine kiekendieven verlangen compacte, brede 
+      riet- of graanpercelen ter vermijding van grondpredatoren (zoals Vos).
+- Zoekstraal clustering (dist_m): 100 m
+    * Overbrugt watergangen en kleine barrières tussen moerasblokken.
+- Oppervlaktedrempel voortplanting (drempel_vp_m2): >= 10 ha (100.000 m2)
+    * Alleen geclusterde broedcomplexen met minstens 10 ha werkelijk habitat 
+      worden goedgekeurd.
+
+
+3. CLUSTERING FOERAGEERGEBIED (GROOTSCHALIG OPEN LANDSCHAP)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (dist_m): 100 m (zonder breedte-erosie, straal_m = 0).
+- Oppervlaktedrempel foerageren (drempel_foer_m2): >= 100 ha (1.000.000 m2)
+    * Cellen moeten deel uitmaken van een aaneengesloten foerageercomplex van 
+      minstens 100 ha werkelijke oppervlakte.
+    * Ecologische functie: Een broedpaar heeft een uitgestrekt open jachtareaal 
+      nodig om gedurende het gehele broedseizoen voldoende prooibiomassa te oogsten.
+
+
+4. FINALE OMGEVINGSTOETSING (5 KM ACTIERADIUS)
+--------------------------------------------------------------------------------
+- Koppelingsvoorwaarde Voortplanting <-> Foerageren:
+    * Voor elk goedgekeurd voortplantingscluster (>= 10 ha) wordt de minimale 
+      afstand tot een goedgekeurd foerageercomplex (>= 100 ha) berekend.
+    * Afstandscriterium: Afstand <= 5.000 m (5 km).
+    * Filter: Voortplantingsgebieden die VERDER dan 5 km van een groot 
+      foerageercomplex liggen, worden verworpen.
+    * Ecologische functie: 5 km vertegenwoordigt de maximale economische 
+      actieradius van jagende kiekendieven vanaf het nest tijdens de jongenzorg. 
+      Het uiteindelijke leefgebied toont de functionele broedlocaties die 
+      ondersteund worden door voldoende jachtgebied in de omgeving.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dispersiecap_m (uit Excel)
+    * Toepassing: ARPL / netwerkanalyses bovenlokaal niveau.
+    * Ecologische functie: Bepaalt de uitwisseling tussen verschillende 
+      poldergebieden, riviervalleien en moerascomplexen op Vlaams niveau.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Bruine kiekendief (Circus aeruginosus) - broedvogel
+Voortplantingsbiotoop     : Moerassen/riet + LGP-wintergranen (311, 321, 331)
+Minimale perceelbreedte   : 40 m (via erosie/dilatatie straal 20 m)
+Voortplanting drempel     : >= 10 ha werkelijk habitat (clustering: 100 m)
+Foerageerbiotoop drempel  : >= 100 ha werkelijk habitat (clustering: 100 m)
+Functionele actieradius   : Voortplanting moet binnen <= 5.000 m (5 km) van 
+                            foerageercomplex liggen
+Dispersieradius (ARPL)    : 25000 m
+================================================================================

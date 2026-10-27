@@ -1,0 +1,107 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: ZWARTE SPECHT
+Soort: Dryocopus martius (grootste specht / uitgestrekte loof-, naald- & mengbossen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Zwarte specht is de grootste inheemse spechtensoort en een prioritaire soort 
+van de Europese Vogelrichtlijn (Bijlage I). De soort is een uitgesproken 
+grootschalige bosbewoner die leeft in uitgestrekte, oudere loof-, naald- en 
+gemengde bossen. Voor nestbouw is de soort vrijwel uitsluitend afhankelijk van 
+dikke, overjarige bomen (in Vlaanderen vnl. Beuk met een stamdiameter op borsthoogte 
+van >= 50-60 cm en takvrije stammen tot minstens 8-10 meter hoogte, secundair 
+Grove den of Populier). Als voedselzoeker foerageert de Zwarte specht op 
+houtmieren (Camponotus), bosmieren (Formica) en houtbewonende keverlarven in 
+dood, rottend hout en stobben, zowel in de boskern als langs lichte bosranden, 
+kapvlaktes en brandgangen.
+
+A. Doelbiotoop Bosopstanden ('bwk'):
+   - BWK-selectie:
+       fa%, fe%, fk%, fl%, fm%, fs%, 9110%, 9120%, 9130%, 9150%, n, n+, n-, 
+       pa%, pi%, pm%, pmb%, pmh%, pms%, pop%, pp%, ppa%, ppi%, ppmb%, ppmh%, 
+       ppms%, qa%, qb%, qe%, qk%, ql%, qs%, 2180%, 9160%, 9190%, ru%, 91E0%, 
+       91F0%, rud%
+       (Zomereiken- en beukenbossen, berken-eikenbossen, naaldbossen met Grove 
+       den en Corsicaanse den, sparrenbestanden, alluviale loofbossen, 
+       populierenbestanden 'pop%' en ruderale struweel- en bosfasen)
+   - Noot habitatstatus: Zoals afgesproken blijft 'hg' (en afgeleiden) 
+     consequent uitgesloten als habitat.
+
+B. Externe GIS-lagen:
+   - Groenkaart 2021 ('Groenkaart_2021.tif'):
+       Hooggroen (waarde 1) wordt toegekend met een fractie van 1.0 (100%).
+   - Fusie Bosbasis: Directe additieve sommatie (BWK-fractie + Groenkaart, 
+     clamp max. 1.0). Dit garandeert dat alle effectief aanwezige opgaande 
+     boombestanden en bosopstanden integraal meegenomen worden.
+
+
+2. STAP 1 & 2: BOSGROOTTE-CLASSIFICATIE (>= 300 HA VS. 50-300 HA OP 100 M)
+--------------------------------------------------------------------------------
+Zwarte spechten bezetten gigantische jaarrond-territoria van enkele honderden 
+hectaren. Daarom classificeert het script het bosmozaïek na een primaire 
+100 m clustering (focal buffering, directions = 4):
+
+1. Grote Zelfstandige Boskernen (>= 300 ha):
+   - Clusters met een geaccumuleerd werkelijk bosareaal >= 300 ha (3.000.000 m2) 
+     worden direct goedgekeurd (r_bos_groot_300ha_opp).
+   - Ecologische functie: Een aaneengesloten boscomplex van >= 300 ha biedt 
+     zelfstandig voldoende draagkracht, nestbomen en voedselbiomassa voor minstens 
+     één tot meerdere stabiele broedparen.
+2. Kleinere Satelliet- en Netwerkbossen (50 tot 300 ha):
+   - Clusters tussen 50 ha en 300 ha (500.000 m2 - 3.000.000 m2) 
+     (r_bos_klein_50ha_opp).
+   - Bossen < 50 ha vallen direct af wegens ontoereikende minimumomvang.
+
+
+3. STAP 3: NETWERKRECONSTRUCTIE VIA 4 KM ACTIERADIUS
+--------------------------------------------------------------------------------
+Kleine boscomplexen (50-300 ha) zijn op zichzelf te klein voor een permanent 
+territorium, maar kunnen functioneren als onderdeel van een groter geheel:
+
+- 4 km Bufferinteractie:
+    * Rond de kleine bossen (50-300 ha) wordt een buffer van 4.000 m (4 km) getrokken.
+    * Rond de grote boskernen (>= 300 ha) wordt eveneens een buffer van 4.000 m getrokken.
+    * Kwalificatiecriterium: Een bosje van 50-300 ha wordt goedgekeurd indien het 
+      binnen de 4 km interactiezone van een grote boskern OF van een ander 
+      50-300 ha boscomplex ligt (netwerk_masker_opp).
+- Ecologische functie: Zwarte spechten zijn krachtige, snelle vliegers die 
+  regelmatig open landbouwgebieden tot 4 km oversteken om te pendelen tussen 
+  verschillende bosfragmenten binnen hun ruime leefgebied.
+
+
+4. STAP 4: FINALE SAMENVOEGING & NETWERKCLUSTERING (MIN. 50 HA OP 100 M)
+--------------------------------------------------------------------------------
+- Het goedgekeurde leefgebied (grote kernen + netwerk-gekoppelde 50-300 ha bossen) 
+  wordt gefuseerd.
+- Finale Clustertoets:
+    * Zoekstraal clustering (dist_m): 100 m (directions = 4).
+    * Oppervlaktedrempel: >= 50 ha (500.000 m2) werkelijk bosoppervlak 
+      (drempel_m2 = 500.000).
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gefilterde werkelijke oppervlakten (export naar '00_ID_Rasters' en 
+  '01_Werkelijke_Oppervlaktes').
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dynamisch via Excel (Dispersiecap_m)
+    * Toepassing: ARPL / netwerkanalyses op Vlaams niveau.
+    * Ecologische functie: Jonge Zwarte spechten vertonen tijdens de najaarsdispersie 
+      grote zwerfbewegingen over tientallen kilometers om nieuwe, onbezette 
+      boscomplexen te koloniseren (o.a. tussen de Brabantse Wouden, het Zoniënwoud, 
+      de Kempense boscomplexen en de Oost-Vlaamse heuvelrugbossen).
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Zwarte specht (Dryocopus martius)
+Basisbiotoop              : Alle bosopstanden (loof-, naald- & gemengd bos + Groenkaart)
+Primaire aggregatie       : 100 m zoekstraal
+Zelfstandige kernen       : Boscomplexen >= 300 ha werkelijk bos
+Sub-kernen (netwerk)      : Boscomplexen van 50 tot 300 ha
+Netwerkeis sub-kernen     : Moeten binnen <= 4.000 m (4 km) van een andere kern liggen
+Finale leefgebiedsdrempel : >= 50 ha aaneengesloten binnen 100 m aggregatie
+Dispersieradius (ARPL)    : 5000 m
+================================================================================

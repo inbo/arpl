@@ -1,0 +1,106 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: HEIVLINDER
+Soort: Hipparchia semele (dagvlinder / droge zandverstuivingen, duinen & heiden)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Heivlinder is een uitgesproken xerothermofiele, zandminnende vlinder van 
+open, schrale landschappen. De soort vereist een strikte wisselwerking tussen:
+(1) open stuifzand en kaal zandsubstraat voor thermoregulatie en eiafzet 
+op ijle pollen van fijnbladige grassen (Ruwe smele, Buntgras, Schapengras),
+(2) open heide- en duingraslanden voor nectarvoorziening (bv. Struikhei), en
+(3) beschutte bosranden en vliegdennen voor rust, balts en schuilgelegenheid.
+
+A. Open biotopen ('bwk_heide', 'bwk_duin', 'bwk_grasland', 'bwk_groeve_terril'):
+   - Heide: cd%, ce%, cg%, cm%, 2310%, 4030%, 4010%, 5130%
+   - Duinen: da%, dd%, dm%, 1310%, 1320%, 1330%, 2120%, 2330%
+   - Grasland: ha%, hd%, 6230_ha%, 2130%
+   - Groeven & terrils: kc%, kg%
+   - Fusie: Additieve cover van de open biotopen (geclamped op max. 1.0).
+
+B. Voortplantingssubstraat / Kaal Zand ('zand'):
+   - BWK-selectie: dd%, dm%, 2330% (open zandverstuivingen en actieve stuifduinen)
+
+C. Beschuttings- en Rustbiotoop ('bwk_beschutting' + Groenkaart):
+   - BWK-selectie: pa%, pi%, pmb%, pmh%, pms%, ppa%, ppi%, ppmh%, ppms%, 
+     ppmb%, rbbppm%, qb%, sd%, 2160%, 2170%, 9120%, 9190%
+     (Lichte dennenbossen, berken-eikenopslag, duinstruwelen en heidebossen)
+   - Externe Groenkaart: Groenkaart_2021.tif (opgaande kruinlaag)
+   - Fusie: Cover van BWK-beschutting en Groenkaart (geclamped op max. 1.0).
+
+
+2. ONAFHANKELIJKE CLUSTERING VAN DE BOUWSTENEN
+--------------------------------------------------------------------------------
+Elke functionele component wordt vooraf getoetst op een eigen ruimtelijke schaal:
+
+1. Open Biotoopcluster:
+   - Zoekstraal (dist_m): 50 m
+   - Oppervlaktedrempel: >= 10 ha (100.000 m2) werkelijk open habitat.
+   - Ecologische functie: De soort leeft in extensieve, open landschappen en 
+     vermijdt kleine, geïsoleerde heiderelicten.
+2. Kaal Zandsubstraat (Voortplantingsbasis):
+   - Zoekstraal (dist_m): 100 m
+   - Oppervlaktedrempel: >= 0.5 ha (5.000 m2) werkelijk zandsubstraat.
+   - Ecologische functie: Garandeert voldoende nest- en opwarmingsplekken 
+     met microreliëf en open zand zonder snelle dichtgroei.
+3. Beschuttingscomplexen:
+   - Zoekstraal (dist_m): 100 m
+   - Oppervlaktedrempel: >= 0.04 ha (400 m2 / 4 aaneengesloten cellen).
+
+
+3. DIRECTE BOSRANDINTEGRATIE (50 M RANDOMGEVING)
+--------------------------------------------------------------------------------
+1. Afbakening foerageerbasis:
+   - Rond de goedgekeurde open biotoopclusters (>= 10 ha) wordt een zoekzone 
+     van 50 m gemeten.
+   - Alleen beschuttingsvegetatie die binnen deze 50 m randzone direct grenst 
+     aan het open biotoop wordt meegenomen als functionele bosrand.
+   - Binnenbos verder dan 50 m van de open heide/duin valt af.
+2. Foerageerbasis: Som van het open biotoop (>= 10 ha) en de direct 
+   aangrenzende 50 m bosrand.
+
+
+4. WEDERZIJDSE KOPPELING OP 500 M (VOORTPLANTING X FOERAGEREN)
+--------------------------------------------------------------------------------
+Vrouwtjes en mannetjes pendelen dagelijks tussen kale zandplekken en open heide/bosranden:
+
+- Koppelafstand: 500 m (wederzijdse afstandsmeting).
+    * Foerageerhabitat (open biotoop + 50 m bosrand) moet binnen een afstand van 
+      <= 500 m van goedgekeurd zandsubstraat (>= 0.5 ha) liggen.
+    * Zandsubstraat moet omgekeerd binnen een afstand van <= 500 m van 
+      goedgekeurd foerageerhabitat liggen.
+    * Ecologische functie: Een zandverstuiving zonder heide/duin met nectarplanten 
+      binnen 500 m biedt onvoldoende voedsel voor adulten; een heideterrein zonder 
+      kaal zand binnen 500 m mist geschikte eiafzetlocaties en zonplekken.
+
+
+5. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Cover van het wederzijds goedgekeurde foerageer- en 
+  voortplantingscomplex.
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gecombineerde laag.
+
+
+6. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): Dispersiecap_m (uit Excel)
+    * Toepassing: ARPL / netwerkanalyses op landschapsniveau.
+    * Ecologische functie: De Heivlinder is een mobiele vlieger binnen zijn 
+      biotoop, maar steekt gesloten bos of intensieve landbouwgebieden zelden 
+      over; de parameter modelleert potentiële uitwisseling tussen zandkernen 
+      in duin- en heideregio's (bv. Kustduinen, Kalmthoutse Heide, Kempens Bekken).
+
+
+7. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Heivlinder (Hipparchia semele)
+Open biotoop drempel      : >= 10 ha heide/duin/schraalland (clustering: 50 m)
+Voortplantingssubstraat   : >= 0.5 ha kaal stuifzand (clustering: 100 m)
+Beschuttingselementen     : >= 0.04 ha houtige vegetatie (clustering: 100 m)
+Bosrandinclusie           : Maximaal 50 m aangrenzende beschutting langs open biotoop
+Wederzijdse afstandsfilter: Voortplanting en Foerageren binnen <= 500 m van elkaar
+Dispersieradius (ARPL)    : 10000
+================================================================================

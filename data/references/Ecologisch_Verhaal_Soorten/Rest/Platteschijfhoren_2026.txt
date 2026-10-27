@@ -1,0 +1,2 @@
+voortplanting_a: ae%, 2190%, 3140%, 3150%, aom%, 3130%
+voortplanting_h: hpr%, hpr+%, kn%

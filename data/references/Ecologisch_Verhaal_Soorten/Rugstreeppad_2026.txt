@@ -1,0 +1,97 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: RUGSTREEPPAD
+Soort: Epidalea calamita (amfibie / pioniersoort van kustduinen, zandgroeven & havens)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Rugstreeppad is een uitgesproken pioniersoort en warmteminnend amfibie van open, 
+dynamische en vegetatiearme landschappen met een losse zand-, slib- of kleibodem 
+(kustduinen, rivieruiterwaarden, industrieterreinen, spuitvelden, havengebieden en 
+zand- en kleigroeven). De soort zet eiersnoeren af in tijdelijke, ondiepe, zonnige 
+en visvrije wateren (plas-draszones, wielsporen, regenplassen en overstromingsvlaktes) 
+die snel opwarmen en concurrentie- en predatorarm zijn.
+
+A. Waterbiotoop ('waterbiotoop_bwk' + Watervlakken):
+   - BWK-selectie:
+       ae%, 2190%, 3140%, 3150%, aom%, ao, ao+, ao-, 3160%, 7140%, 7150%, 
+       ap, ap+, apo, apo+, mp%, 2190%, mr%, 6430_hw%, 6430_mr%, rbbmr%, 3130%
+       (Ondiepe polderplassen, duinpannen, pioniersloten, vennen en overgangszones)
+   - Externe data (watervlakken2024.shp):
+       * Vaste filter op kleine wateren: Watervlakken worden met 5 m gebufferd 
+         en samengevoegd; alleen clusters <= 4.000 m2 (0,4 ha) worden geselecteerd.
+       * Ecologische functie: Grote permanente plassen zijn doorgaans gekoloniseerd 
+         door vis en predatoren (o.a. larven van libellen, waterkevers en andere 
+         amfibieën) die rugstreeppadlarven wegconcurreren of prederen. De soort 
+         is aangewezen op kleine, visvrije en dynamische waterpartijen.
+   - Fusie: Directe cover van BWK-waterfracties en geselecteerde kleine watervlakken.
+
+B. Landbiotoop ('land'):
+   - BWK-selectie:
+       cd%, 2310%, 4030%, ce%, 4010%, 7150%, cg%, cm%, cp%, cv%, dd%, 
+       2120%, dm%, 2330%, ha%, 6230_ha%, hc%, 2190%, 6410%, hd%, 2130%, 
+       hf%, 6430%, hmo%, 6230%, hn%, hr%, kc%, kg%, kn%, 3150%, kt%, ku%, 
+       3270%, kz%, mp%, 2190_mp%, mr%, 6430_hw%, 6430_mr%, 7140%, 7140_mrd%, 
+       rbbmr%, sd%, 2160%, 2170%, 2180%, sg%, rbbsg%, sm%, 7140%, 7230%, 
+       so%, rbbso%, sz%, rbbha%
+       (Witte en grijze duinen, stuifzanden, heischrale graslanden, pioniervegetaties, 
+       groeven en ontginningen 'kg%', slik- en schorranden, ruderale terreinen en 
+       droge tot vochtige heiden met open bodem)
+
+
+2. LANDBIOTOOP FILTERING OP EILANDGROOTTE (>= 10 HA)
+--------------------------------------------------------------------------------
+- Minimale eilandoppervlakte landbiotoop (opp_land_ha = 10 ha):
+    * Samengestelde landclusters worden gevormd via 8-richtingen rasterbuur 
+      (zonder overbruggingsafstand, afstand_m = 0 m).
+    * Drempelwaarde: >= 10 ha (100.000 m2) werkelijke habitatoppervlakte per eiland.
+    * Ecologische functie: Rugstreeppadden zijn 's nachts actieve jagers (op mieren, 
+      kevers en spinnen) en graven zich overdag in los zand of verschuilen zich 
+      onder stenen, hout of puin. Een aaneengesloten open landmatrix van minstens 
+      10 ha is vereist om voldoende dagrustplaatsen en voedselgronden te bieden 
+      buiten het bereik van dicht struweel of gesloten bos.
+
+
+3. RUIMTELIJKE KOPPELING WATER EN LAND (AFSTAND = 0 M)
+--------------------------------------------------------------------------------
+- Directe overlap / aansluiting:
+    * Het goedgekeurde landbiotoop (>= 10 ha) en het geschikte waterbiotoop worden 
+      wederzijds op elkaar gemaskerd (landbiotoop maskeert water en vice versa).
+    * Ecologische functie: De voortplantingswateren moeten direct aansluiten op of 
+      gelegen zijn binnen het open landbiotoop (afstand_m = 0 m). Tijdelijke plassen 
+      omgeven door gesloten vegetatie, intensieve akkers of verharding vallen af 
+      omdat volwassen padden en juvenielen open, gemakkelijk begaanbare corridors 
+      nodig hebben om zich snel lopend te verplaatsen.
+
+
+4. BOVENLOKALE METAPOPULATIE-EISEN (210 HA & 5 PLASSEN BINNEN 2.500 M)
+--------------------------------------------------------------------------------
+De Rugstreeppad is een mobiele pioniersoort met een extreem dynamische metapopulatiestructuur:
+
+- Dispersie- en clusterafstand (buffer_m): 2.500 m (2,5 km)
+    * Gekoppelde water- en landkernen worden samengevoegd over tussenafstanden 
+      tot 2.500 m via focal moving window buffering (directions = 4).
+- Criterium 1: Minimale netwerkgrootte (min_totale_ha): >= 210 ha
+    * Het geaccumuleerde werkelijke leefgebied (water + land) binnen het 
+      2,5 km-netwerk moet minstens 210 ha (2.100.000 m2) bedragen.
+- Criterium 2: Minimale poelendichtheid (min_plassen): >= 5 plassen
+    * Binnen de polygooncontour van het 2,5 km-netwerk moeten minstens 5 
+      afzonderlijke watervlakken (uit de watervlakkenkaart) liggen.
+- Ecologische functie: Omdat de ondiepe voortplantingsplassen van de Rugstreeppad 
+  periodiek vroegtijdig uitdrogen en pionierbiotopen snel dichtgroeien door natuurlijke 
+  successie, vereist een duurzame metapopulatie een zeer ruim netwerk (210 ha leefgebied 
+  met minstens 5 poelen binnen de grote dispersiestraal van 2,5 km). Dit stelt 
+  de dieren in staat om dynamisch naar nieuw ontstane pioniersituaties te migreren.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Rugstreeppad (Epidalea calamita)
+Waterbiotoop drempel      : Poelen/clusters <= 4.000 m2 (visvrije pionierwateren)
+Landbiotoop drempel       : >= 10 ha werkelijk open habitat (8-richtingen patches)
+Koppeling water-land      : Directe ruimtelijke interactie (afstand_m = 0 m)
+Metapopulatie zoekstraal  : 2.500 m (2,5 km dispersiecapaciteit)
+Drempelwaarde netwerk     : >= 210 ha totaal habitat EN >= 5 geschikte plassen
+Dispersieradius (ARPL)    : 2.500 m
+================================================================================

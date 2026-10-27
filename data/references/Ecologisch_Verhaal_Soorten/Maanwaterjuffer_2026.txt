@@ -1,0 +1,118 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: MAANWATERJUFFER
+Soort: Coenagrion lunulatum (juffer / heidevennen, petgaten & bosrijke overgangen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Maanwaterjuffer is een zeldzame, vroeg vliegende juffer en habitatspecialist 
+van koude, zure tot mesotrofe vennen, veenputten en petgaten met een goed 
+ontwikkelde verlandingsvegetatie (o.a. veenmos, drijvende waterplanten en zeggen). 
+De soort vereist visvrije of visarme wateren die beschut liggen tegen harde wind, 
+omgeven door een luw, bosrijk landhabitat (berkenbroekbossen, vochtige heiden, 
+eiken-berkenbossen) voor opwarming, rust en rijping van de imago's.
+
+A. Voortplantingsbiotoop ('waterbiotoop_bwk1' geschoond met 'waterbiotoop_notbwk'):
+   - BWK-selectie (positief): ao+, aom+, 3160, 3110
+     (Oligotrofe tot mesotrofe vennen, zure plassen, veenputten en natuurlijke 
+     verlandingswateren)
+   - Cel-kwaliteitsdrempel: Alleen cellen met een initiële BWK-fractie >= 0.20 (20%) 
+     worden geselecteerd (min_drempel = 0.20).
+   - Negatieve selectie ('waterbiotoop_notbwk'):
+     ad%, ae%, 2190%, 3140%, 3150%, aer%, ap%, kn%
+     (Eutrofe/visrijke wateren, visvijvers, duinpannen en open beken worden 
+     integraal afgetrokken: clamp(water1 - not_water, 0, 1)).
+
+B. Aanpalend Landbiotoop ('landbiotoop_bwk1' geschoond met 'landbiotoop_notbwk'):
+   - BWK-selectie (positief): qb%, vm%, vo%, vt%, so%, rbbso%, ppm%, rbbppm%, 
+     sm%, rbbsm%, ceb%, ce%, cm%
+     (Vochtige heiden, dopheidevegetaties, berkenbroekbossen, veenbossen en 
+     zandige loofbossen)
+   - Negatieve selectie ('landbiotoop_notbwk'):
+     cd%, 2310%, 4030%, cg%, cp%, 9120%, cv%, dm%, 2330%, ha%, 6230_ha%, 
+     hr%, 6430%, ku%, 3270%
+     (Droge heiden, stuifzanden, open schraalgraslanden en ruderale ruigten 
+     worden afgetrokken: clamp(land1 - not_land, 0, 1)).
+
+C. Bosvegetaties binnen Landbiotoop ('landbiotoop_nabij_bos' & 'landbiotoop_ruim_bos'):
+   - BWK-selectie: qb%, vm%, vo%, vt%, so%, rbbso%, ppm%, rbbppm%, sm%, rbbsm%, ceb% 
+     (aangevuld met vn% in de ruime laag).
+
+D. Ruim Landbiotoop ('landbiotoop_bwk_ruim'):
+   - Zelfde bos- en heidetypen, getoetst op landschapsschaal.
+
+
+2. WATERSELECTIE & CLUSTERING (>= 0.02 HA OP 10 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (dist_m): 10 m
+- Oppervlaktedrempel water: >= 200 m2 (0.02 ha werkelijk habitat)
+- Ecologische functie: De Maanwaterjuffer plant zich voort in kleine, windbeschutte 
+  waterpartijen en veenmoslaagtes. Een vennetje van 200 m2 met voldoende 
+  drijvende vegetatie biedt voldoende substraat voor paring en eiafzet, mits 
+  het niet intensief door vis wordt bevolkt.
+
+
+3. RUIME OMGEVINGSEIS LANDBIOTOOP (>= 50 HA & > 50% BOS/STRUWEEL)
+--------------------------------------------------------------------------------
+Het landschap rond de voortplantingswateren wordt geëvalueerd op regionale robuustheid:
+
+1. Ruime clustering (dist_m = 50 m):
+   - Het ruime landbiotoop wordt geclusterd op een drempel van minstens 50 ha 
+     (500.000 m2) werkelijk habitat.
+2. Bosstructuureis in ruime schil (> 50% bos):
+   - Binnen elk goedgekeurd 50 ha-complex moet het aandeel houtige opstanden 
+     ('landbiotoop_ruim_bos') strikt groter zijn dan 50% (Percentage_Bos > 50).
+   - Ecologische functie: Garandeert dat de soort uitsluitend behouden blijft 
+     in uitgestrekte, aaneengesloten bos- en heidemozaïeken en sluit 
+     geïsoleerde vennen in agrarische landschappen uit.
+
+
+4. WATER-FIRST LANDBIOTOOP FILTERING (10 HA & >= 40% BOS BINNEN 500 M)
+--------------------------------------------------------------------------------
+Het landbiotoop wordt direct aangestuurd vanuit de goedgekeurde voortplantingsvennen:
+
+1. Afsnijding op waternabijheid (straal_water_m = 500 m):
+   - Alleen het gezuiverde landbiotoop dat binnen een buffer van 500 m rond het 
+     goedgekeurde waterbiotoop ligt, wordt geselecteerd.
+2. Minimale oppervlakte landbiotoop (dist_m = 20 m):
+   - Binnen deze 500 m buffer moet het aaneengesloten landbiotoop minstens 10 ha 
+     (100.000 m2) werkelijk habitat omvatten.
+3. Bospercentage in aanpalend land (>= 40% bos):
+   - Binnen dit 10 ha landcluster moet minstens 40% van de oppervlakte bestaan 
+     uit bos/struweel ('landbiotoop_nabij_bos').
+   - Ecologische functie: Pas uitgeslopen juffers verlaten het water en trekken 
+     de omliggende bossen en struwelen in om te rijpen en te jagen op kleine 
+     insecten in een windluwe, warme microklimatologische omgeving.
+
+
+5. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Additieve cover (clamp max. 1.0) van:
+    1. Het goedgekeurde waterbiotoop (>= 200 m2)
+    2. Het goedgekeurde landbiotoop (>= 10 ha, >= 40% bos, binnen 500 m van water)
+- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
+  gecombineerde water-landlaag.
+
+
+6. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): 5000 m
+    * Toepassing: ARPL / netwerkanalyses op landschapsniveau.
+    * Ecologische functie: Maanwaterjuffers zijn relatief honkvaste juffers die 
+      voornamelijk langs bosranden en luwe corridors bewegen; de dispersiecapaciteit 
+      modelleert de uitwisselingskansen tussen geïsoleerde vencomplexen binnen 
+      de Vlaamse heideregio's (bv. Kempen).
+
+
+7. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Maanwaterjuffer (Coenagrion lunulatum)
+Minimale celkwaliteit water: Initiële fractie >= 0.20 (20%)
+Waterbiotoop drempel      : >= 200 m2 (0.02 ha) oligotroof/mesotroof ven (clustering: 10 m)
+Negatieve selectie water  : Eutrofe plassen, visvijvers en beken (not_bwk) uitgesloten
+Aanpalend landbiotoop     : >= 10 ha binnen 500 m van water (clustering: 20 m)
+Bosaandeel aanpalend land : Minimaal 40% bos/struweel per 10 ha landcluster
+Ruime landschapseis       : Complex >= 50 ha met > 50% bos/struweel (clustering: 50 m)
+Dispersieradius (ARPL)    : 5000 m
+================================================================================
