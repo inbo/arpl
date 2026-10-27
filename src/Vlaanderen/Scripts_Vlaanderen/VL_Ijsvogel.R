@@ -1,0 +1,339 @@
+# ==============================================================================
+# LEEFGEBIEDENGRID VOOR IJSVOGEL - HEEL VLAANDEREN (WERKELIJKE OPPERVLAKTE)
+# Ecologische analyse waterbiotopen, hydrografie & oeverlengtes (INBO)
+# Author: Bert Van Hecke / Update 2026
+# ==============================================================================
+
+# 1. BIBLIOTHEKEN LADEN & CONFLICTEN BEHEREN -----------------------------------
+library(here)
+library(knitr)
+library(tidyverse)
+library(sf)
+library(terra)
+library(readxl)
+library(tidyterra)
+library(data.table)
+library(arrow)
+library(conflicted)
+
+conflicted::conflicts_prefer(dplyr::filter)
+conflicted::conflicts_prefer(dplyr::select)
+conflicted::conflicts_prefer(dplyr::first)
+conflicted::conflicts_prefer(terra::intersect)
+conflicted::conflicts_prefer(terra::any)
+
+# Instellingen voor terra (RAM-geheugen beheer)
+terraOptions(
+  memfrac = 0.8,       # Max. 80% van het RAM-geheugen gebruiken
+  todisk = TRUE,
+  tempdir = tempdir(), 
+  verbose = FALSE
+)
+
+# 2. HELPER FUNCTIES -----------------------------------------------------------
+calc_ha_exact <- function(r) {
+  if (is.null(r)) return(0)
+  if (all(is.na(terra::values(r, mat = FALSE)))) return(0)
+  area_raster <- r * terra::cellSize(r, unit = "ha")
+  val <- terra::global(area_raster, "sum", na.rm = TRUE)[[1]]
+  return(as.numeric(val))
+}
+
+cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
+  if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
+    return(list(raster = masker * NA, clusters = masker * NA))
+  }
+  
+  # 1. Binaire kaart maken
+  r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
+  
+  # 2. Netwerkvorming via tijdelijke schijfbestanden
+  if (dist_m > 0) {
+    stral_cellen <- ceiling((dist_m / 2) / 10)
+    f_matrix     <- matrix(1, nrow = (2 * stral_cellen + 1), ncol = (2 * stral_cellen + 1))
+    
+    tmp_focal  <- tempfile(fileext = ".tif")
+    r_buffered <- terra::focal(r_binair, w = f_matrix, fun = "max", na.rm = TRUE, 
+                               filename = tmp_focal, overwrite = TRUE)
+    r_buffered <- terra::ifel(r_buffered > 0, 1, NA)
+    
+    tmp_patch  <- tempfile(fileext = ".tif")
+    cl_network <- terra::patches(r_buffered, directions = 4, zeroAsNA = TRUE,
+                                 filename = tmp_patch, overwrite = TRUE)
+    
+    cl_biotoop_only <- terra::mask(cl_network, masker)
+    
+    unlink(c(tmp_focal, tmp_patch))
+    rm(r_buffered, cl_network, r_binair)
+  } else {
+    tmp_patch       <- tempfile(fileext = ".tif")
+    cl_biotoop_only <- terra::patches(masker, directions = 8, zeroAsNA = TRUE,
+                                      filename = tmp_patch, overwrite = TRUE)
+  }
+  
+  # 3. Slimme extractie: Enkel actieve cellen verwerken
+  df_cl <- terra::as.data.frame(cl_biotoop_only, cells = TRUE)
+  if (nrow(df_cl) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  colnames(df_cl) <- c("cell", "ID")
+  
+  if (werkelijk) {
+    opp_waarden <- terra::extract(opp_laag, df_cl$cell)[[1]]
+    dt_calc <- data.table(ID = df_cl$ID, Waarde = opp_waarden)
+  } else {
+    dt_calc <- data.table(ID = df_cl$ID, Waarde = 1)
+  }
+  
+  stats_dt <- dt_calc[!is.na(ID) & !is.na(Waarde), .(Area_m2 = sum(Waarde, na.rm = TRUE) * 100), by = ID]
+  voldoet_ids <- stats_dt[Area_m2 >= drempel_m2, ID]
+  
+  if (length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  
+  # 4. Resultaat filteren
+  cl_finaal <- terra::ifel(cl_biotoop_only %in% voldoet_ids, cl_biotoop_only, NA)
+  r_finaal  <- terra::mask(masker, cl_finaal)
+  
+  rm(df_cl, dt_calc, stats_dt, cl_biotoop_only)
+  gc()
+  
+  return(list(raster = r_finaal, clusters = cl_finaal))
+}
+
+# 3. SOORT INFORMATIE OPHALEN --------------------------------------------------
+df <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))
+soort <- "ijsvogel"
+
+resultaat <- df %>%
+  filter(tolower(trimws(Soort)) == soort) %>%
+  select(Type, MinOpp_ha, AfstandBiotopen_m, Dispersiecap_m)
+
+oppervlakte_ha <- resultaat$MinOpp_ha[1]
+afstand_m      <- resultaat$AfstandBiotopen_m[1]
+buffer_m       <- resultaat$Dispersiecap_m[1]
+
+print(resultaat)
+rm(df, resultaat)
+
+# 4. GEBIED VOORBEREIDEN (MASTERGRID VLAANDEREN) -------------------------------
+message("-> Mastergrid Vlaanderen inlezen...")
+master_grid <- rast(here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif"))[[1]]
+
+template_Vlaanderen <- master_grid
+values(template_Vlaanderen) <- NA
+
+# 5. BIOTOOPFILTERING VIA PARQUET (BWK TYPETABELLEN) ---------------------------
+message("-> BWK Parquet dataset koppelen via Arrow...")
+
+df_nieuw <- read_csv(
+  here("data/input/Excel_files/Resultaten_Totaal_Samengevoegd.csv"), 
+  show_col_types = FALSE,
+  progress = FALSE
+)
+
+resultaten_gegroepeerd <- df_nieuw %>%
+  mutate(Soort_clean = tolower(trimws(Soort))) %>%
+  filter(Soort_clean == soort) %>%
+  group_by(Type) %>%
+  nest(Data = c(Code, Match))
+
+ds_vlaanderen <- open_dataset(here("data/input/Raster_Vlaanderen/BWK_TidyTabel_Smal_Vlaanderen_2025.parquet"))
+
+lijst_oppervlaktes <- list()
+
+for(i in 1:nrow(resultaten_gegroepeerd)) {
+  h_type <- resultaten_gegroepeerd$Type[i]
+  h_data <- resultaten_gegroepeerd$Data[[i]]
+  
+  exact_codes <- tolower(trimws(h_data$Code[h_data$Match == "exact"]))
+  bevat_codes <- tolower(trimws(h_data$Code[h_data$Match == "bevat"]))
+  
+  if (length(bevat_codes) > 0) {
+    bevat_codes_escaped  <- gsub("([\\.\\^\\$\\*\\+\\?\\(\\)\\[\\{\\\\\\|])", "\\\\\\1", bevat_codes)
+    bevat_codes_anchored <- paste0("^", bevat_codes_escaped)
+    regex_term           <- paste0(bevat_codes_anchored, collapse = "|")
+    
+    tabel_sub <- ds_vlaanderen %>%
+      filter(tolower(CODE) %in% exact_codes | str_detect(tolower(CODE), regex_term)) %>%
+      collect() %>%
+      as.data.table()
+  } else {
+    tabel_sub <- ds_vlaanderen %>%
+      filter(tolower(CODE) %in% exact_codes) %>%
+      collect() %>%
+      as.data.table()
+  }
+  
+  if (nrow(tabel_sub) > 0) {
+    tabel_sub[, CODE := tolower(trimws(CODE))]
+    tabel_unique  <- unique(tabel_sub, by = c("cel_id", "CODE"))
+    tabel_cel_som <- tabel_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)), by = .(cel_id)]
+    
+    r_opp_type <- template_Vlaanderen
+    r_opp_type[tabel_cel_som$cel_id] <- tabel_cel_som$Oppervlakte
+    lijst_oppervlaktes[[h_type]]     <- r_opp_type
+  } else {
+    lijst_oppervlaktes[[h_type]]     <- template_Vlaanderen
+  }
+}
+
+bwk_opp <- if("bwk" %in% names(lijst_oppervlaktes)) lijst_oppervlaktes[["bwk"]] else template_Vlaanderen
+
+rm(ds_vlaanderen, resultaten_gegroepeerd, df_nieuw, lijst_oppervlaktes)
+gc()
+
+# 6. CLUSTER-ANALYSE BWK-WATERBIOTOOP (MIN. 5 HA) ------------------------------
+message("-> BWK-waterbiotoop clusteren op 50m netwerk (min. 5 ha)...")
+
+drempel_m2        <- 50000 # 5 ha
+r_binair_bwk_opp  <- terra::ifel(!is.na(bwk_opp) & bwk_opp > 0, 1, NA)
+
+bwk_clusters_opp  <- cluster_filter_compleet(
+  masker     = r_binair_bwk_opp,
+  opp_laag   = bwk_opp,
+  drempel_m2 = drempel_m2,
+  dist_m     = 50,
+  werkelijk  = TRUE
+)
+
+bwk_water_gefilterd_opp <- bwk_clusters_opp$raster
+
+rm(r_binair_bwk_opp, bwk_clusters_opp, bwk_opp)
+gc()
+
+# 7. HYDROGRAFISCHE DATA (HUET-ZONES VLAANDEREN) INLADEN ----------------------
+message("-> Huet-zone waterlopen inlezen voor heel Vlaanderen...")
+
+r_huetzon_vlaanderen <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_huetzon_10m.tif"))
+if(!terra::compareGeom(r_huetzon_vlaanderen, template_Vlaanderen, stopOnError = FALSE)) {
+  r_huetzon_vlaanderen <- terra::resample(r_huetzon_vlaanderen, template_Vlaanderen, method = "near")
+}
+
+legende_huet  <- terra::cats(r_huetzon_vlaanderen)[[1]]
+target_labels <- c("Bg", "BgK", "Bk1", "Bk2", "BkK1", "BkK2", "KabPKunst", "Kan", "KanPKunst", "Kunst", "Mlz", "O1brak", "O1o", "O2zout", "P1", "P2", "Rg", "Rk", "Rzg")
+
+if(!is.null(legende_huet) && is.data.frame(legende_huet) && "Label" %in% colnames(legende_huet)) {
+  valide_ids <- legende_huet$value[legende_huet$Label %in% target_labels]
+  message(paste("-> Gekoppelde Huet-zone ID's op basis van labels:", paste(valide_ids, collapse = ", ")))
+} else {
+  valide_ids <- 5:10 
+  message("⚠️ Waarschuwing: Rasterlegende-structuur wijkt af, terugvallen op harde ID's 5:10.")
+}
+
+r_waterlopen_bin <- r_huetzon_vlaanderen %in% valide_ids
+r_waterlopen_opp <- terra::ifel(r_waterlopen_bin == 1, 0.01, NA)
+
+# FUSIE BWK WATER + HUET WATERLOPEN
+w_bwk_clean  <- terra::ifel(is.na(bwk_water_gefilterd_opp), 0, bwk_water_gefilterd_opp)
+w_lopen_clean <- terra::ifel(is.na(r_waterlopen_opp), 0, r_waterlopen_opp)
+
+ijsvogel_voortplanting_opp_raw <- terra::clamp(w_bwk_clean + w_lopen_clean, upper = 1.0)
+ijsvogel_voortplanting_opp     <- terra::ifel(ijsvogel_voortplanting_opp_raw > 0, ijsvogel_voortplanting_opp_raw, NA)
+
+rm(r_huetzon_vlaanderen, r_waterlopen_bin, r_waterlopen_opp, w_bwk_clean, w_lopen_clean, bwk_water_gefilterd_opp, ijsvogel_voortplanting_opp_raw)
+gc()
+
+# 8. GEOPTIMALISEERDE OEVERANALYSE (GEHEUGENVEILIG VIA TEMPFILES) --------------
+message("-> Start geoptimaliseerde oeveranalyse (exacte lengteberekening >= 1 km)...")
+
+blauwe_laag_raw <- rast(here("data/input/Raster_Vlaanderen/vlaanderen_watervlakken_2024_10m.tif"))
+if(!terra::compareGeom(blauwe_laag_raw, template_Vlaanderen, stopOnError = FALSE)) {
+  r_blauwe_laag <- terra::resample(blauwe_laag_raw, template_Vlaanderen, method = "near")
+} else {
+  r_blauwe_laag <- blauwe_laag_raw
+}
+
+r_water <- r_blauwe_laag == 1
+r_land  <- r_blauwe_laag == 0
+
+tmp_bnd1 <- tempfile(fileext = ".tif")
+tmp_bnd2 <- tempfile(fileext = ".tif")
+
+ijsvogel_waterkant <- terra::boundaries(r_water, classes = FALSE, inner = TRUE, filename = tmp_bnd1, overwrite = TRUE)
+ijsvogel_landkant  <- terra::boundaries(r_land, classes = FALSE, inner = TRUE, filename = tmp_bnd2, overwrite = TRUE)
+
+ijsvogel_oever <- (ijsvogel_waterkant == 1) | (ijsvogel_landkant == 1)
+ijsvogel_oever <- terra::ifel(ijsvogel_oever == 1, 1, NA)
+
+unlink(c(tmp_bnd1, tmp_bnd2))
+rm(blauwe_laag_raw, r_blauwe_laag, r_water, r_land, ijsvogel_waterkant, ijsvogel_landkant)
+
+tmp_buf_oever          <- tempfile(fileext = ".tif")
+temp_oever_mask        <- terra::buffer(ijsvogel_oever, width = 25, filename = tmp_buf_oever, overwrite = TRUE)
+
+tmp_patch_oever        <- tempfile(fileext = ".tif")
+ijsvogel_oever_cluster <- terra::patches(temp_oever_mask, directions = 8, zeroAsNA = TRUE, filename = tmp_patch_oever, overwrite = TRUE) %>% 
+  terra::mask(ijsvogel_oever)
+
+oever_polys          <- terra::as.polygons(ijsvogel_oever_cluster, dissolve = TRUE)
+oever_polys$lengte_m <- terra::perim(oever_polys) / 2
+
+valide_oever_clusters <- oever_polys$patches[oever_polys$lengte_m >= 1000]
+
+unlink(c(tmp_buf_oever, tmp_patch_oever))
+
+if(length(valide_oever_clusters) > 0) {
+  ijsvogel_oever1 <- ijsvogel_oever_cluster %in% valide_oever_clusters
+  ijsvogel_oever1 <- terra::ifel(ijsvogel_oever1 == 1, 1, NA)
+} else {
+  ijsvogel_oever1 <- template_Vlaanderen
+  warning("⚠️ Geen enkele oever voldoet aan de minimale lengte van 1 km!")
+}
+
+rm(ijsvogel_oever, temp_oever_mask, ijsvogel_oever_cluster, oever_polys, valide_oever_clusters)
+gc()
+
+# 9. 20M OEVERZONE TOEPASSEN OP WATERHABITAT -----------------------------------
+message("-> 20m Oeverzone buffer toepassen op voortplantingswater...")
+
+tmp_dist_oever <- tempfile(fileext = ".tif")
+dist_to_oever  <- terra::distance(ijsvogel_oever1, filename = tmp_dist_oever, overwrite = TRUE)
+oever_zone_20m <- terra::ifel(dist_to_oever <= 20, 1, NA)
+
+final_opp <- terra::mask(ijsvogel_voortplanting_opp, oever_zone_20m)
+
+unlink(tmp_dist_oever)
+rm(ijsvogel_oever1, dist_to_oever, oever_zone_20m, ijsvogel_voortplanting_opp)
+gc()
+
+if (!all(is.na(suppressWarnings(terra::minmax(final_opp))))) {
+  tmp_patch_cl <- tempfile(fileext = ".tif")
+  cl_opp       <- terra::patches(final_opp, directions = 8, zeroAsNA = TRUE, filename = tmp_patch_cl, overwrite = TRUE)
+} else {
+  cl_opp <- template_Vlaanderen
+}
+
+# 10. EXPORT NAAR DISK (ENKEL 00_ID_Rasters EN 01_Werkelijke_Oppervlaktes) -----
+message("-> Geformatteerde export starten...")
+
+base_dir <- here::here("data/output/Vlaanderen/Rasters_Soorten")
+
+folders <- list(
+  id_raster = file.path(base_dir, "00_ID_Rasters"),
+  werkelijk = file.path(base_dir, "01_Werkelijke_Oppervlaktes")
+)
+purrr::walk(folders, ~if (!dir.exists(.x)) dir.create(.x, showWarnings = FALSE, recursive = TRUE))
+
+# 1. Export Werkelijke Oppervlakte Raster
+file_path_opp <- file.path(folders$werkelijk, paste0("Habitat_Werkelijke_Oppervlaktes_", soort, "_wv.tif"))
+terra::writeRaster(
+  final_opp, 
+  filename = file_path_opp, 
+  overwrite = TRUE, 
+  gdal = c("COMPRESS=LZW"), 
+  datatype = "FLT4S", 
+  NAflag = -9999
+)
+message(paste("    [OK] Geëxporteerd naar scenariomap:", basename(file_path_opp)))
+
+# 2. Export Analytisch Netwerk ID Raster
+file_path_id <- file.path(folders$id_raster, paste0("ID_Netwerken_", soort, "_wv.tif"))
+terra::writeRaster(
+  cl_opp, 
+  filename = file_path_id, 
+  overwrite = TRUE, 
+  gdal = c("COMPRESS=LZW"), 
+  datatype = "INT4U", 
+  NAflag = 0
+)
+message(paste("    [OK] Analytisch ID-raster geëxporteerd:", basename(file_path_id)))
+
+message("🏁 LEEFGEBIEDENGRID IJSVOGEL SUCCESVOL GEËXPORTEERD VOOR HEEL VLAANDEREN!")
