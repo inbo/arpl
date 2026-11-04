@@ -1,0 +1,77 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: STRANDPLEVIER
+Soort: Charadrius alexandrinus (kleine kuststeltloper van zandstranden & havens)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Strandplevier is een zeldzame, fijngebouwde steltloper en een prioritaire soort 
+van de Europese Vogelrichtlijn (Bijlage I). In Vlaanderen broedt de soort 
+nagenoeg uitsluitend in uiterst dynamische kust- en havenmilieus: brede zandstranden, 
+primaire duinen, schelpenbanken en grootschalige zandige opspuitingen in de havens 
+van Zeebrugge en Antwerpen, alsmede in het Zwin. De Strandplevier nestelt op de 
+kale grond in een ondiep kuiltje, dikwijls gedecoreerd met schelpfragmenten. 
+De soort foerageert hoofdzakelijk op de vochtige vloedlijn en slikranden op 
+bodemongewervelden (strandvlooien, kevers, vliegen, kleine wormen en weekdiertjes).
+
+A. Voortplantingsbiotoop / Nestlocaties ('voortplanting'):
+   - BWK-selectie:
+       da%, 1310%, 1320%, 1330%, dd%, 2120%, dl%, 1140%, 2110%, dla%, dz%, 
+       ku%, 3270%, 6430%, kz%
+       (Zandstranden, embryonale duinen, wandelduinen, slikken, schorren en 
+       ruderale havenopspuitingen)
+   - Uitsluiting open water/moeras: Cellen die samenvallen met permanent open water 
+     of dichte moerasvegetatie (ad%, ae%, 2190%, 3140%, 3150%, ah%, mz%, etc.) 
+     worden via inverse maskering verwijderd.
+
+B. Foerageerzone / Slik en Strand ('foerageer'):
+   - BWK-selectie:
+       da%, 1310%, 1320%, 1330%, dl%, 2110%, ds%, 1130%, 1140%, 3270%, dz%
+       (Dynamische getijdenslikken, schorranden, zandige vloedmerken en 
+       embryonale duinstroken)
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+1. Broedgebieden (>= 2 ha op 50 m):
+   - Het gezuiverde broedbiotoop wordt geclusterd met dist_m = 50 m.
+   - Drempelwaarde: >= 2 ha (20.000 m2) werkelijk areaal.
+   - Ecologische functie: Biedt voldoende overzicht en openheid om predatoren 
+     (Meeuwen, Kraaien, Vossen) tijdig op te merken en nestterritoria in te richten.
+2. Foerageerzones (Slik & Strand):
+   - Directe interactielaag zonder voorafgaande oppervlakteafkapping; alle actieve 
+     slik- en strandstroken binnen bereik zijn functioneel.
+
+
+3. ZEER KORTE ACTIERADIUSKOPPELING (200 M BUFFER)
+--------------------------------------------------------------------------------
+- 200 m Koppelingsafstand:
+   * Alleen broedgebieden (>= 2 ha) die binnen <= 200 m van geschikt slik of 
+     strand liggen, blijven behouden.
+   * Alleen foerageerzones die binnen <= 200 m van een broedgebied liggen, 
+     worden geselecteerd.
+- Ecologische functie: De kuikens zijn uiterst kwetsbare nestvlieders die al enkele 
+  uren na het uitkomen de voedselrijke vloedlijn of slikrand lopend moeten opzoeken. 
+  Afstanden groter dan 200 meter leiden tot fatale predatie of uitputting.
+
+
+4. FINALE COMPOSIET-LEEFGEBIEDSTOETS & DISPERSIE
+--------------------------------------------------------------------------------
+- Het gekoppelde broed- en slikgebied wordt samengevoegd en onderworpen aan 
+  een finale overkoepelende clustering van >= 2 ha (op 50 m).
+- Dispersiecapaciteit (buffer_m / ARPL): 15000 m (15 km).
+   * Ecologische functie: Weerspiegelt de verplaatsingen tussen de broedplaatsen 
+     in Zeebrugge, Het Zwin, de Westerschelde en de Deltawateren.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Strandplevier (Charadrius alexandrinus) - broedvogel
+Broedbiotoop drempel      : >= 2 ha zand/strand/duin (clustering: 50 m)
+Uitsluiting broedbiotoop  : Open water en moerasvegetatie
+Foerageerzone             : Slik en getijdenstrand
+Actieradiuskoppeling      : Zeer korte wederzijdse koppeling binnen <= 200 m
+Finale complexdrempel     : >= 2 ha leefgebied (clustering: 50 m)
+Dispersieradius (ARPL)    : 15000 m
+================================================================================

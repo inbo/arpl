@@ -1,0 +1,82 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: DUINPIEPER
+Soort: Anthus campestris (zangvogel / pionier van stuifzanden, duinen & heiden)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Duinpieper is een zomervogel, lange-afstandstrekker en een uitgesproken 
+habitat-specialist van warme, droge en uiterst schrale zandlandschappen met een 
+zeer open vegetatiestructuur en veel open zand. De soort broedt op de grond in 
+een kuiltje onder een graspol of struikje en foerageert lopend op de kale bodem 
+op bodembewonende geleedpotigen (sprinkhanen, spinnen, kevers, rupsen). In Vlaanderen 
+komt de soort historisch voor op de militaire domeinen en actieve stuifzanden in 
+de Kempen en in de zeereep- en landduinen van de kust.
+
+A. Voortplantings- en Leefgebiedcomplex ('voortplanting'):
+   - BWK-selectie:
+       cd%, 2310%, 4030%, cg%, 5130%, cm%, 4010%, dd%, 2120%, dm%, 2330%, 
+       ha%, 6230_ha%, had%, 2130%, 2130_had%, 2150%, hd%, 2130_hd%, hn%, 
+       6230%, ku%, 3270%, 6430%, sd%, 2160%, 2170%, sg%, rbbsg%
+       (Droge en vochtige heiden, struikhei- en kraaiheivegetaties, stuifzanden, 
+       wandelduinen, duingraslanden, heischrale graslanden en pioniervegetaties)
+   - Verwerking: Aggregatie van werkelijke oppervlaktefracties (BWK_FRAC tot max. 1.0) 
+     op het 10 m Vlaanderen-mastergrid.
+
+B. Kernhabitat Stuifzand en Stuifduin ('stuifduin'):
+   - BWK-selectie:
+       dd%, 2120%, dm%, 2330%
+       (Actieve stuifduinen, stuifzandpioniervegetaties en open zandvlaktes)
+   - Ecologische functie: Vormt het onmisbare functionele microhabitat; 
+     de Duinpieper vereist grote vlakken kaal en mobiel zand voor thermoregulatie, 
+     ongehinderd foerageren op zicht en baltsvluchten.
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+Het model hanteert een tweeledige drempeltoets (landschapscomplex versus kern):
+
+1. Stuifduinkernen (>= 5 ha op 20 m):
+   - Het open stuifzand ('stuifduin') wordt geclusterd met dist_m = 20 m.
+   - Drempelwaarde: >= 5 ha (50.000 m2) werkelijk stuifzandoppervlak.
+   - Ecologische functie: Sluit versnipperde, geïsoleerde zandweggetjes, 
+     zandverstuivingen van enkele vierkante meters en begroeide zandplekjes uit.
+2. Landschappelijk Leefgebiedcomplex (>= 75 ha op 50 m):
+   - Het totale voortplantingsbiotoop ('voortplanting') wordt geclusterd met dist_m = 50 m.
+   - Drempelwaarde: >= 75 ha (750.000 m2) aaneengesloten open habitat.
+   - Ecologische functie: De Duinpieper bezet uitgestrekte territoria en treedt 
+     vaak semi-koloniaal op in clusters van meerdere paren. Een complex van 
+     minstens 75 ha waarborgt voldoende openheid en afwezigheid van randeffecten.
+
+
+3. RUIMTELIJKE KOPPELING: INBEDDING VAN STUIFZANDKERNERN
+--------------------------------------------------------------------------------
+- Nabijheidstoets (10 m interactie):
+   * Alleen het goedgekeurde leefgebiedcomplex (>= 75 ha) dat direct grenst 
+     aan of overlapt met (afstand <= 10 m) minstens één gevalideerde 
+     stuifduinkern (>= 5 ha) wordt geselecteerd als definitief leefgebied.
+- Ecologische functie: Open heideterreinen of graslanden zonder volwaardige, 
+  dynamische stuifzandkernen van minstens 5 ha zijn ongeschikt voor permanente 
+  vestiging van de soort.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): 5000 m
+   * Toepassing: ARPL / netwerkanalyses op Vlaams niveau.
+   * Ecologische functie: Brengt de functionele verbindingen in beeld tussen de 
+     grote zand- en heidekernen van de Antwerpse en Limburgse Kempen 
+     (o.a. Kalmthoutse Heide, Groot Schietveld, Kamp van Beverlo).
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Duinpieper (Anthus campestris) - broedvogel
+Doelbiotoop A (Complex)   : Droge heiden, duingraslanden en pioniervegetaties
+Complex drempel           : >= 75 ha werkelijk oppervlak (clustering: 50 m)
+Doelbiotoop B (Kern)      : Actieve stuifduinen en stuifzanden (dd%, dm%)
+Kern drempel              : >= 5 ha werkelijk stuifzand (clustering: 20 m)
+Koppelingscriterium       : 75 ha complex moet liggen binnen <= 10 m van 5 ha stuifduinkern
+Dispersieradius (ARPL)    : 5000 m
+================================================================================

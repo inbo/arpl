@@ -1,0 +1,5 @@
+bwk: hu%, ha%, hn%, hp+, hr+, 6510%, rbbkam%, rbbvos%
+
+MinOpp_ha: 1
+AfstandBiotopen_m:  50
+Dispersiecap_m: 2500

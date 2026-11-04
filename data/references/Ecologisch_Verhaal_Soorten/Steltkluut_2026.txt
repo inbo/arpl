@@ -1,0 +1,80 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: STELTKLUUT
+Soort: Himantopus himantopus (steltloper van ondiepe wetlands & zilte polders)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Steltkluut is een opvallende, elegante waadvogel met buitengewoon lange, 
+rozerode poten en een rechte naaldsnavel. De soort is strikt beschermd onder 
+Bijlage I van de Europese Vogelrichtlijn. In Vlaanderen is de Steltkluut een 
+zeldzame en onregelmatige broedvogel die profiteert van dynamische inundaties, 
+brakke poldergebieden, pas aangelegde overstromingsgebieden en natuurontwikkelings- 
+projecten (zoals in de haven van Antwerpen, het Zwin en de Uitkerkse Polder). 
+De soort nestelt op lage eilandjes, modderbanken of tussen polletjes in zeer 
+ondiep water. Dankzij de extreem lange poten kan de Steltkluut in dieper water 
+waden dan de meeste andere steltlopers om met snelle snavelstoten waterinsecten 
+(kevers, wantsachtigen, muggenlarven), kreeftachtigen en kleine visjes te vangen.
+
+A. Voortplantingsbiotoop / Nestlocaties ('voortplanting'):
+   - BWK-selectie:
+       hpr%, 1310%, 1330%, rbbkam%, rbbzil%, hpr+%, 2190%, kn%, 3140%, 3150%, 
+       ku%, 3270%, 6430%, kz%
+       (Zilte en vochtige polderweiden, kamgrasgraslanden, duinpannen, vochtige 
+       slenken en ruderale slikpioniervegetaties)
+
+B. Foerageer- en Voedselgronden ('foerageer'):
+   - BWK-selectie:
+       3110%, ad%, ae%, 2190%, 3140%, 3150%, aer%, ah%, da%, 1310%, 1320%, 
+       1330%, ds%, 1130%, 1140%, 3270%, hpr%, hpr+%, rbbkam%, rbbzil%, kn%, 
+       ku%, 6430%, kz%, rbbah%
+       (Ondiepe open wateren, kreken, lagunes, slikken, schorren en drassige oevers)
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+Beide basiscomponenten worden geclusterd met dist_m = 50 m:
+
+1. Broedgebieden (>= 30 ha op 50 m):
+   - Het broedbiotoop wordt geclusterd op minstens 30 ha (300.000 m2) werkelijk areaal.
+   - Ecologische functie: Steltkluten vestigen zich bijna uitsluitend in ruime, 
+     weidse grasland- en wetlandcomplexen waar open horizon en afwezigheid van 
+     opgaand hout rust en vroegtijdige predatorwaarneming garanderen.
+2. Foerageergebieden (>= 2 ha op 50 m):
+   - Voedselrijke modderoevers en ondiepe plassen worden geclusterd op minstens 2 ha.
+   - Ecologische functie: Zorgt voor substantiële, permanente voedselgronden 
+     tijdens de broedperiode.
+
+
+3. WEDERZIJDSE ACTIERADIUSKOPPELING (2 KM BUFFER)
+--------------------------------------------------------------------------------
+- 2.000 m (2 km) Wederzijdse Zoekstraal:
+   * Alleen broedgebieden (>= 30 ha) die binnen <= 2.000 m van minstens 2 ha 
+     geschikt foerageerwater liggen, worden weerhouden.
+   * Alleen foerageerzones die binnen <= 2.000 m van een gekwalificeerde broedlocatie 
+     liggen, blijven behouden.
+- Ecologische functie: Nestjonge steltkluten zijn nestvlieders die vrijwel direct 
+  lopend en zwemmend naar ondiepe, voedselrijke slikranden worden geleid. De 
+  functionele loopafstand tussen nest en voedselwater bedraagt maximaal 2 km.
+
+
+4. FINALE COMPOSIET-LEEFGEBIEDSTOETS & DISPERSIE
+--------------------------------------------------------------------------------
+- Het gekoppelde broed- en foerageergebied wordt samengevoegd en onderworpen aan 
+  een finale overkoepelende clustertoets van >= 2 ha (op 50 m).
+- Dispersiecapaciteit (buffer_m / ARPL): 15000 m (15 km).
+   * Ecologische functie: Weerspiegelt het nomadische en pionierende karakter 
+     van de soort, die vlot kan schakelen tussen polderkernen in Vlaanderen, 
+     de Zeeuwse delta en Frans-Vlaanderen.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Steltkluut (Himantopus himantopus) - broedvogel
+Broedbiotoop drempel      : >= 30 ha vochtig grasland/slik (clustering: 50 m)
+Foerageerbiotoop drempel  : >= 2 ha ondiep water/modder (clustering: 50 m)
+Actieradiuskoppeling      : Wederzijdse koppeling binnen <= 2.000 m (2 km)
+Finale complexdrempel     : >= 2 ha leefgebied (clustering: 50 m)
+Dispersieradius (ARPL)    : 15000 m
+================================================================================

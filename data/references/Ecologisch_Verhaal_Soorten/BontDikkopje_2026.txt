@@ -90,7 +90,7 @@ Doelpopulatie             : Bont dikkopje (Carterocephalus palaemon)
 Doelbiotoop               : Vochtige bosranden, zomen en bloemrijke graslanden
 Bodemdrainage (voortpl.)  : Klassen d, e, f, h, i, g, e-f, h-i, e-i (nat/zeer nat)
 Afstand tot water (voortpl): <= 200 m tot BWK-water of GRB-water
-Minimale clusteroppervlak : MinOpp_ha (uit Excel)
+Minimale clusteroppervlak : 5 ha
 Bosrand raaklijneis       : Minstens 50 m aaneengesloten contact met bosrand
 Bosrand meeneemdiepte     : 20 m bosrand grenzend aan habitat
 Dispersieradius (ARPL)    : 5000

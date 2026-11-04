@@ -1,0 +1,84 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: GROTE STERN
+Soort: Thalasseus sandvicensis (grote zeevogel / kolonievogel van kust & estuarium)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Grote stern is een karakteristieke, middelgrote kustvogel van open zee en 
+estuaria en een prioritaire soort van de Europese Vogelrichtlijn (Bijlage I). 
+In Vlaanderen broedt de soort uitsluitend in grote, compacte kolonies op veilige, 
+door water omgeven eilanden, schiereilanden en opspuitingsterreinen in de voorhavens 
+(met name het Sterneneiland in de haven van Zeebrugge en historisch Het Zwin). 
+Als gespecialiseerde viseter jaagt de Grote stern via spectaculaire stootduiken 
+in het zoute en brakke water van de Noordzee, estuariene getijdengeulen en havenbekkens 
+op scholen zandspiering, haring, sprot en jonge kabeljauwachtigen.
+
+A. Voortplantingsbiotoop / Koloniezones ('voortplanting'):
+   - BWK-selectie:
+       dd%, 2120%, dl%, 1140%, 2110%, ds%, 1130%, 3270%, dz%
+       (Wandelduinen, zeereep, embryonale duinen, slikken, zandige opspuitingen, 
+       schelpenbanken en pioniervegetaties)
+   - Uitsluiting open water/moeras: Cellen die samenvallen met diep water of 
+     dichte moerasvegetatie (ad%, ae%, 2190%, 3140%, 3150%, mz%, etc.) worden 
+     via inverse maskering uitgesloten.
+
+B. Foerageer- en Viswater ('foerageer'):
+   - BWK-water:
+       ad%, ae%, ap%, zee%, 1110%
+       (Kustwateren, estuariene getijdenwateren, dokken en meren)
+   - Huet-zones ('vlaanderen_huetzon_10m.tif'):
+       Klassen 17 en 19 (Beneden-Zeeschelde, estuariene getijdenzones)
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+Beide basiscomponenten worden geclusterd met dist_m = 50 m:
+
+1. Broedgebieden (>= 20 ha op 50 m):
+   - Het gezuiverde broedbiotoop wordt geclusterd op minstens 20 ha (200.000 m2) 
+     werkelijk oppervlak.
+   - Ecologische functie: Grote sterns broeden uitsluitend in uiterst dichte, 
+     spectaculaire kolonies (vaak duizenden paren bijeen). Grote aaneengesloten 
+     terreinen zijn cruciaal voor sociale synchronisatie en collectieve 
+     verdediging tegen predatoren (o.a. meeuwen en vossen).
+2. Viswater / Voedselbronnen (>= 1 ha op 50 m):
+   - Aaneengesloten open waterpartijen worden geclusterd op minstens 1 ha (10.000 m2).
+   - Ecologische functie: Waarborgt de aanwezigheid van open waterlichamen met 
+     geschikte scholen vis binnen het reguliere duikbereik.
+
+
+3. WEDERZIJDSE ACTIERADIUSKOPPELING (5 KM BUFFER)
+--------------------------------------------------------------------------------
+- 5 km Wederzijdse Zoekstraal:
+   * Alleen broedcomplexen (>= 20 ha) die binnen <= 5.000 m van minstens 1 ha 
+     viswater liggen, worden weerhouden.
+   * Alleen viswateren (>= 1 ha) die binnen <= 5.000 m van een goedgekeurde 
+     broedkolonie liggen, worden geselecteerd als functioneel foerageergebied.
+- Ecologische functie: Hoewel Grote sterns buiten het broedseizoen tientallen 
+  kilometers op open zee kunnen patrouilleren, moeten oudervogels tijdens de 
+  kuikenfase meerdere keren per dag verse vette vis naar het nest brengen. 
+  De primaire voedselgronden moeten daarom direct aansluiten op de broedsite.
+
+
+4. FINALE COMPOSIET-LEEFGEBIEDSTOETS & DISPERSIE
+--------------------------------------------------------------------------------
+- Het gekoppelde broed- en foerageergebied wordt samengevoegd en onderworpen aan 
+  een finale overkoepelende clustering van >= 20 ha (op 50 m).
+- Dispersiecapaciteit (buffer_m / ARPL): 25000 m (25 km).
+   * Ecologische functie: Grote sterns vormen één grote Noordwest-Europese 
+     metapopulatie die jaarlijks kan wisselen tussen broedkolonies in Nederland 
+     (Deltagebied, Waddenzee), Vlaanderen (Zeebrugge) en Noord-Frankrijk.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Grote stern (Thalasseus sandvicensis) - broedvogel
+Broedbiotoop drempel      : >= 20 ha werkelijk oppervlak (clustering: 50 m)
+Uitsluiting broedbiotoop  : Open water en moerasvegetatie
+Viswater drempel          : >= 1 ha (BWK open water/zee + Huet-zones 17 & 19; clustering: 50 m)
+Actieradiuskoppeling      : Wederzijdse koppeling binnen <= 5.000 m (5 km)
+Finale complexdrempel     : >= 20 ha leefgebied (clustering: 50 m)
+Dispersieradius (ARPL)    : 25000 m
+================================================================================

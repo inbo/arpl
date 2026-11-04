@@ -1,0 +1,83 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: KLUUT
+Soort: Recurvirostra avosetta (typische steltloper van slikken, schorren & polders)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Kluut is een opvallende zwart-witte steltloper met een omhooggebogen snavel 
+en een prioritaire broedvogel van de Europese Vogelrichtlijn (Bijlage I). 
+In Vlaanderen broedt de soort in kolonies of losse groepen in dynamische, zilte 
+en brakke kust- en estuariene milieus: schorren en slikken langs het Zwin en de 
+Zeeschelde, opspuitingen in het Antwerpse havengebied en geïnundeerde 
+polderweiden. De Kluut nestelt op kale bodems, zandige schelpenbankjes of lage 
+begroeiing en foerageert wadend in uiterst ondiep, slikkig water waar met een 
+typisch maaiende hoofdbeweging bodemongewervelden (borstelwormen, wadkreeftjes, 
+insectenlarven) worden gezocht.
+
+A. Voortplantingsbiotoop / Nestlocaties ('voortplanting'):
+   - BWK-selectie:
+       da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, hpr%, 2190%, 
+       rbbkam%, rbbzil%, ku%, 6430%, kz%
+       (Slikken, schorren, zilte en vochtige polderweiden, kamgrasweiden, 
+       pioniervegetaties en zandige opspuitingen)
+   - Uitsluiting open water/moeras: Cellen die samenvallen met diep water of 
+     dichte rietmoerassen (ad%, ae%, 3140%, 3150%, ah%, mz%, etc.) worden 
+     via inverse maskering uitgesloten.
+
+B. Foerageer- en Voedselgronden ('foerageer'):
+   - BWK-selectie:
+       aer%, ah%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, hpr%, 
+       2190%, rbbkam%, rbbzil%, hpr+%, kn%, 3140%, 3150%, ku%, 3270%, 6430%, kz%
+       (Ondiepe estuariene wateren, kreken, slikranden, zilte graslanden en 
+       drassige pioniersituaties)
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+1. Broedgebieden (>= 5 ha op 50 m):
+   - Het gezuiverde broedbiotoop wordt geclusterd met dist_m = 50 m.
+   - Drempelwaarde: >= 5 ha (50.000 m2) werkelijk oppervlak.
+   - Ecologische functie: Kluten broeden semi-koloniaal; voldoende ruimte 
+     biedt bescherming tegen predatoren (gezamenlijke verdediging tegen meeuwen) 
+     en waarborgt nestveiligheid bij waterpeilschommelingen.
+2. Foerageergebieden (>= 5 ha op 10 m):
+   - Foerageerzones worden compact geclusterd met dist_m = 10 m.
+   - Drempelwaarde: >= 5 ha (50.000 m2) ononderbroken slik- en waadareaal.
+   - Ecologische functie: Sluit versnipperde slootkanten uit en behoudt ruime 
+     voedselrijke moddervlakten.
+
+
+3. WEDERZIJDSE ACTIERADIUSKOPPELING (2 KM BUFFER)
+--------------------------------------------------------------------------------
+- 2.000 m (2 km) Wederzijdse Zoekstraal:
+   * Alleen broedcomplexen (>= 5 ha) die binnen <= 2.000 m van minstens 5 ha 
+     geschikt foerageergebied liggen, blijven behouden.
+   * Alleen foerageergebieden die binnen <= 2.000 m van een broedlocatie 
+     liggen, worden weerhouden als functioneel voedselareaal.
+- Ecologische functie: Kuikens zijn nestvlieders die al snel na het uitkomen 
+  door de ouders naar slikkige voedselzones worden geleid. De maximale 
+  functionele loop- en verplaatsingsafstand bedraagt circa 2 km.
+
+
+4. FINALE COMPOSIET-LEEFGEBIEDSTOETS & DISPERSIE
+--------------------------------------------------------------------------------
+- Het gekoppelde broed- en foerageergebied wordt samengevoegd en onderworpen aan 
+  een finale overkoepelende clustertoets van >= 5 ha (op 50 m).
+- Dispersiecapaciteit (buffer_m / ARPL): 15000 m (15 km).
+   * Ecologische functie: Weerspiegelt de dynamische uitwisseling tussen de 
+     kolonies in het Zwin, de Zeebrugse voorhaven, de Schelde-estuaria en 
+     het Verdronken Land van Saeftinghe.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Kluut (Recurvirostra avosetta) - broedvogel
+Broedbiotoop drempel      : >= 5 ha werkelijk oppervlak (clustering: 50 m)
+Uitsluiting broedbiotoop  : Open water en rietmoerasvegetatie
+Foerageerbiotoop drempel  : >= 5 ha ondiep slik/water (clustering: 10 m)
+Actieradiuskoppeling      : Wederzijdse koppeling binnen <= 2.000 m (2 km)
+Finale complexdrempel     : >= 5 ha leefgebied (clustering: 50 m)
+Dispersieradius (ARPL)    : 15000 m
+================================================================================

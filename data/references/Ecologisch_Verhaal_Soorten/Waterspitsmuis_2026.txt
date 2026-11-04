@@ -1,0 +1,80 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: WATERSPITSMUIS
+Soort: Neomys fodiens (semi-aquatisch zoogdier van natuurlijke beek- & oeverzones)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Waterspitsmuis is het grootste inheemse spitsmuizensoort en een strikt 
+beschermd semi-aquatisch zoogdier. De soort is gespecialiseerd in het duiken en 
+jagen in helder, zuurstofrijk en visrijk zoet water. Het dieet bestaat uit 
+watermacro-invertebraten (kokerjuffers, libellenlarven, vlokreeftjes), kleine visjes 
+en kikkers. Essentieel voor de soort zijn natuurlijke, onverstoorde en overgroeide 
+oevers met holle ruimten, wortelgestellen en overkragingen waar ze holen graaft 
+en rustplaatsen inricht. Intensief beheerde oevers, beschoeiingen en zware 
+bebouwingsdruk leiden tot direct habitatverlies.
+
+A. Waterhabitat ('water_bwk', 'waterlopen1_bwk', 'huetzon'):
+   - BWK-selectie open water en waterlopen.
+   - Hydrografische bekenkaart via Huet-zones:
+       Bg, BgK, Bk1, Bk2, BkK1, BkK2, Rk
+       (Natuurlijke beeksystemen, bronzones en meanderende bovenlopen met 
+       goede waterkwaliteit en natuurlijke substraatdynamiek)
+
+B. Landbiotoop ('bwk_land'):
+   - BWK-moerassen, alluviale broekbossen, rietkragen, ruigten en dotterbloemgraslanden.
+
+C. Bebouwingscomponent:
+   - Harde bebouwingscodes: u, ua, ub, uc, ud, ui, un, ur.
+
+
+2. ECOTONALE OEVERTOETS & MINICLUSTERS (30% REGEL & 50M STROOK)
+--------------------------------------------------------------------------------
+De functionele leefzone wordt gevormd door de interactie tussen water en oever:
+
+1. Symmetrische 30% Randtoets:
+   - Waterpartijen: Minstens 30% van de oeveromtrek moet grenzen aan geschikt landbiotoop.
+   - Landpercelen: Minstens 30% van de rand moet grenzen aan geschikt water.
+2. 50 m Oeverstrook:
+   - Landbiotoop binnen een buffer van 50 m rond goedgekeurd water wordt geselecteerd, 
+     mits het fysiek contact maakt (<= 10 m) met de waterlijn.
+   - Ecologische functie: Waterspitsmuizen foerageren zowel in het water als in 
+     de directe oeverstrook tot 50 m landinwaarts.
+
+
+3. BEBOUWINGSFILTER (100M ZONE ROND CLUSTERS >= 1.5 HA)
+--------------------------------------------------------------------------------
+- Harde bebouwing wordt geclusterd op 50 m. Clusters >= 1.5 ha (15.000 m2) worden 
+  beschouwd als substantiële dorpskernen, lintbebouwing of woonwijken.
+- Rond deze woonkernen wordt een exclusiezone van 100 m toegepast.
+- Ecologische functie: Sluit intensieve antropogene predatie (huiskatten) en 
+  oeververstoring rond bewoningsconcentraties uit.
+
+
+4. LANDSCHAPPELIJKE NETWERKVORMING (250M KOPPELING & >= 25 HA DREMPEL)
+--------------------------------------------------------------------------------
+- De goedgekeurde miniclusters worden over een afstand van 250 m gekoppeld.
+- Drempelwaarde: Minimaal >= 25 ha (250.000 m2) aaneengesloten beek- en oevercomplex.
+- Ecologische functie: Een levensvatbare metapopulatie vereist kilometerslange, 
+  aaneengesloten beektrajecten en beekbegeleidende moerassen.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): 500 m.
+   * Ecologische functie: De voortbeweging vindt primair plaats via het water- 
+     en oevernetwerk zelf; overlanddispersie naar andere stroomgebieden is beperkt.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Waterspitsmuis (Neomys fodiens)
+Waterbiotoop              : BWK water + Huetzones (Bg, BgK, Bk1, Bk2, BkK1, BkK2, Rk)
+Landbiotoop               : Vochtige en alluviale BWK-graslanden/moerassen/bossen
+Ecotonale randtoets       : 30% wederzijds contact + 50 m functionele oeverzone
+Bebouwingsuitsluiting     : 100 m buffer rond woonclusters >= 1.5 ha
+Landschappelijke koppeling: 250 m zoekafstand
+Netwerkdrempel            : >= 25 ha complexoppervlakte
+Dispersieradius (ARPL)    : 500 m
+================================================================================
