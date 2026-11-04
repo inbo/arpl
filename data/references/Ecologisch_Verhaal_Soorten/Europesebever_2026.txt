@@ -1,0 +1,78 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: EUROPESE BEVER
+Soort: Castor fiber (semi-aquatisch zoogdier / sleutelsoort & ecosysteemingenieur)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Europese bever is een strikt beschermde sleutelsoort die beekdalen en rivier-
+systemen ingrijpend vormgeeft door de bouw van dammen, burchten en kanalen. 
+De soort vereist permanente, voldoende diepe watergangen (minstens 50-100 cm) 
+om ongehinderd te kunnen duiken en burchtingangen onder water aan te leggen. 
+Daarnaast is een ruim aanbod van zacht hout (wilg, populier, els, berk) direct 
+langs de oever essentieel: 's zomers bestaat het dieet voornamelijk uit kruidachtige 
+moeras- en waterplanten, maar 's winters is de bever volledig afhankelijk van 
+de schors, twijgen en knoppen van houtige oeveropslag.
+
+A. Spoor A: Algemeen Leefgebied & Water ('leefgebied_algemeen'):
+   - BWK-selectie:
+       ae%, 2190%, 3140%, 3150%, aer%, aev%, apo%, app%, gml%, k(a%, kn%, ku%, 
+       lh%, n, n-, n+, pop%, mc%, rbbmc%, md%, 7140%, 91E0%, mr%, 1130%, 1330%, 
+       6430_hw%, 6430_mr%, 7140_mrd%, rbbmr%, ms%, rbbms%, ru%, 2180%, 9160%, 
+       91F0%, rud%, sf%, rbbsf%, sm%, 4010%, 7230%, rbbsm%, sz%, va%, vc%, vf%, 
+       vm%, vn%, vo%, vt%, 91D0%
+       (Waterplassen, rietmoerassen, natte ruigten, alluviale bossen en struwelen)
+   - Hydrografische waterlopen (Huetzon):
+       Klassen 1, 17, 18, 19 (primaire rivieren, beektrajecten en getijdenwateren)
+   - Maas-rivierbedding:
+       Aanvullende bedding van de Grensmaas
+
+B. Spoor B: Houtige Opslag / Voedsel- & Bouwhout ('houtig'):
+   - BWK-selectie van ooibos- en struweelhout:
+       gml%, kb%, lh%, n, n+, n-, pop%, ru%, 2180%, 9160%, 91E0%, 91F0%, rud%, 
+       sf%, rbbsf%, sm%, 4010%, 7230%, rbbsm%, sz%, va%, vc%, vf%, vm%, vn%, 
+       vo%, vt%, 91D0%
+       (Wilgenstruwelen, populierenaanplanten, elzen- en berkenbroekbossen)
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+1. Algemeen Beekdal- en Watersysteem (>= 50 ha op 50 m):
+   - Het gecombineerde water- en beekdalbiotoop wordt geclusterd met dist_m = 50 m.
+   - Drempelwaarde: >= 50 ha (500.000 m2) werkelijk aaneengesloten leefgebied.
+   - Ecologische functie: Een beverfamilie heeft een territorium nodig van 1 tot 
+     enkele kilometers beekoever om overbegrazing van de houtopslag te voorkomen.
+2. Houtige Voedsel- en Burchtkernen (>= 5 ha op 50 m):
+   - De houtige component wordt afzonderlijk geclusterd met dist_m = 50 m.
+   - Drempelwaarde: >= 5 ha (50.000 m2) werkelijke houtopslag.
+   - Ecologische functie: Garandeert voldoende wintervoorraad aan schors en 
+     stevig bouwmateriaal voor dammen en winterburchten.
+
+
+3. WEDERZIJDSE ACTIERADIUSKOPPELING (50 M OEVERSTROOK)
+--------------------------------------------------------------------------------
+Bevers zijn ter land zwaarlijvig en kwetsbaar voor predatie (bijv. honden). Ze 
+foerageren daarom zelden verder dan 20 tot 50 m van de waterrand:
+- Algemeen complex (>= 50 ha) moet binnen <= 50 m van een houtige kern liggen.
+- Houtige kern (>= 5 ha) moet binnen <= 50 m van het algemene watercomplex liggen.
+
+
+4. FINALE COMPOSIET-LEEFGEBIEDSTOETS & DISPERSIE
+--------------------------------------------------------------------------------
+- Definitief leefgebied: Binaire/fractionele unie van de gekoppelde water/moeras- 
+  en houtzones.
+- Dispersiecapaciteit (buffer_m / ARPL): 50000 m (50 km).
+   * Ecologische functie: Jonge bevers verlaten na twee jaar de familiegroep en 
+     kunnen tientallen kilometers stroomop- of afwaarts zwemmen op zoek naar 
+     een onbezet territorium.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Europese bever (Castor fiber)
+Water- en dalcomplex      : BWK water/moeras/bos + Huetzon 1, 17, 18, 19 + Maas (>= 50 ha op 50 m)
+Houtige kernen            : Zacht ooibos, populier, wilg, els, berk (>= 5 ha op 50 m)
+Wederzijdse koppeling     : <= 50 m actieradius tussen watercomplex en houtige kern
+Dispersieradius (ARPL)    : 50000 m
+================================================================================

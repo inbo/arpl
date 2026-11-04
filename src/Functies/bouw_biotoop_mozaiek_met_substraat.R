@@ -1,10 +1,12 @@
 # ==============================================================================
-# bouw_biotoop_mozaiek_met_substraat.R - LEEFGEBIEDENMODEL VOOR HEIVLINDER (CORRECTE COMBINATIE)
+# bouw_biotoop_mozaiek_met_substraat.R - LEEFGEBIEDENMODEL VOOR HEIVLINDER
+# Archetype: Open heide/duin (>= 10 ha) x zandsubstraat (>= 0.5 ha) x 50m bosrand x 500m interactie
+# Geschikt voor: Heivlinder, etc.
 # ==============================================================================
 
-bouw_biotoop_mozaiek_met_substraat <- function(params_soort, ds_parquet, df_bwk_codes, master_grid, paths) {
+bouw_biotoop_mozaiek_met_substraat <- function(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths) {
   
-  bestandsnaam <- "heivlinder"
+  bestandsnaam <- tolower(gsub(" ", "", soort_naam))
   soort_cache  <- file.path(paths$dir_cache, bestandsnaam)
   dir.create(soort_cache, showWarnings = FALSE, recursive = TRUE)
   
@@ -26,7 +28,6 @@ bouw_biotoop_mozaiek_met_substraat <- function(params_soort, ds_parquet, df_bwk_
       r_tp <- extract_bwk_laag(soort_naam, tp, ds_parquet, df_bwk_codes, master_grid)
       lagen[[tp]] <- if (!is.null(r_tp)) r_tp else (master_grid * NA)
     }
-    # Veilig inpakken vóór wegschrijven naar RDS
     lagen_packed <- lapply(lagen, terra::wrap)
     saveRDS(lagen_packed, f_cache_rds)
     message("    💾 [CACHE] Parquet-lagen veilig bewaard.")
@@ -37,17 +38,18 @@ bouw_biotoop_mozaiek_met_substraat <- function(params_soort, ds_parquet, df_bwk_
   # ----------------------------------------------------------------------------
   message("    🌾 Open biotooplagen (heide, duin, grasland, groeve/terril) combineren...")
   
-  # Haal de lagen veilig op; vervang NA door 0 voor de sommatie
-  r_heide     <- if ("bwk_heide"         %in% names(lagen)) terra::ifel(is.na(lagen[["bwk_heide"]]),         0, lagen[["bwk_heide"]])         else (master_grid * 0)
-  r_duin      <- if ("bwk_duin"          %in% names(lagen)) terra::ifel(is.na(lagen[["bwk_duin"]]),          0, lagen[["bwk_duin"]])          else (master_grid * 0)
-  r_grasland  <- if ("bwk_grasland"      %in% names(lagen)) terra::ifel(is.na(lagen[["bwk_grasland"]]),      0, lagen[["bwk_grasland"]])      else (master_grid * 0)
-  r_groeve    <- if ("bwk_groeve_terril" %in% names(lagen)) terra::ifel(is.na(lagen[["bwk_groeve_terril"]]), 0, lagen[["bwk_groeve_terril"]]) else (master_grid * 0)
+  r_heide     <- if ("bwk_heide"         %in% names(lagen)) lagen[["bwk_heide"]]         else (master_grid * NA)
+  r_duin      <- if ("bwk_duin"          %in% names(lagen)) lagen[["bwk_duin"]]          else (master_grid * NA)
+  r_grasland  <- if ("bwk_grasland"      %in% names(lagen)) lagen[["bwk_grasland"]]      else (master_grid * NA)
+  r_groeve    <- if ("bwk_groeve_terril" %in% names(lagen)) lagen[["bwk_groeve_terril"]] else (master_grid * NA)
   
-  # Sommatie en clamp op 1.0 (exact zoals in brondocument)
-  r_open_som <- r_heide + r_duin + r_grasland + r_groeve
-  r_open_opp <- terra::ifel(r_open_som > 0, terra::clamp(r_open_som, upper = 1.0), NA)
+  # Combinatie conform Bert (cover met clamp)
+  r_open_opp <- terra::cover(r_heide, r_duin)
+  r_open_opp <- terra::cover(r_open_opp, r_grasland)
+  r_open_opp <- terra::cover(r_open_opp, r_groeve)
+  r_open_opp <- terra::clamp(r_open_opp, upper = 1.0)
   
-  rm(r_heide, r_duin, r_grasland, r_groeve, r_open_som)
+  rm(r_heide, r_duin, r_grasland, r_groeve)
   gc()
   
   ha_open_ruw <- calc_ha_exact(r_open_opp)
@@ -64,11 +66,11 @@ bouw_biotoop_mozaiek_met_substraat <- function(params_soort, ds_parquet, df_bwk_
     werkelijk         = TRUE
   )
   r_open_goedgekeurd <- res_open$raster
-  ha_open_ok <- calc_ha_exact(r_open_goedgekeurd)
-  message(sprintf("       -> Open biotoop goedgekeurd (>= 10 ha): %.2f ha", ha_open_ok))
-  
   rm(res_open, r_open_opp)
   gc()
+  
+  ha_open_ok <- calc_ha_exact(r_open_goedgekeurd)
+  message(sprintf("       -> Open biotoop goedgekeurd (>= 10 ha): %.2f ha", ha_open_ok))
   
   # ----------------------------------------------------------------------------
   # 3. ZANDSUBSTRAAT CLUSTEREN (>= 0.5 ha, 100m zoekafstand)
@@ -88,28 +90,29 @@ bouw_biotoop_mozaiek_met_substraat <- function(params_soort, ds_parquet, df_bwk_
     werkelijk         = TRUE
   )
   r_zand_goedgekeurd <- res_zand$raster
-  ha_zand_ok <- calc_ha_exact(r_zand_goedgekeurd)
-  message(sprintf("       -> Zandsubstraat goedgekeurd (>= 0.5 ha): %.2f ha", ha_zand_ok))
-  
   rm(res_zand, r_zand_raw)
   gc()
   
+  ha_zand_ok <- calc_ha_exact(r_zand_goedgekeurd)
+  message(sprintf("       -> Zandsubstraat goedgekeurd (>= 0.5 ha): %.2f ha", ha_zand_ok))
+  
   # ----------------------------------------------------------------------------
-  # 4. BESCHUTTING OPBOUWEN (BWK + Groenkaart) EN CLUSTEREN (>= 0.04 ha, 100m)
+  # 4. BESCHUTTING OPBOUWEN (BWK + STRIKT HOOGGROEN KLASSE 1) EN CLUSTEREN (>= 0.04 ha)
   # ----------------------------------------------------------------------------
-  message("    🌳 Beschutting inlezen (Groenkaart + BWK)...")
+  message("    🌳 Beschutting inlezen (Groenkaart strikt klasse 1 + BWK)...")
   f_groen_aligned <- hulp_align_gdal(paths$groenkaart, master_grid)
   r_groen_raw     <- terra::rast(f_groen_aligned)
-  r_groen_0       <- terra::ifel(!is.na(r_groen_raw) & r_groen_raw > 0, 1.0, 0)
-  
-  r_besch_bwk     <- if ("bwk_beschutting" %in% names(lagen)) lagen[["bwk_beschutting"]] else (master_grid * NA)
-  r_besch_0       <- terra::ifel(is.na(r_besch_bwk), 0, r_besch_bwk)
-  
-  r_besch_tot_som <- r_groen_0 + r_besch_0
-  r_besch_tot     <- terra::ifel(r_besch_tot_som > 0, terra::clamp(r_besch_tot_som, upper = 1.0), NA)
-  
+  # Strikt klasse 1 = echte bomen/houtkanten in Groenkaart 2021
+  r_groen_1       <- terra::ifel(!is.na(r_groen_raw) & r_groen_raw == 1, 1.0, NA)
   unlink(f_groen_aligned)
-  rm(r_groen_raw, r_groen_0, r_besch_bwk, r_besch_0, r_besch_tot_som)
+  rm(r_groen_raw)
+  
+  r_besch_bwk <- if ("bwk_beschutting" %in% names(lagen)) lagen[["bwk_beschutting"]] else (master_grid * NA)
+  
+  # Beschutting combineren
+  r_besch_tot <- terra::cover(r_besch_bwk, r_groen_1)
+  r_besch_tot <- terra::clamp(r_besch_tot, upper = 1.0)
+  rm(r_groen_1, r_besch_bwk)
   gc()
   
   message("    🌲 Beschutting clusteren (>= 0.04 ha = 400m², 100m netwerk)...")
@@ -134,7 +137,7 @@ bouw_biotoop_mozaiek_met_substraat <- function(params_soort, ds_parquet, df_bwk_
   
   if (!all(is.na(suppressWarnings(terra::minmax(r_open_bin))))) {
     f_open_bin  <- tempfile(fileext = ".tif")
-    terra::writeRaster(r_open_bin, f_open_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 0)
+    terra::writeRaster(r_open_bin, f_open_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
     f_prox_open <- hulp_proximity_gdal(f_open_bin, 50)
     unlink(f_open_bin)
     
@@ -154,20 +157,13 @@ bouw_biotoop_mozaiek_met_substraat <- function(params_soort, ds_parquet, df_bwk_
   gc()
   
   # Foerageerbasis = Open Biotoop (>=10ha) + direct aangrenzende bosrand (<=50m)
-  w_open <- terra::ifel(is.na(r_open_goedgekeurd), 0, r_open_goedgekeurd)
-  w_rand <- terra::ifel(is.na(bosrand_direct_opp), 0, bosrand_direct_opp)
-  foerageer_base_opp <- terra::ifel((w_open + w_rand) > 0, terra::clamp(w_open + w_rand, upper = 1.0), NA)
-  
-  # Voortplantingsbasis = Goedgekeurd zandsubstraat (>= 0.5 ha)
+  foerageer_base_opp     <- terra::cover(r_open_goedgekeurd, bosrand_direct_opp)
   voortplanting_base_opp <- r_zand_goedgekeurd
   
   ha_foer_base <- calc_ha_exact(foerageer_base_opp)
   ha_vpt_base  <- calc_ha_exact(voortplanting_base_opp)
   message(sprintf("       -> Foerageerbasis (open + 50m bosrand): %.2f ha", ha_foer_base))
   message(sprintf("       -> Voortplantingsbasis (zand >= 0.5 ha): %.2f ha", ha_vpt_base))
-  
-  rm(w_open, w_rand, r_open_goedgekeurd, r_zand_goedgekeurd)
-  gc()
   
   # ----------------------------------------------------------------------------
   # 6. WEDERZIJDSE KOPPELING OP 500M (VOORTPLANTING X FOERAGEREN)
@@ -183,7 +179,7 @@ bouw_biotoop_mozaiek_met_substraat <- function(params_soort, ds_parquet, df_bwk_
     
     # Zone 500m rond voortplanting (zand)
     f_vpt_bin   <- tempfile(fileext = ".tif")
-    terra::writeRaster(r_vpt_bin, f_vpt_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 0)
+    terra::writeRaster(r_vpt_bin, f_vpt_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
     f_prox_vpt  <- hulp_proximity_gdal(f_vpt_bin, 500)
     unlink(f_vpt_bin)
     
@@ -194,7 +190,7 @@ bouw_biotoop_mozaiek_met_substraat <- function(params_soort, ds_parquet, df_bwk_
     
     # Zone 500m rond foerageren (heide/duin/rand)
     f_foer_bin   <- tempfile(fileext = ".tif")
-    terra::writeRaster(r_foer_bin, f_foer_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 0)
+    terra::writeRaster(r_foer_bin, f_foer_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
     f_prox_foer  <- hulp_proximity_gdal(f_foer_bin, 500)
     unlink(f_foer_bin)
     
@@ -206,27 +202,31 @@ bouw_biotoop_mozaiek_met_substraat <- function(params_soort, ds_parquet, df_bwk_
     foerageer_finaal_opp     <- terra::mask(foerageer_base_opp, mask_vpt500)
     voortplanting_finaal_opp <- terra::mask(voortplanting_base_opp, mask_foer500)
     
-    unlink(c(mask_vpt500, mask_foer500))
-    rm(r_vpt_bin, r_foer_bin)
+    # Aparte deellagen netjes bijsnijden
+    open_finaal_opp    <- terra::mask(r_open_goedgekeurd, mask_vpt500)
+    bosrand_finaal_opp <- terra::mask(bosrand_direct_opp, mask_vpt500)
+    
+    rm(mask_vpt500, mask_foer500, r_vpt_bin, r_foer_bin)
     gc()
   } else {
     message("    ⚠️ Voortplanting of foerageerbasis is leeg vóór de wederzijdse toets!")
     foerageer_finaal_opp     <- master_grid * NA
     voortplanting_finaal_opp <- master_grid * NA
+    open_finaal_opp          <- master_grid * NA
+    bosrand_finaal_opp       <- master_grid * NA
   }
-  rm(foerageer_base_opp, voortplanting_base_opp)
+  rm(foerageer_base_opp, voortplanting_base_opp, r_open_goedgekeurd, bosrand_direct_opp, r_zand_goedgekeurd)
   gc()
   
   # ----------------------------------------------------------------------------
   # 7. SAMENVOEGEN TOT DEFINITIEF LEEFGEBIED & NETWERKEN
   # ----------------------------------------------------------------------------
   message("    🧩 Deellagen samenvoegen tot definitief leefgebied...")
-  w_f <- terra::ifel(is.na(foerageer_finaal_opp), 0, foerageer_finaal_opp)
-  w_v <- terra::ifel(is.na(voortplanting_finaal_opp), 0, voortplanting_finaal_opp)
+  final_opp <- terra::cover(foerageer_finaal_opp, voortplanting_finaal_opp)
+  final_opp <- terra::clamp(final_opp, upper = 1.0)
   
-  final_opp <- terra::ifel((w_f + w_v) > 0, terra::clamp(w_f + w_v, upper = 1.0), NA)
-  rm(w_f, w_v)
-  gc()
+  ha_fin <- calc_ha_exact(final_opp)
+  message(sprintf("       -> Definitief leefgebied Heivlinder: %.2f ha", ha_fin))
   
   r_fin_bin <- terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA)
   
@@ -246,13 +246,13 @@ bouw_biotoop_mozaiek_met_substraat <- function(params_soort, ds_parquet, df_bwk_
       GRASS_REGION_CELLSIZE_PARAMETER = 10,
       .quiet                          = TRUE
     )
+    unlink(f_bin)
     
     cl_opp <- terra::rast(f_clump)
-    terra::set.cats(cl_opp, layer = 1, value = NULL)
-    terra::coltab(cl_opp) <- NULL
+    try(terra::set.cats(cl_opp, layer = 1, value = NULL), silent = TRUE)
+    try(terra::coltab(cl_opp) <- NULL, silent = TRUE)
     cl_opp <- terra::mask(cl_opp, r_fin_bin)
-    
-    unlink(c(f_bin, f_clump))
+    unlink(f_clump)
   } else {
     cl_opp <- master_grid * NA
   }
@@ -260,10 +260,10 @@ bouw_biotoop_mozaiek_met_substraat <- function(params_soort, ds_parquet, df_bwk_
   gc()
   
   return(list(
-    final_opp        = final_opp,
-    cl_opp           = cl_opp,
-    voortplanting    = voortplanting_finaal_opp,
-    foerageren       = foerageer_finaal_opp,
-    bosranden_meegen = bosrand_direct_opp
+    final_opp     = final_opp,
+    cl_opp        = cl_opp,
+    voortplanting = voortplanting_finaal_opp,
+    open_biotoop  = open_finaal_opp,
+    bosranden     = bosrand_finaal_opp
   ))
 }

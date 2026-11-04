@@ -49,13 +49,12 @@ bouw_biotoop_drasland_steltloper <- function(soort_naam, params_soort, ds_parque
   message("    💧 Bodemdrainage filteren (natte klassen)...")
   drain_let <- c("d", "e", "f", "h", "i", "g", "e-f", "h-i", "e-i")
   
-  if (file.exists(paths$drainage)) {
+  if (!is.null(paths$drainage) && file.exists(paths$drainage)) {
     r_drain_orig <- terra::rast(paths$drainage)
     leg_drain    <- terra::cats(r_drain_orig)[[1]]
     
     ok_drain_ids <- integer(0)
     if (!is.null(leg_drain)) {
-      # Zoek kolommen flexibel op (kleine of grote letters)
       kol_val   <- colnames(leg_drain)[tolower(colnames(leg_drain)) %in% c("value", "id")][1]
       kol_label <- colnames(leg_drain)[tolower(colnames(leg_drain)) %in% c("label", "omschrijving", "drainage")][1]
       
@@ -63,21 +62,16 @@ bouw_biotoop_drasland_steltloper <- function(soort_naam, params_soort, ds_parque
         ok_drain_ids <- leg_drain[[kol_val]][tolower(trimws(as.character(leg_drain[[kol_label]]))) %in% tolower(drain_let)]
       }
     }
+    if (length(ok_drain_ids) == 0) ok_drain_ids <- c(4, 5, 6, 7, 8, 9, 45, 56, 89)
     rm(r_drain_orig)
     
     f_drain_al <- hulp_align_gdal(paths$drainage, master_grid)
     r_drain    <- terra::rast(f_drain_al)
     
-    if (length(ok_drain_ids) > 0) {
-      mask_drain <- terra::ifel(!is.na(r_drain) & r_drain %in% ok_drain_ids, 1, NA)
-      r_bio_nat  <- terra::mask(r_bio_raw, mask_drain)
-      rm(mask_drain)
-    } else {
-      message("       ⚠️ Waarschuwing: Geen drainage-labels gematcht, controleer drainage-attribuuttabel.")
-      r_bio_nat <- r_bio_raw
-    }
+    mask_drain <- terra::ifel(!is.na(r_drain) & (r_drain %in% ok_drain_ids), 1, NA)
+    r_bio_nat  <- terra::mask(r_bio_raw, mask_drain)
     unlink(f_drain_al)
-    rm(r_drain)
+    rm(r_drain, mask_drain)
   } else {
     r_bio_nat <- r_bio_raw
   }
@@ -114,20 +108,31 @@ bouw_biotoop_drasland_steltloper <- function(soort_naam, params_soort, ds_parque
   # ----------------------------------------------------------------------------
   message("    🌳 Landschapskwaliteit toetsen (< 75% bos en < 90% open water per cluster via zonale streaming)...")
   
+  # Waterlaag klaarmaken voor kwaliteitscheck en terrestrische kern
+  if (!is.null(paths$grb_water) && file.exists(paths$grb_water)) {
+    f_grb_al  <- hulp_align_gdal(paths$grb_water, master_grid)
+    r_grb     <- terra::rast(f_grb_al)
+    r_wat_bin <- terra::ifel(!is.na(r_grb) & r_grb > 0, 1.0, NA)
+    unlink(f_grb_al)
+    rm(r_grb)
+  } else {
+    r_wat_bin <- master_grid * NA
+  }
+  
   ids_kwaliteit_ok <- integer(0)
   
   if (!all(is.na(suppressWarnings(terra::minmax(cl_10ha))))) {
-    # A. Totale oppervlakte van het biotoop per cluster
+    # A. Totale werkelijke oppervlakte per cluster
     df_tot <- terra::zonal(r_bio_nat, cl_10ha, fun = "sum", na.rm = TRUE)
     colnames(df_tot) <- c("Cluster_ID", "Biotoop_Som")
     dt_tot <- data.table::as.data.table(df_tot)
     dt_tot[, Totaal_ha := Biotoop_Som * 0.01]
     rm(df_tot)
     
-    # B. Aandeel Hooggroen
+    # B. Aandeel Hooggroen (strikt klasse 1 = bomen/bos in Groenkaart_2021)
     f_groen_al <- hulp_align_gdal(paths$groenkaart, master_grid)
     r_groen    <- terra::rast(f_groen_al)
-    r_bos_bin  <- terra::ifel(!is.na(r_groen) & (r_groen == 1 | r_groen > 0), 1.0, NA)
+    r_bos_bin  <- terra::ifel(!is.na(r_groen) & r_groen == 1, 1.0, NA)
     unlink(f_groen_al)
     rm(r_groen)
     
@@ -139,13 +144,7 @@ bouw_biotoop_drasland_steltloper <- function(soort_naam, params_soort, ds_parque
     dt_bos[, Bos_ha := Bos_Som * 0.01]
     rm(bos_in_zone, df_bos)
     
-    # C. Aandeel Open Water (GRB Water)
-    f_grb_al  <- hulp_align_gdal(paths$grb_water, master_grid)
-    r_grb     <- terra::rast(f_grb_al)
-    r_wat_bin <- terra::ifel(!is.na(r_grb) & r_grb == 1, 1.0, NA)
-    unlink(f_grb_al)
-    rm(r_grb)
-    
+    # C. Aandeel Open Water
     wat_in_zone <- terra::mask(r_wat_bin, cl_10ha)
     df_wat <- terra::zonal(wat_in_zone, cl_10ha, fun = "sum", na.rm = TRUE)
     colnames(df_wat) <- c("Cluster_ID", "Water_Som")
@@ -159,16 +158,15 @@ bouw_biotoop_drasland_steltloper <- function(soort_naam, params_soort, ds_parque
     dt_merged[is.na(Bos_ha), Bos_ha := 0]
     dt_merged[is.na(Water_ha), Water_ha := 0]
     
-    dt_merged[, Pct_Bos := (Bos_ha / Totaal_ha) * 100]
+    dt_merged[, Pct_Bos   := (Bos_ha / Totaal_ha) * 100]
     dt_merged[, Pct_Water := (Water_ha / Totaal_ha) * 100]
     
     ids_kwaliteit_ok <- dt_merged[!is.na(Cluster_ID) & Pct_Bos < 75 & Pct_Water < 90, Cluster_ID]
-    message(sprintf("       -> Clusters goedgekeurd op openheid (<75%% bos, <90%% water): %d clusters", length(ids_kwaliteit_ok)))
+    message(sprintf("       -> Clusters goedgekeurd op openheid (<75%% bos, <90%% water): %d van de %d clusters", 
+                    length(ids_kwaliteit_ok), nrow(dt_merged)))
     
     rm(dt_tot, dt_bos, dt_wat, dt_merged)
     gc()
-  } else {
-    r_wat_bin <- master_grid * NA
   }
   
   # ----------------------------------------------------------------------------
@@ -177,12 +175,12 @@ bouw_biotoop_drasland_steltloper <- function(soort_naam, params_soort, ds_parque
   message("    🌾 Terrestrische kerncheck: Minstens 10 ha zuiver landbiotoop (0m clustering)...")
   
   if (length(ids_kwaliteit_ok) > 0) {
-    # Sluit open water uit van het biotoop voor de terrestrische kern
+    # Sluit open water uit van het biotoop voor de zuiver terrestrische kern
     r_terr_biotoop <- terra::mask(r_bio_nat, r_wat_bin, inverse = TRUE)
     rm(r_wat_bin)
     gc()
     
-    # 0m clustering via universele filter (aaneengesloten terrestrische kern)
+    # 0m clustering (aaneengesloten terrestrische kern >= 10 ha)
     res_terr <- cluster_filter_universeel(
       masker            = r_terr_biotoop,
       opp_laag          = r_terr_biotoop,
@@ -196,24 +194,18 @@ bouw_biotoop_drasland_steltloper <- function(soort_naam, params_soort, ds_parque
     rm(res_terr, r_terr_biotoop)
     gc()
     
-    # Controleer welke goedgekeurde landschapsclusters overlappen met een 10 ha landkern
+    # Controleer overlap tussen goedgekeurde netwerken en de 10 ha landkernen via crosstab
     if (!all(is.na(suppressWarnings(terra::minmax(cl_terr_10ha))))) {
-      f_comb <- c(cl_10ha, cl_terr_10ha)
-      df_overlap <- terra::as.data.frame(f_comb, na.rm = TRUE)
-      rm(f_comb, cl_terr_10ha)
+      ct <- terra::crosstab(c(cl_10ha, cl_terr_10ha), long = TRUE)
+      colnames(ct) <- c("Cluster_ID", "Terr_ID", "n")
+      dt_ct <- data.table::as.data.table(ct)[!is.na(Cluster_ID) & !is.na(Terr_ID) & n > 0]
+      rm(ct, cl_terr_10ha)
       
-      if (nrow(df_overlap) > 0) {
-        colnames(df_overlap) <- c("Cluster_ID", "Terr_ID")
-        dt_overlap <- data.table::as.data.table(df_overlap)
-        rm(df_overlap)
-        
-        valide_cluster_ids <- unique(dt_overlap[Cluster_ID %in% ids_kwaliteit_ok, Cluster_ID])
-        rm(dt_overlap)
-      } else {
-        valide_cluster_ids <- integer(0)
-      }
+      valide_cluster_ids <- unique(dt_ct[Cluster_ID %in% ids_kwaliteit_ok, Cluster_ID])
+      rm(dt_ct)
     } else {
       valide_cluster_ids <- integer(0)
+      rm(cl_terr_10ha)
     }
     
     if (length(valide_cluster_ids) > 0) {
@@ -226,6 +218,7 @@ bouw_biotoop_drasland_steltloper <- function(soort_naam, params_soort, ds_parque
       cl_opp    <- master_grid * NA
     }
   } else {
+    rm(r_wat_bin)
     final_opp <- master_grid * NA
     cl_opp    <- master_grid * NA
   }

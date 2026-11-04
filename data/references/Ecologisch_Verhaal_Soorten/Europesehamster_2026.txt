@@ -1,0 +1,66 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: EUROPESE HAMSTER
+Soort: Cricetus cricetus (korenwolf / gravend zoogdier van open leemakkers)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITAT & SELECTIE
+--------------------------------------------------------------------------------
+De Europese hamster (korenwolf) is een ernstig bedreigde steppesoort die in 
+Vlaanderen uitsluitend overleeft in open, grootschalige leemakkerlandschappen 
+(voornamelijk in Haspengouw). De soort stelt twee dwingende randvoorwaarden: 
+een graafbare, diepe leembodem en een landbouwareaal gedomineerd door granen 
+en vlinderbloemigen die voldoende dekking en energierijk zaad bieden.
+
+A. Bodemtextuur ('bodem_textuur'):
+   - Textuurklasse 6: Leembodems (zeer diepe, compacte maar bewerkbare bodems).
+   - Ecologische functie: Essentieel voor de stabiliteit van burchtenstelsels 
+     (diepte 1 tot 2 m) met winterkamers, voorraadkamers en nestketels zonder instortingsgevaar.
+
+B. Landbouwgewassen ('lgp' / 'epr'):
+   - Selectie van geschikte teelten: wintergranen (wintertarwe, wintergerst, spelt, 
+     rogge), luzerne, klaver, voederbieten.
+   - Gewascodes conform historisch model: 6, 19, 21, 36, 38, 45, 49, 63, 74, 
+     100, 174, 219, 225, 241.
+   - Ecologische functie: Biedt beschermende vegetatiedekking tegen predatie 
+     (roofvogels, vossen) van het voorjaar tot de oogst, en voorziet in zaden 
+     voor het aanleggen van de wintervoorraad ("hamsteren").
+
+C. Niet-overstroombaar ('overstroming'):
+   - Inundatiegevoeligheid: Uitsluitend klasse 0 (niet-overstroombaar).
+   - Grondwaterstanden en beekinundaties zijn dodelijk voor ondergrondse burchten.
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+- Overbruggingsafstand (dist_m): 50 m
+    * Cellen binnen 50 m worden via buffer- en clumpanalyse geaggregeerd.
+    * Ecologische functie: Overbrugt smalle landbouwwegen, akkerranden, taluds 
+      en grasstroken tussen aanpalende graanpercelen.
+- Minimale complexoppervlakte (MinOpp_ha): >= 125 ha (1.250.000 m2)
+    * Alleen geclusterde graanakkercomplexen op leem die minstens 125 ha groot 
+      zijn, worden behouden als functioneel leefgebied.
+    * Ecologische functie: Sluit versnipperde akkertjes met hoge randeffecten uit. 
+      Hamsterpopulaties zijn extreem gevoelig voor predatie na de oogst; alleen 
+      uitgestrekte akkerarealen bieden voldoende reproductieve draagkracht.
+
+
+3. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): 1500 m
+    * Toepassing: ARPL / connectiviteitsanalyse tussen relictpopulaties 
+      en akkerclusters in de Leemstreek (Droog-Haspengouw).
+    * Ecologische functie: Jonge hamsters migreren bovengronds over afstanden 
+      tot 1-2 km via perceelsranden en akkertaluds.
+
+
+4. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Europese hamster (Cricetus cricetus)
+Bodemvoorwaarde           : Textuurklasse 6 (Leembodem)
+Gewassenmatrix            : Wintergranen, luzerne, klaver (LGP-codes)
+Overstroming              : Uitsluitend niet-overstroombaar (klasse 0)
+Ruimtelijke zoekafstand   : 50 m
+Minimale complexgrootte   : >= 125 ha
+Dispersieradius (ARPL)    : 1500 m
+================================================================================

@@ -1,6 +1,7 @@
 # ==============================================================================
 # bouw_biotoop_kle_mozaiek_met_storing.R
 # Archetype: Halfopen cultuurlandschappen met storingsbuffers, KLE-eis en matrixfilter
+# Geschikt voor: Grauwe klauwier, etc.
 # ==============================================================================
 
 bouw_biotoop_kle_mozaiek_met_storing <- function(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths) {
@@ -27,7 +28,6 @@ bouw_biotoop_kle_mozaiek_met_storing <- function(soort_naam, params_soort, ds_pa
       r_tp <- extract_bwk_laag(soort_naam, tp, ds_parquet, df_bwk_codes, master_grid)
       lagen[[tp]] <- if (!is.null(r_tp)) r_tp else (master_grid * NA)
     }
-    # Veilig inpakken vóór wegschrijven naar RDS
     lagen_packed <- lapply(lagen, terra::wrap)
     saveRDS(lagen_packed, f_cache_rds)
     message("    💾 [CACHE] Parquet-lagen veilig bewaard.")
@@ -50,18 +50,14 @@ bouw_biotoop_kle_mozaiek_met_storing <- function(soort_naam, params_soort, ds_pa
   } else {
     message("       -> GDX-bebouwingscodes ophalen en clusteren op >= 10 ha...")
     gdx_codes <- c("u", "ua", "ua-", "uc", "ud", "ui", "ui-", "un", "un-", "ur", "ur-", "ur+", "uv", "uv-", "uv+")
-    t_bebouw  <- ds_parquet %>%
-      dplyr::filter(tolower(CODE) %in% gdx_codes) %>%
-      dplyr::collect() %>%
-      data.table::as.data.table()
+    r_bebouw_bin <- vul_raster_vanuit_parquet(
+      ds_parquet  = ds_parquet,
+      codes_exact = gdx_codes,
+      master_grid = master_grid,
+      waarde_vast = 1
+    )
     
-    if (nrow(t_bebouw) > 0) {
-      t_bebouw[, CODE := tolower(trimws(CODE))]
-      t_bebouw_cel <- unique(t_bebouw, by = c("cel_id", "CODE"))[, .(Val = 1), by = cel_id]
-      r_bebouw_bin <- master_grid * NA
-      r_bebouw_bin[t_bebouw_cel$cel_id] <- 1
-      
-      # Clusteren op 10 ha (25m zoekafstand om dorpskernen te sluiten)
+    if (!all(is.na(suppressWarnings(terra::minmax(r_bebouw_bin))))) {
       res_bebouw <- cluster_filter_universeel(
         masker            = r_bebouw_bin,
         opp_laag          = r_bebouw_bin,
@@ -75,7 +71,7 @@ bouw_biotoop_kle_mozaiek_met_storing <- function(soort_naam, params_soort, ds_pa
       r_bebouw_groot <- res_bebouw$raster
       if (!all(is.na(suppressWarnings(terra::minmax(r_bebouw_groot))))) {
         f_b_bin  <- tempfile(fileext = ".tif")
-        terra::writeRaster(r_bebouw_groot, f_b_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 0)
+        terra::writeRaster(r_bebouw_groot, f_b_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
         f_prox_b <- hulp_proximity_gdal(f_b_bin, 100)
         unlink(f_b_bin)
         
@@ -86,18 +82,18 @@ bouw_biotoop_kle_mozaiek_met_storing <- function(soort_naam, params_soort, ds_pa
       } else {
         masker_bebouw_stoor <- master_grid * NA
       }
-      rm(res_bebouw, r_bebouw_groot, r_bebouw_bin)
+      rm(res_bebouw, r_bebouw_groot)
     } else {
       masker_bebouw_stoor <- master_grid * NA
     }
+    rm(r_bebouw_bin)
     terra::writeRaster(masker_bebouw_stoor, f_cache_bebouw, overwrite = TRUE, datatype = "INT1U", gdal = "COMPRESS=LZW")
-    rm(t_bebouw)
     gc()
   }
   
   # B. Wegenstoring (100m)
   masker_weg_stoor <- master_grid * NA
-  if (file.exists(paths$grb_wegen)) {
+  if (!is.null(paths$grb_wegen) && file.exists(paths$grb_wegen)) {
     f_cache_wegen <- file.path(paths$dir_cache, "masker_wegen_stoor_100m.tif")
     if (file.exists(f_cache_wegen)) {
       message("       -> [CACHE] Wegenbuffer ingeladen van schijf...")
@@ -109,9 +105,17 @@ bouw_biotoop_kle_mozaiek_met_storing <- function(soort_naam, params_soort, ds_pa
       
       weg_cats        <- terra::cats(r_wegen)[[1]]
       gewenste_labels <- c("autosnelweg", "weg met gescheiden rijbanen die geen autosnelweg is")
-      ids_wegen       <- weg_cats$value[tolower(trimws(weg_cats$Label)) %in% gewenste_labels]
-      if (length(ids_wegen) == 0) {
-        ids_wegen <- weg_cats$value[grepl("autosnelweg|gescheiden rijbanen", tolower(weg_cats$Label))]
+      ids_wegen       <- integer(0)
+      if (!is.null(weg_cats)) {
+        kol_l <- colnames(weg_cats)[tolower(colnames(weg_cats)) %in% c("label", "omschrijving")][1]
+        kol_v <- colnames(weg_cats)[tolower(colnames(weg_cats)) %in% c("value", "id")][1]
+        if (is.na(kol_v)) kol_v <- 1
+        if (!is.na(kol_l)) {
+          ids_wegen <- weg_cats[[kol_v]][tolower(trimws(weg_cats[[kol_l]])) %in% gewenste_labels]
+        }
+      }
+      if (length(ids_wegen) == 0 && !is.null(weg_cats)) {
+        ids_wegen <- weg_cats[[1]][grepl("autosnelweg|gescheiden rijbanen", tolower(weg_cats[[kol_l]]))]
       }
       
       r_wegen_bin <- terra::ifel(!is.na(r_wegen) & r_wegen %in% ids_wegen, 1, NA)
@@ -120,7 +124,7 @@ bouw_biotoop_kle_mozaiek_met_storing <- function(soort_naam, params_soort, ds_pa
       
       if (!all(is.na(suppressWarnings(terra::minmax(r_wegen_bin))))) {
         f_w_bin  <- tempfile(fileext = ".tif")
-        terra::writeRaster(r_wegen_bin, f_w_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 0)
+        terra::writeRaster(r_wegen_bin, f_w_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
         f_prox_w <- hulp_proximity_gdal(f_w_bin, 100)
         unlink(f_w_bin)
         
@@ -162,30 +166,27 @@ bouw_biotoop_kle_mozaiek_met_storing <- function(soort_naam, params_soort, ds_pa
   rm(res_kern, r_vp_gezuiverd)
   gc()
   
-  # KLE-eis via Groenkaart 2021 (waarde 1 en 2 = bomenrijen, houtkanten, heggen)
+  # KLE-eis via Groenkaart 2021 (waarde 1 = bomen/houtkanten en 2 = struweel/heggen)
   message("    🌿 Lineaire KLE-eis toetsen (minstens 500m / 50 cellen bomen/struwelen per kern)...")
   if (!all(is.na(suppressWarnings(terra::minmax(cl_kern))))) {
     f_groen_aligned <- hulp_align_gdal(paths$groenkaart, master_grid)
     r_groen         <- terra::rast(f_groen_aligned)
-    r_kle_bin       <- terra::ifel(!is.na(r_groen) & (r_groen == 1 | r_groen == 2), 1, 0)
+    r_kle_bin       <- terra::ifel(!is.na(r_groen) & (r_groen %in% c(1, 2)), 1, 0)
     unlink(f_groen_aligned)
     rm(r_groen)
     
-    # Tel KLE cellen per cluster ID via data.table
-    cells_k <- terra::cells(!is.na(cl_kern) & cl_kern > 0)
-    dt_kle  <- data.table::data.table(
-      ID  = as.integer(cl_kern[cells_k][[1]]),
-      KLE = as.integer(r_kle_bin[cells_k][[1]])
-    )
-    rm(cells_k, r_kle_bin)
-    gc()
+    # Bereken aantal KLE-pixels per patch via zonale statistiek (snel & RAM-veilig)
+    df_kle <- terra::zonal(r_kle_bin, cl_kern, fun = "sum", na.rm = TRUE)
+    colnames(df_kle) <- c("ID", "KLE_pixels")
+    dt_kle <- data.table::as.data.table(df_kle)
+    rm(df_kle, r_kle_bin)
     
-    ok_kle_ids <- dt_kle[!is.na(ID) & ID > 0, .(KLE_pixels = sum(KLE, na.rm = TRUE)), by = ID][KLE_pixels >= 50, ID]
+    ok_kle_ids <- dt_kle[!is.na(ID) & ID > 0 & KLE_pixels >= 50, ID]
     rm(dt_kle)
     gc()
     
     if (length(ok_kle_ids) > 0) {
-      cl_kern_ok   <- terra::ifel(cl_kern %in% as.integer(ok_kle_ids), cl_kern, NA)
+      cl_kern_ok    <- terra::ifel(cl_kern %in% as.integer(ok_kle_ids), cl_kern, NA)
       r_kern_finaal <- terra::mask(r_kern_10ha, cl_kern_ok)
       rm(cl_kern_ok)
     } else {
@@ -201,19 +202,19 @@ bouw_biotoop_kle_mozaiek_met_storing <- function(soort_naam, params_soort, ds_pa
   message(sprintf("       -> Kernbiotoop met voldoende KLE (>= 500m): %.2f ha", ha_kern_finaal))
   
   # ----------------------------------------------------------------------------
-  # 4. FOERAGEERKOPPELING (100M BUFFER) & TOTAAL LEFGEBIED (>= 15 HA)
+  # 4. FOERAGEERKOPPELING (100M BUFFER) & TOTAAL LEEFGEBIED (>= 15 HA)
   # ----------------------------------------------------------------------------
   message("    🌾 Foerageerhabitat koppelen binnen 100m van goedgekeurde kernen...")
   r_kern_bin <- terra::ifel(!is.na(r_kern_finaal) & r_kern_finaal > 0, 1, NA)
   
   if (!all(is.na(suppressWarnings(terra::minmax(r_kern_bin))))) {
     f_k_bin   <- tempfile(fileext = ".tif")
-    terra::writeRaster(r_kern_bin, f_k_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 0)
+    terra::writeRaster(r_kern_bin, f_k_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
     f_prox_k  <- hulp_proximity_gdal(f_k_bin, 100)
     unlink(f_k_bin)
     
-    p_k        <- terra::rast(f_prox_k)
-    mask_k100  <- terra::ifel(!is.na(p_k) & p_k >= 0 & p_k <= 100, 1, NA)
+    p_k       <- terra::rast(f_prox_k)
+    mask_k100 <- terra::ifel(!is.na(p_k) & p_k >= 0 & p_k <= 100, 1, NA)
     unlink(f_prox_k)
     rm(p_k)
     gc()
@@ -228,11 +229,7 @@ bouw_biotoop_kle_mozaiek_met_storing <- function(soort_naam, params_soort, ds_pa
   gc()
   
   # Totaal bruto leefgebied = Kern + Gekoppeld foerageerhabitat
-  w_kern <- terra::ifel(is.na(r_kern_finaal), 0, r_kern_finaal)
-  w_foer <- terra::ifel(is.na(r_foer_gekoppeld), 0, r_foer_gekoppeld)
-  r_totaal_bruto <- terra::ifel((w_kern + w_foer) > 0, terra::clamp(w_kern + w_foer, upper = 1.0), NA)
-  rm(w_kern, w_foer)
-  gc()
+  r_totaal_bruto <- terra::cover(r_kern_finaal, r_foer_gekoppeld)
   
   # Clusteren totaal complex op >= 15 ha (50m netwerk)
   message("    🧩 Totaal leefgebiedscomplex clusteren (>= 15 ha, 50m netwerk)...")
@@ -255,44 +252,39 @@ bouw_biotoop_kle_mozaiek_met_storing <- function(soort_naam, params_soort, ds_pa
   # ----------------------------------------------------------------------------
   message("    📊 Matrixfilter: Aandeel intensief cultuurgrasland (hp) toetsen (< 90%)...")
   if (!all(is.na(suppressWarnings(terra::minmax(cl_lg))))) {
-    t_hp <- ds_parquet %>%
-      dplyr::filter(stringr::str_detect(tolower(CODE), "^hp")) %>%
-      dplyr::collect() %>%
-      data.table::as.data.table()
-    
-    r_hp <- master_grid * NA
-    if (nrow(t_hp) > 0) {
-      t_hp[, CODE := tolower(trimws(CODE))]
-      t_hp_cel <- unique(t_hp, by = c("cel_id", "CODE"))[, .(Opp_HP = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)), by = cel_id]
-      r_hp[t_hp_cel$cel_id] <- t_hp_cel$Opp_HP
-      rm(t_hp_cel)
-    }
-    rm(t_hp)
-    gc()
-    
-    cells_lg <- terra::cells(!is.na(cl_lg) & cl_lg > 0)
-    dt_hp_check <- data.table::data.table(
-      ID     = as.integer(cl_lg[cells_lg][[1]]),
-      Tot_ha = as.numeric(r_lg_15ha[cells_lg][[1]]) * 0.01,
-      HP_ha  = as.numeric(terra::ifel(is.na(r_hp[cells_lg][[1]]), 0, r_hp[cells_lg][[1]])) * 0.01
+    # Haal hp veilig op via Parquet helper met werkelijke fractie
+    r_hp <- vul_raster_vanuit_parquet(
+      ds_parquet  = ds_parquet,
+      codes_bevat = "hp",
+      master_grid = master_grid,
+      waarde_vast = NULL
     )
-    rm(cells_lg, r_hp)
-    gc()
+    r_hp_clean <- terra::ifel(is.na(r_hp), 0, r_hp)
+    rm(r_hp)
     
-    dt_agg <- dt_hp_check[, .(
-      Tot_ha = sum(Tot_ha, na.rm = TRUE),
-      HP_ha  = sum(HP_ha, na.rm = TRUE)
-    ), by = ID]
+    # Zonale totalen via terra (geen geheugenpieken)
+    df_tot_lg <- terra::zonal(r_lg_15ha, cl_lg, fun = "sum", na.rm = TRUE)
+    colnames(df_tot_lg) <- c("ID", "Tot_Val")
+    
+    df_hp_lg  <- terra::zonal(r_hp_clean, cl_lg, fun = "sum", na.rm = TRUE)
+    colnames(df_hp_lg) <- c("ID", "HP_Val")
+    rm(r_hp_clean)
+    
+    dt_agg <- merge(data.table::as.data.table(df_tot_lg), data.table::as.data.table(df_hp_lg), by = "ID")
+    dt_agg[, `:=`(
+      Tot_ha = Tot_Val * 0.01,
+      HP_ha  = HP_Val * 0.01
+    )]
     dt_agg[, Fractie_HP := HP_ha / Tot_ha]
     
     ok_complex_ids <- dt_agg[!is.na(ID) & Fractie_HP < 0.90, ID]
-    rm(dt_hp_check, dt_agg)
+    rm(df_tot_lg, df_hp_lg, dt_agg)
     gc()
     
     if (length(ok_complex_ids) > 0) {
-      cl_finaal  <- terra::ifel(cl_lg %in% as.integer(ok_complex_ids), cl_lg, NA)
-      final_opp  <- terra::mask(r_lg_15ha, cl_finaal)
-      vp_uitvoer <- terra::mask(r_kern_finaal, cl_finaal)
+      cl_finaal    <- terra::ifel(cl_lg %in% as.integer(ok_complex_ids), cl_lg, NA)
+      final_opp    <- terra::mask(r_lg_15ha, cl_finaal)
+      vp_uitvoer   <- terra::mask(r_kern_finaal, cl_finaal)
       foer_uitvoer <- terra::mask(r_foer_gekoppeld, cl_finaal)
     } else {
       final_opp    <- master_grid * NA
@@ -308,6 +300,9 @@ bouw_biotoop_kle_mozaiek_met_storing <- function(soort_naam, params_soort, ds_pa
   }
   rm(cl_lg, r_lg_15ha, r_kern_finaal, r_foer_gekoppeld)
   gc()
+  
+  ha_finaal <- calc_ha_exact(final_opp)
+  message(sprintf("       -> Definitief leefgebied Grauwe klauwier: %.2f ha", ha_finaal))
   
   return(list(
     final_opp     = final_opp,

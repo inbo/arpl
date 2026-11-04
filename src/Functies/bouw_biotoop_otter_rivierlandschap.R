@@ -4,6 +4,7 @@
 # - Vlaanderen algemeen: >= 1.000 ha landmatrix
 # - Grensmaas (Ecodistricten 17 & 36): verlaagde drempel >= 400 ha landmatrix
 # - Wederzijdse water-landkoppeling binnen <= 1.000 m
+# Ondersteunt Maas als raster (.tif) én als shapefile (.shp/.gpkg)
 # Conform officiële INBO-standaard ANB2019_EuropeseOtter2018.asc
 # ==============================================================================
 
@@ -49,9 +50,9 @@ bouw_biotoop_otter_rivierlandschap <- function(soort_naam, params_soort, ds_parq
   message(sprintf("       -> Totale landmatrix vóór filtering: %.2f ha", ha_land_ruw))
   
   # ----------------------------------------------------------------------------
-  # 2. INTEGRAAL WATERNETWERK (HUET-ZONES WAARDE >= 1 + WATERVLAKKEN)
+  # 2. INTEGRAAL WATERNETWERK (HUET-ZONES + WATERVLAKKEN + MAAS)
   # ----------------------------------------------------------------------------
-  message("    🌊 Integraal waternetwerk samenstellen (waterlopen + watervlakken)...")
+  message("    🌊 Integraal waternetwerk samenstellen (waterlopen + watervlakken + Maas)...")
   
   f_cache_water <- file.path(paths$dir_cache, "otter_water_integraal.tif")
   
@@ -80,16 +81,49 @@ bouw_biotoop_otter_rivierlandschap <- function(soort_naam, params_soort, ds_parq
       r_plas <- master_grid * NA
     }
     
-    # C. Optionele extra Maas-laag (indien aanwezig)
+    # C. Maas-laag (automatische detectie van shapefile vs raster)
+    r_maas_ok <- master_grid * NA
     if (!is.null(paths$maas) && file.exists(paths$maas)) {
-      message("       🌊 Extra Grensmaas-laag integreren in waternetwerk...")
-      f_maas_al <- hulp_align_gdal(paths$maas, master_grid)
-      r_maas    <- terra::rast(f_maas_al)
-      r_maas_ok <- terra::ifel(!is.na(r_maas) & r_maas >= 1, 1, NA)
-      unlink(f_maas_al)
-      r_water_tot <- terra::cover(r_water_tot, r_maas_ok)
-      rm(r_maas, r_maas_ok)
+      message("       🌊 Maas-bestand koppelen aan waternetwerk...")
+      is_vector <- grepl("\\.(shp|gpkg|geojson)$", paths$maas, ignore.case = TRUE)
+      
+      if (is_vector) {
+        # Rasterize vector direct naar tijdelijk raster op MasterGrid
+        f_maas_rast <- tempfile(fileext = ".tif")
+        e <- terra::ext(master_grid)
+        ext_str <- sprintf("%f,%f,%f,%f", e$xmin, e$xmax, e$ymin, e$ymax)
+        
+        qgisprocess::qgis_run_algorithm(
+          "gdal:rasterize",
+          INPUT     = paths$maas,
+          BURN      = 1,
+          UNITS     = 1,
+          WIDTH     = 10,
+          HEIGHT    = 10,
+          EXTENT    = ext_str,
+          NODATA    = 255,
+          DATA_TYPE = 0, # Byte
+          INIT      = 255,
+          OUTPUT    = f_maas_rast,
+          .quiet    = TRUE
+        )
+        r_maas_raw <- terra::rast(f_maas_rast)
+        r_maas_ok  <- terra::ifel(!is.na(r_maas_raw) & r_maas_raw == 1, 1, NA)
+        unlink(f_maas_rast)
+        rm(r_maas_raw)
+      } else {
+        # Regulier raster via GDAL warp
+        f_maas_al  <- hulp_align_gdal(paths$maas, master_grid)
+        r_maas_raw <- terra::rast(f_maas_al)
+        r_maas_ok  <- terra::ifel(!is.na(r_maas_raw) & r_maas_raw >= 1, 1, NA)
+        unlink(f_maas_al)
+        rm(r_maas_raw)
+      }
     }
+    
+    # Alles samenvoegen
+    r_water_tot <- terra::cover(r_waterloop, terra::cover(r_plas, r_maas_ok))
+    rm(r_waterloop, r_plas, r_maas_ok)
     
     terra::writeRaster(r_water_tot, f_cache_water, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
   }

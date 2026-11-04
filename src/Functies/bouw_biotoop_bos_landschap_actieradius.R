@@ -28,28 +28,29 @@ bouw_biotoop_bos_landschap_actieradius <- function(soort_naam, params_soort, ds_
       r_tp <- extract_bwk_laag(soort_naam, tp, ds_parquet, df_bwk_codes, master_grid)
       lagen[[tp]] <- if (!is.null(r_tp)) r_tp else (master_grid * NA)
     }
-    # Veilig inpakken vóór wegschrijven naar RDS
     lagen_packed <- lapply(lagen, terra::wrap)
     saveRDS(lagen_packed, f_cache_rds)
     message("    💾 [CACHE] Parquet-lagen veilig bewaard.")
   }
   
   r_bos_raw  <- if ("voortplanting_bwk" %in% names(lagen)) lagen[["voortplanting_bwk"]] else (master_grid * NA)
-  r_open_raw <- if ("foerageer_open"    %in% names(lagen)) lagen[["foerageer_open"]]    else (master_grid * NA)
+  r_open_raw <- if ("foerageer_open"     %in% names(lagen)) lagen[["foerageer_open"]]     else (master_grid * NA)
   
   # ----------------------------------------------------------------------------
   # 2. STAP 1: BROEDBOS (VERIFICATIE HOOGGROEN & CLUSTEREN OP >= 50 HA OP 100M)
   # ----------------------------------------------------------------------------
-  message("    🌲 Broedbos valideren met Groenkaart en clusteren op >= 50 ha (100m netwerk)...")
+  message("    🌲 Broedbos valideren met Groenkaart (strikt klasse 1) en clusteren op >= 50 ha (100m netwerk)...")
   
-  f_groen_al <- hulp_align_gdal(paths$groenkaart, master_grid)
-  r_groen    <- terra::rast(f_groen_al)
-  r_groen_ok <- terra::ifel(!is.na(r_groen) & (r_groen == 1 | r_groen > 0), 1, NA)
+  f_groen_al     <- hulp_align_gdal(paths$groenkaart, master_grid)
+  r_groen        <- terra::rast(f_groen_al)
+  # Strikt klasse 1 = opgaand bos / bomen in Groenkaart 2021
+  r_bomen_direct <- terra::ifel(!is.na(r_groen) & r_groen == 1, 1, NA)
   unlink(f_groen_al)
   rm(r_groen)
   
-  r_bos_opgaand <- terra::mask(r_bos_raw, r_groen_ok)
-  rm(r_groen_ok, r_bos_raw)
+  # Broedbos valideren tegen echte opgaande boomkruinen
+  r_bos_opgaand <- terra::mask(r_bos_raw, r_bomen_direct)
+  rm(r_bomen_direct, r_bos_raw)
   gc()
   
   res_bos <- cluster_filter_universeel(
@@ -93,11 +94,9 @@ bouw_biotoop_bos_landschap_actieradius <- function(soort_naam, params_soort, ds_
   # ----------------------------------------------------------------------------
   message("    🧩 Composiet landschap samenstellen (bos + open) en clusteren op >= 250 ha...")
   
-  b_c <- terra::ifel(is.na(r_bos_50ha),  0, r_bos_50ha)
-  o_c <- terra::ifel(is.na(r_open_50ha), 0, r_open_50ha)
-  r_landschap_bruto <- terra::ifel((b_c + o_c) > 0, terra::clamp(b_c + o_c, upper = 1.0), NA)
-  rm(b_c, o_c)
-  gc()
+  # Combinatie conform Bert (cover met clamp)
+  r_landschap_bruto <- terra::cover(r_bos_50ha, r_open_50ha)
+  r_landschap_bruto <- terra::clamp(r_landschap_bruto, upper = 1.0)
   
   res_land250 <- cluster_filter_universeel(
     masker            = r_landschap_bruto,
@@ -127,7 +126,7 @@ bouw_biotoop_bos_landschap_actieradius <- function(soort_naam, params_soort, ds_
     r_foer_bin <- terra::ifel(!is.na(r_foer_250ha) & r_foer_250ha > 0, 1, NA)
     
     f_foer_bin  <- tempfile(fileext = ".tif")
-    terra::writeRaster(r_foer_bin, f_foer_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 0)
+    terra::writeRaster(r_foer_bin, f_foer_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
     f_prox_5km  <- hulp_proximity_gdal(f_foer_bin, 5000)
     unlink(f_foer_bin)
     rm(r_foer_bin)
@@ -153,14 +152,20 @@ bouw_biotoop_bos_landschap_actieradius <- function(soort_naam, params_soort, ds_
   rm(r_bos_50ha, r_open_50ha, r_foer_250ha)
   gc()
   
-  ha_bos_fin <- calc_ha_exact(bos_finaal)
-  message(sprintf("       -> Broedbos finaal goedgekeurd binnen 5 km: %.2f ha", ha_bos_fin))
+  ha_bos_fin  <- calc_ha_exact(bos_finaal)
+  ha_foer_fin <- calc_ha_exact(foer_finaal)
+  message(sprintf("       -> Broedbos goedgekeurd binnen 5 km: %.2f ha", ha_bos_fin))
+  message(sprintf("       -> Open foerageergebied binnen goedgekeurd complex: %.2f ha", ha_foer_fin))
   
   # ----------------------------------------------------------------------------
-  # 6. SAMENSTELLEN TOTAAL LEEFGEBIED (BROEDBOS + FOERAGEERAREAAL) & NETWERK-ID'S
+  # 6. SAMENSTELLEN COMPOSIET LEEFGEBIED (BROEDBOS + FOERAGEERAREAAL) & NETWERK-ID'S
   # ----------------------------------------------------------------------------
-  message("    🧩 Totaal leefgebied samenvoegen (cover van broedbos en foerageerareaal)...")
+  message("    🧩 Totaal leefgebiedscomplex samenstellen (broedbos + foerageerareaal)...")
   final_opp <- terra::cover(bos_finaal, foer_finaal)
+  final_opp <- terra::clamp(final_opp, upper = 1.0)
+  
+  ha_tot <- calc_ha_exact(final_opp)
+  message(sprintf("       -> Totaal leefgebied Wespendief: %.2f ha", ha_tot))
   
   r_fin_bin <- terra::ifel(!is.na(final_opp) & final_opp > 0, 1, NA)
   
@@ -175,13 +180,13 @@ bouw_biotoop_bos_landschap_actieradius <- function(soort_naam, params_soort, ds_
       "-d" = FALSE, GRASS_REGION_PARAMETER = sprintf("%f,%f,%f,%f", e$xmin, e$xmax, e$ymin, e$ymax),
       GRASS_REGION_CELLSIZE_PARAMETER = 10, .quiet = TRUE
     )
+    unlink(f_bin)
     
     cl_opp <- terra::rast(f_clump)
-    terra::set.cats(cl_opp, layer = 1, value = NULL)
-    terra::coltab(cl_opp) <- NULL
+    try(terra::set.cats(cl_opp, layer = 1, value = NULL), silent = TRUE)
+    try(terra::coltab(cl_opp) <- NULL, silent = TRUE)
     cl_opp <- terra::mask(cl_opp, r_fin_bin)
-    
-    unlink(c(f_bin, f_clump))
+    unlink(f_clump)
   } else {
     cl_opp <- master_grid * NA
   }

@@ -38,46 +38,56 @@ bouw_biotoop_semi_aquatisch_oeverzoogdier <- function(soort_naam, params_soort, 
     message("    💾 [CACHE] Parquet-lagen veilig bewaard.")
   }
   
-  r_wat1 <- if ("water_bwk"       %in% names(lagen)) lagen[["water_bwk"]]       else (master_grid * NA)
-  r_wat2 <- if ("waterlopen1_bwk" %in% names(lagen)) lagen[["waterlopen1_bwk"]] else (master_grid * NA)
-  r_land <- if ("bwk_land"        %in% names(lagen)) lagen[["bwk_land"]]        else (master_grid * NA)
+  r_wat1 <- if ("water_bwk"        %in% names(lagen)) lagen[["water_bwk"]]        else (master_grid * NA)
+  r_wat2 <- if ("waterlopen1_bwk"  %in% names(lagen)) lagen[["waterlopen1_bwk"]]  else (master_grid * NA)
+  r_land <- if ("bwk_land"         %in% names(lagen)) lagen[["bwk_land"]]         else (master_grid * NA)
   
   # ----------------------------------------------------------------------------
-  # 2. HUETZONES WATERLOPEN INTEGREREN IN SPOOR A (WATER)
+  # 2. HUETZONES WATERLOPEN INTEGREREN IN WATERBASIS
   # ----------------------------------------------------------------------------
   message("    🌊 Hydrografische Huetzones (Bg, Bk, Rk) koppelen met BWK-water...")
   
-  f_huet_al <- hulp_align_gdal(paths$huetzon, master_grid)
-  r_huet    <- terra::rast(f_huet_al)
-  leg_huet  <- terra::cats(r_huet)[[1]]
+  f_cache_huet <- file.path(paths$dir_cache, "masker_huetzon_waterlopen.tif")
   
-  gewenste_letters <- c("Bg", "BgK", "Bk1", "Bk2", "BkK1", "BkK2", "Rk")
-  ok_huet_ids <- integer(0)
-  if (!is.null(leg_huet)) {
-    kol_val   <- colnames(leg_huet)[tolower(colnames(leg_huet)) %in% c("value", "id")][1]
-    kol_label <- colnames(leg_huet)[tolower(colnames(leg_huet)) %in% c("label", "omschrijving", "huet")][1]
-    if (is.na(kol_val)) kol_val <- 1
-    if (!is.na(kol_label)) {
-      ok_huet_ids <- leg_huet[[kol_val]][tolower(trimws(as.character(leg_huet[[kol_label]]))) %in% tolower(gewenste_letters)]
+  if (file.exists(f_cache_huet)) {
+    r_huet_ok <- terra::rast(f_cache_huet)
+  } else if (!is.null(paths$huetzon) && file.exists(paths$huetzon)) {
+    f_huet_al <- hulp_align_gdal(paths$huetzon, master_grid)
+    r_huet    <- terra::rast(f_huet_al)
+    leg_huet  <- terra::cats(r_huet)[[1]]
+    
+    gewenste_letters <- c("Bg", "BgK", "Bk1", "Bk2", "BkK1", "BkK2", "Rk")
+    ok_huet_ids <- integer(0)
+    if (!is.null(leg_huet)) {
+      kol_val   <- colnames(leg_huet)[tolower(colnames(leg_huet)) %in% c("value", "id")][1]
+      kol_label <- colnames(leg_huet)[tolower(colnames(leg_huet)) %in% c("label", "omschrijving", "huet")][1]
+      if (is.na(kol_val)) kol_val <- 1
+      if (!is.na(kol_label)) {
+        ok_huet_ids <- leg_huet[[kol_val]][tolower(trimws(as.character(leg_huet[[kol_label]]))) %in% tolower(gewenste_letters)]
+      }
     }
-  }
-  
-  if (length(ok_huet_ids) > 0) {
-    r_huet_ok <- terra::ifel(!is.na(r_huet) & r_huet %in% ok_huet_ids, 1.0, NA)
+    
+    if (length(ok_huet_ids) > 0) {
+      r_huet_ok <- terra::ifel(!is.na(r_huet) & (r_huet %in% ok_huet_ids), 1.0, NA)
+    } else {
+      r_huet_ok <- master_grid * NA
+    }
+    unlink(f_huet_al)
+    rm(r_huet)
+    terra::writeRaster(r_huet_ok, f_cache_huet, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
   } else {
     r_huet_ok <- master_grid * NA
   }
-  unlink(f_huet_al)
-  rm(r_huet)
   
-  # Waterbasis samenvoegen
-  w1_c <- terra::ifel(is.na(r_wat1), 0, r_wat1)
-  w2_c <- terra::ifel(is.na(r_wat2), 0, r_wat2)
-  wh_c <- terra::ifel(is.na(r_huet_ok), 0, r_huet_ok)
-  
-  r_water_tot <- terra::ifel((w1_c + w2_c + wh_c) > 0, terra::clamp(w1_c + w2_c + wh_c, upper = 1.0), NA)
-  rm(w1_c, w2_c, wh_c, r_wat1, r_wat2, r_huet_ok)
+  # Waterbasis samenvoegen conform Bert
+  r_water_tot <- terra::cover(r_wat1, r_wat2)
+  r_water_tot <- terra::cover(r_water_tot, r_huet_ok)
+  r_water_tot <- terra::clamp(r_water_tot, upper = 1.0)
+  rm(r_wat1, r_wat2, r_huet_ok)
   gc()
+  
+  ha_wat_tot <- calc_ha_exact(r_water_tot)
+  message(sprintf("       -> Totale waterbasis (BWK + Huet): %.2f ha", ha_wat_tot))
   
   # ----------------------------------------------------------------------------
   # 3. BEBOUWINGSFILTER (100M BUFFER ROND WOONCLUSTERS >= 1.5 HA)
@@ -87,21 +97,19 @@ bouw_biotoop_semi_aquatisch_oeverzoogdier <- function(soort_naam, params_soort, 
   f_cache_bebouw <- file.path(paths$dir_cache, "masker_bebouwing_1_5ha_100m.tif")
   
   if (file.exists(f_cache_bebouw)) {
+    message("       -> [CACHE] Bebouwingsbuffer ingeladen van schijf...")
     mask_bebouw_100m <- terra::rast(f_cache_bebouw)
   } else {
-    harde_codes <- c("u", "ua", "ub", "uc", "ud", "ui", "un", "ur")
-    t_bebouw <- ds_parquet %>%
-      dplyr::filter(tolower(CODE) %in% harde_codes) %>%
-      dplyr::collect() %>%
-      data.table::as.data.table()
+    # Harde woonkernen conform Bert (u, ua, ub, uc, ud, ui, un, ur)
+    harde_bebouwing <- c("u", "ua", "ub", "uc", "ud", "ui", "un", "ur")
+    r_bebouw_bin <- vul_raster_vanuit_parquet(
+      ds_parquet  = ds_parquet,
+      codes_exact = harde_bebouwing,
+      master_grid = master_grid,
+      waarde_vast = 1
+    )
     
-    if (nrow(t_bebouw) > 0) {
-      t_bebouw[, CODE := tolower(trimws(CODE))]
-      t_cel <- unique(t_bebouw, by = c("cel_id", "CODE"))[, .(Val = 1), by = cel_id]
-      r_bebouw_bin <- master_grid * NA
-      r_bebouw_bin[t_cel$cel_id] <- 1
-      rm(t_cel)
-      
+    if (!all(is.na(suppressWarnings(terra::minmax(r_bebouw_bin))))) {
       # Clump via GRASS op 50m koppeling om clusters >= 1.5 ha (150 cellen) te detecteren
       f_b_bin <- tempfile(fileext = ".tif")
       f_cl_b  <- tempfile(fileext = ".tif")
@@ -117,8 +125,8 @@ bouw_biotoop_semi_aquatisch_oeverzoogdier <- function(soort_naam, params_soort, 
       unlink(f_b_bin)
       
       cl_b <- terra::rast(f_cl_b)
-      terra::set.cats(cl_b, layer = 1, value = NULL)
-      if (terra::has.colors(cl_b)) try(terra::coltab(cl_b) <- NULL, silent = TRUE)
+      try(terra::set.cats(cl_b, layer = 1, value = NULL), silent = TRUE)
+      try(terra::coltab(cl_b) <- NULL, silent = TRUE)
       
       dt_b <- data.table::as.data.table(terra::freq(cl_b))
       setnames(dt_b, c("layer", "ID", "count"))
@@ -143,12 +151,12 @@ bouw_biotoop_semi_aquatisch_oeverzoogdier <- function(soort_naam, params_soort, 
       }
       unlink(f_cl_b)
       rm(cl_b)
-      gc()
     } else {
       mask_bebouw_100m <- master_grid * NA
     }
-    rm(t_bebouw)
-    terra::writeRaster(mask_bebouw_100m, f_cache_bebouw, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
+    
+    terra::writeRaster(mask_bebouw_100m, f_cache_bebouw, overwrite = TRUE, datatype = "INT1U", gdal = "COMPRESS=LZW")
+    gc()
   }
   
   # ----------------------------------------------------------------------------
@@ -167,9 +175,9 @@ bouw_biotoop_semi_aquatisch_oeverzoogdier <- function(soort_naam, params_soort, 
   land_buren_w <- terra::focal(r_bin_l, w = m_buren, fun = "sum", na.rm = TRUE)
   land_buren_w <- terra::mask(land_buren_w, r_bin_w == 1, maskvalues = FALSE)
   
-  niet_water    <- terra::ifel(r_bin_w == 0, 1, 0)
-  oever_tot_w   <- terra::focal(niet_water, w = m_buren, fun = "sum", na.rm = TRUE)
-  oever_tot_w   <- terra::mask(oever_tot_w, r_bin_w == 1, maskvalues = FALSE)
+  niet_water   <- terra::ifel(r_bin_w == 0, 1, 0)
+  oever_tot_w  <- terra::focal(niet_water, w = m_buren, fun = "sum", na.rm = TRUE)
+  oever_tot_w  <- terra::mask(oever_tot_w, r_bin_w == 1, maskvalues = FALSE)
   rm(niet_water)
   
   cl_w <- terra::patches(r_water_tot, directions = 8, zeroAsNA = TRUE)
@@ -230,7 +238,7 @@ bouw_biotoop_semi_aquatisch_oeverzoogdier <- function(soort_naam, params_soort, 
     f_prox_w50 <- hulp_proximity_gdal(f_w_ok, 50)
     unlink(f_w_ok)
     
-    p_w50 <- terra::rast(f_prox_w50)
+    p_w50    <- terra::rast(f_prox_w50)
     mask_w50 <- terra::ifel(!is.na(p_w50) & p_w50 >= 0 & p_w50 <= 50, 1, NA)
     unlink(f_prox_w50)
     rm(p_w50)
@@ -238,7 +246,7 @@ bouw_biotoop_semi_aquatisch_oeverzoogdier <- function(soort_naam, params_soort, 
     land_oever_50m_raw <- terra::mask(r_land, mask_w50)
     rm(mask_w50)
     
-    # Raak-check: enkel land dat binnen 10m van water ligt
+    # Raak-check via zonale statistiek (veilig, geen RAM-pieken)
     cl_land_oever <- terra::patches(land_oever_50m_raw, directions = 8, zeroAsNA = TRUE)
     
     f_w_touch <- tempfile(fileext = ".tif")
@@ -246,15 +254,15 @@ bouw_biotoop_semi_aquatisch_oeverzoogdier <- function(soort_naam, params_soort, 
     f_prox_w10 <- hulp_proximity_gdal(f_w_touch, 10)
     unlink(f_w_touch)
     
-    p_w10 <- terra::rast(f_prox_w10)
+    p_w10    <- terra::rast(f_prox_w10)
     mask_w10 <- terra::ifel(!is.na(p_w10) & p_w10 >= 0 & p_w10 <= 10, 1, NA)
     unlink(f_prox_w10)
     rm(p_w10)
     
-    land_touching <- terra::mask(cl_land_oever, mask_w10)
-    rm(mask_w10)
-    ids_touch <- unique(na.omit(as.integer(land_touching[])))
-    rm(land_touching)
+    df_touch <- terra::zonal(mask_w10, cl_land_oever, fun = "max", na.rm = TRUE)
+    colnames(df_touch) <- c("ID", "Raakt")
+    ids_touch <- df_touch$ID[!is.na(df_touch$Raakt) & df_touch$Raakt > 0]
+    rm(mask_w10, df_touch)
     
     if (length(ids_touch) > 0) {
       land_oever_50m <- terra::mask(land_oever_50m_raw, cl_land_oever %in% ids_touch)
@@ -267,18 +275,18 @@ bouw_biotoop_semi_aquatisch_oeverzoogdier <- function(soort_naam, params_soort, 
     land_oever_50m <- master_grid * NA
   }
   
-  # Minicluster samenstellen: Water + Direct Land + 50m Oeverstrook
-  w_c  <- terra::ifel(is.na(water_ok), 0, water_ok)
-  l1_c <- terra::ifel(is.na(land_ok_direct), 0, land_ok_direct)
-  l2_c <- terra::ifel(is.na(land_oever_50m), 0, land_oever_50m)
-  
-  r_mini_raw <- terra::ifel((w_c + l1_c + l2_c) > 0, terra::clamp(w_c + l1_c + l2_c, upper = 1.0), NA)
-  rm(w_c, l1_c, l2_c, water_ok, land_ok_direct, land_oever_50m, r_water_tot, r_land)
+  # Minicluster componenten samenvoegen
+  oever_totaal <- terra::cover(land_oever_50m, land_ok_direct)
+  r_mini_raw   <- terra::cover(water_ok, oever_totaal)
+  r_mini_raw   <- terra::clamp(r_mini_raw, upper = 1.0)
+  rm(land_oever_50m, land_ok_direct, r_water_tot, r_land)
   gc()
   
   # Bebouwingszone (100m) uitsluiten van minicluster
-  r_mini_schoon <- terra::mask(r_mini_raw, mask_bebouw_100m, inverse = TRUE)
-  rm(r_mini_raw, mask_bebouw_100m)
+  r_mini_schoon  <- terra::mask(r_mini_raw,   mask_bebouw_100m, inverse = TRUE)
+  water_geschoond <- terra::mask(water_ok,     mask_bebouw_100m, inverse = TRUE)
+  oever_geschoond <- terra::mask(oever_totaal, mask_bebouw_100m, inverse = TRUE)
+  rm(r_mini_raw, water_ok, oever_totaal, mask_bebouw_100m)
   gc()
   
   ha_mini <- calc_ha_exact(r_mini_schoon)
@@ -307,8 +315,21 @@ bouw_biotoop_semi_aquatisch_oeverzoogdier <- function(soort_naam, params_soort, 
   ha_finaal <- calc_ha_exact(final_opp)
   message(sprintf("       -> Definitief leefgebied Waterspitsmuis: %.2f ha", ha_finaal))
   
+  # Deellagen isoleren binnen goedgekeurde netwerken
+  if (!all(is.na(suppressWarnings(terra::minmax(cl_opp))))) {
+    water_uitvoer <- terra::mask(water_geschoond, cl_opp)
+    oever_uitvoer <- terra::mask(oever_geschoond, cl_opp)
+  } else {
+    water_uitvoer <- master_grid * NA
+    oever_uitvoer <- master_grid * NA
+  }
+  rm(water_geschoond, oever_geschoond)
+  gc()
+  
   return(list(
     final_opp = final_opp,
-    cl_opp    = cl_opp
+    cl_opp    = cl_opp,
+    water     = water_uitvoer,
+    oever     = oever_uitvoer
   ))
 }

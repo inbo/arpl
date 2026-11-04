@@ -70,6 +70,46 @@ verwerk_soort <- function(soort_naam, params_soort, master_grid, ds_parquet, df_
       message(paste0("    🦅 Actieradius & kernbiotoop workflow voor: ", soort_naam))
       res_model <- bouw_biotoop_actieradius_kern(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
       
+    } else if (grepl("beekrombout", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_stromend_water_libel.R"))
+      res <- bouw_biotoop_stromend_water_libel(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
+    } else if (grepl("gevlektewitsnuitlibel", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_vennencomplex_libel.R"))
+      res <- bouw_biotoop_vennencomplex_libel(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
+    } else if (grepl("hoogveenglanslibel", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_hoogveen_libel.R"))
+      res <- bouw_biotoop_hoogveen_libel(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
+    } else if (grepl("zwarteheidelibel", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_hoogveen_libel.R"))
+      res <- bouw_biotoop_zwarteheidelibel(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
+    } else if (grepl("maanwaterjuffer", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_bosven_waterjuffer.R"))
+      res <- bouw_biotoop_bosven_waterjuffer(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
+    } else if (grepl("noordsewitsnuitlibel", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_dystroof_ven_libel.R"))
+      res <- bouw_biotoop_dystroof_ven_libel(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
+    } else if (grepl("sierlijkewitsnuitlibel", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_verlandingsplas_libel.R"))
+      res <- bouw_biotoop_verlandingsplas_libel(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
+    } else if (grepl("speerwaterjuffer", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_speerwaterjuffer.R"))
+      res <- bouw_biotoop_speerwaterjuffer(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
+    } else if (grepl("venglazenmaker", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_venglazenmaker.R"))
+      res <- bouw_biotoop_venglazenmaker(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
+    } else if (grepl("venwitsnuitlibel", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_venwitsnuitlibel.R"))
+      res <- bouw_biotoop_venwitsnuitlibel(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
     } else if (bestandsnaam == "grauweklauwier") {
       message(paste0("    🐦 KLE-mozaïek & storingsbuffer workflow voor: ", soort_naam))
       res_model <- bouw_biotoop_kle_mozaiek_met_storing(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
@@ -105,6 +145,14 @@ verwerk_soort <- function(soort_naam, params_soort, master_grid, ds_parquet, df_
     } else if (bestandsnaam == "tureluur") {
       message(paste0("    🪶 Dynamisch kustgrasland workflow voor: ", soort_naam))
       res_model <- bouw_biotoop_dynamisch_kustgrasland(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
+    } else if (bestandsnaam %in% c("europesebever", "bever")) {
+      message(paste0("    🦫 Beekdal- en ooibos workflow voor: ", soort_naam))
+      res_model <- bouw_biotoop_bever_beekdal(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
+    } else if (bestandsnaam %in% c("europesehamster", "hamster")) {
+      message(paste0("    🐹 Leemakker- en graancomplex workflow voor: ", soort_naam))
+      res_model <- bouw_biotoop_hamster_leemakker(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
       
     } else if (bestandsnaam == "kwartelkoning") {
       message(paste0("    🌾 Vallei-grasland workflow voor: ", soort_naam))
@@ -154,6 +202,17 @@ verwerk_soort <- function(soort_naam, params_soort, master_grid, ds_parquet, df_
       message(paste0("    🪶 Kolonievogel kust & polder workflow voor: ", soort_naam))
       res_model <- bouw_biotoop_kolonievogel_kust_polder(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
       
+    } else if (grepl("drijvendewaterweegbree|waterplant|hydrofiet", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_waterplant_hydrograaf.R"))
+      res <- bouw_biotoop_waterplant_hydrograaf(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
+    } else if (grepl("grotemodderkruiper|modderkruiper|vis", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_alluviale_vis.R"))
+      res <- bouw_biotoop_alluviale_vis(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+    } else if (grepl("spaansevlag|nachtvlinder", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_bosrand_ecotoon.R"))
+      res <- bouw_biotoop_bosrand_ecotoon(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
     } else if (bestandsnaam == "duinpieper") {
       message(paste0("    🌾 Open zand & stuifduin workflow voor: ", soort_naam))
       res_model <- bouw_biotoop_open_zand_stuifduin(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
@@ -165,6 +224,30 @@ verwerk_soort <- function(soort_naam, params_soort, master_grid, ds_parquet, df_
     } else if (bestandsnaam == "grauwekiekendief") {
       message(paste0("    🦅 Grootschalig akkercomplex workflow voor: ", soort_naam))
       res_model <- bouw_biotoop_grootschalig_akkercomplex(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
+    } else if (grepl("veldkrekel", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_droge_metapopulatie_sprinkhaan.R"))
+      res <- bouw_biotoop_droge_metapopulatie_sprinkhaan(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
+    } else if (grepl("zadelsprinkhaan", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_droge_heide_sprinkhaan.R"))
+      res <- bouw_biotoop_droge_heide_sprinkhaan(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
+    } else if (grepl("zompsprinkhaan|moerassprinkhaan", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_natte_metapopulatie_sprinkhaan.R"))
+      res <- bouw_biotoop_natte_metapopulatie_sprinkhaan(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
+    } else if (grepl("vliegendhert", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_saproxyl_hellingbos.R"))
+      res <- bouw_biotoop_saproxyl_hellingbos(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
+    } else if (grepl("juchtleerkever|osmoderma", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_saproxyl_kle_park.R"))
+      res <- bouw_biotoop_saproxyl_kle_park(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
+      
+    } else if (grepl("vermiljoenkever|cucujus", tolower(soort_naam))) {
+      source(here::here("src", "Functies", "bouw_biotoop_saproxyl_alluviaal_bos.R"))
+      res <- bouw_biotoop_saproxyl_alluviaal_bos(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths)
       
     } else if (bestandsnaam %in% c("bontdikkopje", "bruineeikenpage") || "bosranden" %in% tolower(params_soort$Type)) {
       message(paste0("    🦋 Ecotonale bosrand-workflow voor: ", soort_naam))

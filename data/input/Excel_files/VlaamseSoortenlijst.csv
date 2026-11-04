@@ -1,0 +1,243 @@
+TaxonomischeGroep;Soort;WetenschappelijkeNaam;VRL;HRL;SBP;HTRLS;RBS;Nieuw Model;Oud Model;Model Aangepast;Gerund
+Dagvlinders;Aardbeivlinder;Pyrgus malvae;0;0;0;2;0;ja;ja;ja;ja
+Reptielen;Adder;Vipera berus;0;0;0;2;0;ja;ja;nee;nee
+Vaatplanten;Alpenrus;Juncus alpinoarticulatus;0;0;0;2;0;ja;ja;ja;nee
+Vaatplanten;Armbloemige waterbies;Eleocharis quinqueflora;0;0;0;2;0;ja;ja;ja;ja
+Vissen;Atlantische zalm;Salmo salar;0;2;0;0;0;nee;nee;nee;nee
+Zoogdieren_Vleermuizen;Baardvleermuis;Myotis mystacinus;0;2;2;0;0;nee;nee;nee;nee
+Mollusken;Bataafse stroommossel;Unio crassus;0;2;0;0;0;nee;nee;nee;nee
+Zoogdieren_Vleermuizen;Bechsteins vleermuis;Myotis bechsteinii;0;2;2;0;0;nee;nee;nee;nee
+Vissen;Beekprik;Lampetra planeri;0;2;2;2;2;nee;nee;nee;nee
+Libellen;Beekrombout;Gomphus vulgatissimus;0;0;0;2;0;ja;ja;ja;nee
+Vaatplanten;Beenbreek;Narthecium ossifragum;0;0;0;2;0;ja;ja;ja;ja
+Overwinterende watervogels;Bergeend;Tadorna tadorna;2;0;0;0;0;ja;ja;nee;nee
+Vaatplanten;Bevertjes;Briza media;0;0;0;2;0;ja;ja;ja;nee
+Vissen;Bittervoorn;Rhodeus amarus;0;2;0;0;0;nee;nee;nee;nee
+Vaatplanten;Blauw kweldergras;Puccinellia fasciculata;0;0;0;2;0;nee;ja;ja;nee
+Broedvogels;Blauwborst;Luscinia svecica;2;0;0;0;0;ja;ja;ja;nee
+Overwinterende watervogels;Blauwe kiekendief;Circus cyaneus;2;0;0;0;2;Half;ja;nee;nee
+Vaatplanten;Blonde zegge;Carex hostiana;0;0;0;2;0;ja;ja;ja;nee
+Dagvlinders;Bont dikkopje;Carterocephalus palaemon;0;0;0;2;0;ja;ja;ja;ja
+Vaatplanten;Bonte paardenstaart;Equisetum variegatum;0;0;0;2;0;nee;ja;ja;nee
+Amfibieen;Boomkikker;Hyla arborea;0;2;2;0;2;ja;ja;nee;nee
+Broedvogels;Boomleeuwerik;Lullula arborea;2;0;0;0;0;ja;ja;ja;nee
+Zoogdieren_Vleermuizen;Bosvleermuis;Nyctalus leisleri;0;2;2;0;0;nee;nee;nee;nee
+Dagvlinders;Boswitje;Leptidea sinapis;0;0;0;2;0;nee;nee;nee;nee
+Zoogdieren_Vleermuizen;Brandts vleermuis;Myotis brandtii;0;2;2;0;0;nee;nee;nee;nee
+Vaatplanten;Breed wollegras;Eriophorum latifolium;0;0;0;2;0;ja;ja;ja;nee
+Dagvlinders;Bruin dikkopje;Erynnis tages;0;0;0;2;0;ja;ja;ja;ja
+Dagvlinders;Bruine eikenpage;Satyrium ilicis;0;0;0;2;0;ja;ja;ja;ja
+Broedvogels;Bruine kiekendief;Circus aeruginosus;2;0;2;0;2;ja;ja;ja;nee
+Vaatplanten;Bruine snavelbies;Rhynchospora fusca;0;0;0;2;0;ja;ja;ja;nee
+Dagvlinders;Bruine vuurvlinder;Lycaena tityrus;0;0;0;2;0;nee;ja;ja;ja
+Vaatplanten;Doorgroeid fonteinkruid;Potamogeton perfoliatus;0;0;0;2;0;ja;ja;ja;nee
+Vaatplanten;Draadgentiaan;Cicendia filiformis;0;0;0;2;0;ja;ja;ja;ja
+Vaatplanten;Driedistel;Carlina vulgaris;0;0;0;2;0;nee;ja;ja;nee
+Vaatplanten;Drijvende egelskop;Sparganium angustifolium;0;0;0;2;0;ja;ja;ja;ja
+Vaatplanten;Drijvende waterweegbree;Luronium natans;0;2;0;2;0;ja;ja;ja;nee
+Vaatplanten;Duingentiaan;Gentianella uliginosa;0;0;0;2;0;nee;ja;ja;nee
+Broedvogels;Duinpieper;Anthus campestris;1;0;0;0;1;nee;ja;ja;nee
+Vaatplanten;Duinzwenkgras;Festuca juncifolia;0;0;0;2;0;nee;ja;ja;nee
+Dagvlinders;Dwergblauwtje;Cupido minimus;0;0;0;2;0;ja;ja;ja;ja
+Broedvogels;Dwergstern;Sternula albifrons;2;0;0;2;2;nee;ja;ja;nee
+Vaatplanten;Dwergvlas;Radiola linoides;0;0;0;2;0;ja;ja;ja;nee
+Vaatplanten;Dwergzegge groep;Carex viridula;0;0;0;2;0;nee;ja;ja;nee
+Zoogdieren;Eikelmuis;Eliomys quercinus;0;0;0;2;0;ja;ja;ja;nee
+Zoogdieren;Europese bever;Castor fiber;0;2;2;0;2;nee;ja;ja;nee
+Zoogdieren;Europese hamster;Cricetus cricetus;0;2;2;0;2;nee;ja;ja;nee
+Zoogdieren;Europese otter;Lutra lutra;0;2;2;0;2;ja;ja;ja;nee
+Vaatplanten;Fijn goudscherm;Bupleurum tenuissimum;0;0;0;2;0;nee;ja;ja;nee
+Vissen;Fint;Alosa fallax;0;2;0;2;0;nee;nee;nee;nee
+Broedvogels;Fluiter;Phylloscopus sibilatrix;0;0;0;2;0;ja;ja;ja;nee
+Zoogdieren_Vleermuizen;Franjestaart;Myotis nattereri;0;2;2;0;0;nee;nee;nee;nee
+Libellen;Gaffellibel;Ophiogomphus cecilia;0;2;0;0;0;nee;ja;nee;nee
+Bladmossen;Geel schorpioenmos;Hamatocaulis vernicosus;0;2;0;0;0;nee;ja;ja;nee
+Dagvlinders;Gentiaanblauwtje;Phengaris alcon;0;0;0;2;0;ja;ja;ja;ja
+Libellen;Gevlekte witsnuitlibel;Leucorrhinia pectoralis;0;2;0;2;2;ja;ja;ja;nee
+Libellen;Gewone bronlibel;Cordulegaster boltonii;0;0;0;2;0;nee;ja;nee;nee
+Zoogdieren_Vleermuizen;Gewone dwergvleermuis;Pipistrellus pipistrellus;0;2;2;0;0;nee;nee;nee;nee
+Zoogdieren_Vleermuizen;Gewone grootoorvleermuis;Plecotus auritus;0;2;2;0;0;nee;nee;nee;nee
+Vaatplanten;Gewone zoutmelde;Halimione portulacoides;0;0;0;2;0;nee;ja;ja;nee
+Reptielen;Gladde slang;Coronella austriaca;0;2;2;2;2;ja;ja;nee;nee
+Vaatplanten;Glanzig fonteinkruid;Potamogeton lucens;0;0;0;2;0;ja;ja;ja;nee
+Overwinterende watervogels;Goudplevier;Pluvialis apricaria;2;0;0;0;2;nee;ja;nee;nee
+Broedvogels;Graspieper;Anthus pratensis;0;0;0;2;0;nee;ja;ja;nee
+Overwinterende watervogels;Grauwe gans;Anser anser;2;0;0;0;2;nee;ja;nee;nee
+Broedvogels;Grauwe kiekendief;Circus pygargus;2;0;2;0;2;nee;ja;ja;nee
+Broedvogels;Grauwe klauwier;Lanius collurio;2;0;2;0;2;ja;ja;ja;nee
+Zoogdieren_Vleermuizen;Grijze grootoorvleermuis;Plecotus austriacus;0;2;2;0;0;nee;nee;nee;nee
+Vaatplanten;Groenknolorchis;Liparis loeselii;0;2;0;2;0;nee;ja;ja;nee
+Dagvlinders;Groentje;Callophrys rubi;0;0;0;2;0;ja;ja;ja;ja
+Zoogdieren_Vleermuizen;Grote hoefijzerneus;Rhinolophus ferrumequinum;0;2;2;0;0;nee;nee;nee;nee
+Vissen;Grote modderkruiper;Misgurnus fossilis;0;2;2;0;0;ja;ja;ja;nee
+Vaatplanten;Grote muggenorchis;Gymnadenia conopsea;0;0;0;2;0;ja;ja;ja;nee
+Vaatplanten;Grote pimpernel;Sanguisorba officinalis;0;0;0;2;0;ja;ja;ja;ja
+Broedvogels;Grote stern;Thalasseus sandvicensis;2;0;0;2;2;nee;ja;ja;nee
+Vaatplanten;Grote wolfsklauw;Lycopodium clavatum;0;0;0;2;0;ja;ja;ja;nee
+Overwinterende watervogels;Grote zilverreiger;Ardea alba;2;0;0;0;2;ja;ja;nee;nee
+Broedvogels;Grutto;Limosa limosa;0;0;2;0;2;ja;ja;ja;ja
+Zoogdieren;Hazelmuis;Muscardinus avellanarius;0;2;2;2;2;ja;ja;ja;nee
+Dagvlinders;Heideblauwtje;Plebejus argus;0;0;0;2;0;ja;ja;ja;ja
+Vaatplanten;Heidekartelblad;Pedicularis sylvatica;0;0;0;2;0;ja;ja;ja;nee
+Amfibieen;Heikikker;Rana arvalis;0;2;2;2;0;ja;ja;nee;nee
+Dagvlinders;Heivlinder;Hipparchia semele;0;0;2;2;2;ja;ja;ja;ja
+Vaatplanten;Hondsviooltje;Viola canina;0;0;0;2;0;ja;ja;ja;nee
+Vaatplanten;Honingorchis;Herminium monorchis;0;0;0;2;0;nee;ja;ja;nee
+Libellen;Hoogveenglanslibel;Somatochlora arctica;0;0;0;2;0;ja;ja;ja;nee
+Broedvogels;Ijsvogel;Alcedo atthis;2;0;0;0;0;ja;ja;ja;nee
+Zoogdieren_Vleermuizen;Ingekorven vleermuis;Myotis emarginatus;0;2;2;0;0;nee;nee;nee;nee
+Saproxyle kevers;Juchtleerkever;Osmoderma eremita;0;2;0;0;0;nee;ja;ja;nee
+Amfibieen;Kamsalamander;Triturus cristatus;0;2;2;0;0;ja;ja;nee;nee
+Libellen;Kempense heidelibel;Sympetrum depressiusculum;0;0;0;2;0;nee;ja;nee;nee
+Overwinterende watervogels;Kemphaan;Calidris pugnax;2;0;0;0;2;ja;ja;nee;nee
+Vaatplanten;Kikkerbeet;Hydrocharis morsus-ranae;0;0;0;2;0;ja;ja;ja;nee
+Dagvlinders;Klaverblauwtje;Cyaniris semiargus;0;0;0;2;0;ja;ja;ja;ja
+Vaatplanten;Klein blaasjeskruid;Utricularia minor;0;0;0;2;0;ja;ja;ja;ja
+Vaatplanten;Klein warkruid;Cuscuta epithymum;0;0;0;2;0;ja;ja;ja;ja
+Zoogdieren_Vleermuizen;Kleine dwergvleermuis;Pipistrellus pygmaeus;0;2;2;0;0;nee;nee;nee;nee
+Zoogdieren_Vleermuizen;Kleine hoefijzerneus;Rhinolophus hipposideros;0;2;2;0;0;nee;nee;nee;nee
+Broedvogels;Kleine mantelmeeuw;Larus fuscus;2;0;0;0;0;nee;nee;nee;nee
+Vissen;Kleine modderkruiper;Cobitis taenia;0;2;2;0;0;nee;nee;nee;nee
+Vaatplanten;Kleine ratelaar;Rhinanthus minor;0;0;0;2;0;ja;ja;ja;ja
+Overwinterende watervogels;Kleine rietgans;Anser brachyrhynchus;2;0;0;0;2;nee;ja;nee;nee
+Vaatplanten;Kleine schorseneer;Scorzonera humilis;0;0;0;2;0;ja;ja;ja;nee
+Broedvogels;Kleine zilverreiger;Egretta garzetta;2;0;0;0;2;nee;ja;ja;nee
+Overwinterende watervogels;Kleine zwaan;Cygnus columbianus;2;0;0;0;2;nee;ja;nee;nee
+Vaatplanten;Klokjesgentiaan;Gentiana pneumonanthe;0;0;0;2;0;ja;ja;ja;nee
+Broedvogels;Kluut;Recurvirostra avosetta;2;0;0;2;0;nee;ja;ja;nee
+Overwinterende watervogels;Kluut;Recurvirostra avosetta;2;0;0;0;0;nee;ja;nee;nee
+Amfibieen;Knoflookpad;Pelobates fuscus;0;2;2;0;2;ja;ja;nee;nee
+Vaatplanten;Knopbies;Schoenus nigricans;0;0;0;2;0;ja;ja;ja;nee
+Overwinterende watervogels;Kokmeeuw;Chroicocephalus ridibundus;2;0;0;0;0;nee;nee;nee;nee
+Overwinterende watervogels;Kolgans;Anser albifrons;2;0;0;0;2;nee;ja;nee;nee
+Dagvlinders;Kommavlinder;Hesperia comma;0;0;0;2;0;ja;ja;ja;ja
+Broedvogels;Korhoen;Lyrurus tetrix;1;0;0;0;1;ja;ja;ja;nee
+Broedvogels;Kraanvogel;Grus grus;1;0;0;0;1;nee;ja;ja;nee
+Vaatplanten;Krabbenscheer;Stratiotes aloides;0;0;0;2;0;ja;ja;ja;nee
+Overwinterende watervogels;Krakeend;Mareca strepera;2;0;0;0;0;ja;ja;nee;nee
+Vaatplanten;Kruipbrem;Genista pilosa;0;0;0;2;0;ja;ja;ja;nee
+Vaatplanten;Kruipend moerasscherm;Apium repens;0;2;0;0;0;nee;ja;ja;nee
+Overwinterende watervogels;Kuifeend;Aythya fuligula;2;0;0;0;0;ja;ja;nee;nee
+Broedvogels;Kuifleeuwerik;Galerida cristata;0;0;0;2;0;nee;ja;ja;nee
+Broedvogels;Kwak;Nycticorax nycticorax;2;0;0;0;2;ja;ja;ja;nee
+Broedvogels;Kwartelkoning;Crex crex;2;0;2;2;2;ja;ja;ja;ja
+Vaatplanten;Kwelderzegge;Carex extensa;0;0;0;2;0;nee;ja;ja;nee
+Zoogdieren_Vleermuizen;Laatvlieger;Eptesicus serotinus;0;2;2;0;0;nee;nee;nee;nee
+Vaatplanten;Lamsoor;Limonium vulgare;0;0;0;2;0;nee;ja;ja;nee
+Vaatplanten;Lavendelhei;Andromeda polifolia;0;0;0;2;0;ja;ja;ja;nee
+Broedvogels;Lepelaar;Platalea leucorodia;2;0;0;0;2;nee;ja;ja;nee
+Overwinterende watervogels;Lepelaar;Platalea leucorodia;1;0;0;0;0;nee;nee;nee;nee
+Reptielen;Levendbarende hagedis;Zootoca vivipara;0;0;0;2;0;ja;ja;nee;nee
+Vaatplanten;Liggende asperge;Asparagus officinalis;0;0;0;2;0;nee;ja;ja;nee
+Vaatplanten;Liggende vleugeltjesbloem;Polygala serpyllifolia;0;0;0;2;0;ja;ja;ja;ja
+Vaatplanten;Loos blaasjeskruid;Utricularia australis;0;0;0;2;0;ja;ja;ja;ja
+Libellen;Maanwaterjuffer;Coenagrion lunulatum;0;0;0;2;0;ja;ja;ja;nee
+Vaatplanten;Mannetjesorchis;Orchis mascula;0;0;0;2;0;ja;ja;ja;nee
+Broedvogels;Matkop;Parus montanus;0;0;0;2;0;ja;ja;ja;ja
+Zoogdieren_Vleermuizen;Meervleermuis;Myotis dasycneme;0;2;2;0;0;nee;nee;nee;nee
+Broedvogels;Middelste bonte specht;Dendrocopos medius;2;0;0;0;2;ja;ja;ja;nee
+Dagvlinders;Moerasparelmoervlinder;Euphydryas aurinia;0;0;0;2;0;nee;ja;ja;ja
+Vaatplanten;Moerassmele;Deschampsia setacea;0;0;0;2;0;ja;ja;ja;nee
+Zoogdieren_Vleermuizen;Mopsvleermuis;Barbastella barbastellus;0;2;2;0;0;nee;nee;nee;nee
+Reptielen;Muurhagedis;Podarcis muralis;0;2;0;0;0;nee;nee;nee;nee
+Broedvogels;Nachtegaal;Luscinia megarhynchos;0;0;0;2;0;ja;ja;ja;nee
+Broedvogels;Nachtzwaluw;Caprimulgus europaeus;2;0;0;0;2;ja;ja;ja;nee
+Mollusken;Nauwe korfslak;Vertigo angustior;0;2;0;0;0;nee;ja;nee;nee
+Libellen;Noordse witsnuitlibel;Leucorrhinia rubicunda;0;0;0;2;0;ja;ja;ja;nee
+Broedvogels;Oehoe;Bubo bubo;1;0;0;0;1;nee;nee;nee;nee
+Vaatplanten;Ongelijkbladig fonteinkruid;Potamogeton gramineus;0;0;0;2;0;ja;ja;ja;nee
+Broedvogels;Ooievaar;Ciconia ciconia;2;0;0;0;2;nee;ja;ja;nee
+Broedvogels;Ortolaan;Emberiza hortulana;1;0;0;0;0;nee;nee;nee;nee
+Broedvogels;Paapje;Saxicola rubetra;0;0;0;2;0;ja;ja;ja;ja
+Vaatplanten;Parnassia;Parnassia palustris;0;0;0;2;0;nee;ja;ja;nee
+Overwinterende watervogels;Pijlstaart;Anas acuta;2;0;0;0;0;ja;ja;nee;nee
+Vaatplanten;Pilvaren;Pilularia globulifera;0;0;0;2;0;ja;ja;ja;nee
+Mollusken;Platte schijfhoren;Anisus (Disculifer);0;2;0;0;0;nee;ja;nee;nee
+Amfibieen;Poelkikker;Pelophylax lessonae;0;2;2;2;0;ja;ja;nee;nee
+Broedvogels;Porseleinhoen;Porzana porzana;2;0;2;0;2;ja;ja;ja;nee
+Vaatplanten;Purperorchis;Orchis purpurea;0;0;0;2;0;ja;ja;ja;nee
+Broedvogels;Purperreiger;Ardea purpurea;2;0;0;0;2;nee;ja;ja;nee
+Overwinterende watervogels;Regenwulp;Numenius phaeopus;1;0;0;0;2;ja;ja;nee;nee
+Vissen;Rivierdonderpad;Cottus perifretum;0;2;2;0;2;nee;nee;nee;nee
+Vissen;Rivierprik;Lampetra fluviatilis;0;2;0;0;0;nee;nee;nee;nee
+Libellen;Rivierrombout;Stylurus flavipes;0;2;0;0;0;nee;ja;nee;nee
+Vaatplanten;Rode dophei;Erica cinerea;0;0;0;2;0;ja;ja;ja;nee
+Broedvogels;Roerdomp;Botaurus stellaris;2;0;2;0;2;ja;ja;ja;nee
+Vaatplanten;Ronde zegge;Carex diandra;0;0;0;2;0;nee;ja;ja;nee
+Vaatplanten;Ronde zonnedauw;Drosera rotundifolia;0;0;0;2;0;ja;ja;ja;ja
+Zoogdieren_Vleermuizen;Rosse vleermuis;Nyctalus noctula;0;2;2;0;0;nee;nee;nee;nee
+Amfibieen;Rugstreeppad;Epidalea calamita;0;2;2;2;0;ja;ja;nee;nee
+Zoogdieren_Vleermuizen;Ruige dwergvleermuis;Pipistrellus nathusii;0;2;2;0;0;nee;nee;nee;nee
+Vaatplanten;Schedegeelster;Gagea spathacea;0;0;0;2;0;ja;ja;ja;nee
+Vaatplanten;Schubzegge;Carex lepidocarpa;0;0;0;2;0;nee;ja;ja;nee
+Vissen;Serpeling;Leuciscus leuciscus;0;0;0;2;0;nee;nee;nee;nee
+Libellen;Sierlijke witsnuitlibel;Leucorrhinia caudalis;0;2;0;0;0;ja;ja;ja;nee
+Vaatplanten;Slank wollegras;Eriophorum gracile;0;0;0;2;0;ja;ja;ja;nee
+Broedvogels;Slechtvalk;Falco peregrinus;2;0;0;0;0;nee;nee;nee;nee
+Vaatplanten;Slijkzegge;Carex limosa;0;0;0;2;0;ja;ja;ja;nee
+Overwinterende watervogels;Slobeend;Spatula clypeata;2;0;0;0;0;ja;ja;nee;nee
+Overwinterende watervogels;Smient;Anas penelope;2;0;0;0;0;ja;ja;nee;nee
+Nachtvlinders;Spaanse vlag;Euplagia quadripunctaria;0;2;0;0;0;ja;ja;ja;nee
+Libellen;Speerwaterjuffer;Coenagrion hastulatum;0;0;0;2;0;ja;ja;ja;nee
+Overwinterende watervogels;Steenloper;Arenaria interpres;2;0;0;0;2;nee;ja;nee;nee
+Broedvogels;Steltkluut;Himantopus himantopus;2;0;0;0;2;nee;ja;ja;nee
+Overwinterende watervogels;Stormmeeuw;Larus canus;2;0;0;0;0;nee;nee;nee;nee
+Broedvogels;Strandplevier;Charadrius alexandrinus;2;0;0;2;2;nee;ja;ja;nee
+Overwinterende watervogels;Tafeleend;Aythya ferina;2;0;0;0;0;ja;ja;nee;nee
+Broedvogels;Tapuit;Oenanthe oenanthe;0;0;0;2;2;ja;ja;ja;nee
+Nachtvlinders;Teunisbloempijlstaart;Proserpinus proserpina;0;2;0;0;0;nee;nee;nee;nee
+Overwinterende watervogels;Toendrarietgans;Anser serrirostris;2;0;0;0;2;nee;ja;nee;nee
+Broedvogels;Tureluur;Tringa totanus;0;0;0;2;0;nee;ja;ja;nee
+Vaatplanten;Tweehuizige zegge;Carex dioica;0;0;0;2;0;ja;ja;ja;nee
+Zoogdieren_Vleermuizen;Tweekleurige vleermuis;Vespertilio murinus;0;2;2;0;0;nee;nee;nee;nee
+Zoogdieren_Vleermuizen;Vale vleermuis;Myotis myotis;0;2;2;0;0;nee;nee;nee;nee
+Vaatplanten;Veenbies;Trichophorum cespitosus;0;0;0;2;0;nee;ja;ja;nee
+Vaatplanten;Veenmosorchis;Hammarbya paludosa;0;0;0;2;0;ja;ja;ja;nee
+Vaatplanten;Veenpluis;Eriophorum angustifolium;0;0;0;2;0;ja;ja;ja;nee
+Sprinkhanen;Veldkrekel;Gryllus campestris;0;0;0;2;0;ja;ja;ja;nee
+Libellen;Venglazenmaker;Aeshna juncea;0;0;0;2;0;ja;ja;ja;nee
+Libellen;Venwitsnuitlibel;Leucorrhinia dubia;0;0;0;2;0;ja;ja;ja;nee
+Saproxyle kevers;Vermiljoenkever;Cucujus cinnaberinus;0;2;0;0;0;nee;ja;ja;nee
+Broedvogels;Visdief;Sterna hirundo;2;0;0;0;2;nee;ja;ja;nee
+Saproxyle kevers;Vliegend hert;Lucanus cervus;0;2;2;0;0;ja;ja;ja;nee
+Vaatplanten;Vlozegge;Carex pulicaris;0;0;0;2;0;ja;ja;ja;nee
+Amfibieen;Vroedmeesterpad;Alytes obstetricans;0;2;2;0;2;ja;ja;nee;nee
+Amfibieen;Vuursalamander;Salamandra salamandra;0;0;0;2;0;ja;ja;nee;nee
+Vaatplanten;Walstrobremraap;Orobanche caryophyllacea;0;0;0;2;0;nee;ja;ja;nee
+Vaatplanten;Waterdrieblad;Menyanthes trifoliata;0;0;0;2;0;ja;ja;ja;nee
+Vaatplanten;Waterlobelia;Lobelia dortmanna;0;0;0;2;0;ja;ja;ja;nee
+Overwinterende watervogels;Waterrietzanger;Acrocephalus paludicola;1;0;0;0;0;nee;ja;nee;nee
+Vaatplanten;Waterscheerling;Cicuta virosa;0;0;0;2;0;ja;ja;ja;nee
+Broedvogels;Watersnip;Gallinago gallinago;0;0;0;2;0;ja;ja;ja;ja
+Zoogdieren;Waterspitsmuis;Neomys fodiens;0;0;0;2;0;ja;ja;ja;nee
+Zoogdieren_Vleermuizen;Watervleermuis;Myotis daubentonii;0;2;2;0;0;nee;nee;nee;nee
+Vaatplanten;Weidekervel-torkruid;Oenanthe silaifolia;0;0;0;2;0;ja;ja;ja;nee
+Vaatplanten;Welriekende nachtorchis;Platanthera bifolia;0;0;0;2;0;ja;ja;ja;nee
+Broedvogels;Wespendief;Pernis apivorus;2;0;0;0;2;ja;ja;ja;nee
+Broedvogels;Wielewaal;Oriolus oriolus;0;0;0;2;0;ja;ja;ja;ja
+Vaatplanten;Wijdbloeiende rus;Juncus tenageia;0;0;0;2;0;nee;ja;ja;nee
+Zoogdieren;Wilde kat;Felis silvestris;0;2;0;0;0;nee;nee;nee;nee
+Overwinterende watervogels;Wintertaling;Anas crecca;2;0;0;0;0;ja;ja;nee;nee
+Vaatplanten;Witte snavelbies;Rhynchospora alba;0;0;0;2;0;ja;ja;ja;ja
+Vaatplanten;Witte waterranonkel;Ranunculus ololeucos;0;0;0;2;0;ja;ja;ja;nee
+Zoogdieren;Wolf;Canis lupus;0;2;0;0;0;nee;nee;nee;nee
+Vaatplanten;Wondklaver;Anthyllis vulneraria;0;0;0;2;0;nee;ja;ja;nee
+Broedvogels;Woudaap;Ixobrychus minutus;2;0;0;0;2;ja;ja;ja;nee
+Broedvogels;Wulp;Numenius arquata;0;0;2;0;0;ja;ja;ja;nee
+Overwinterende watervogels;Wulp;Numenius arquata;2;0;0;0;2;ja;ja;nee;nee
+Sprinkhanen;Zadelsprinkhaan;Ephippiger diurnus;0;0;0;2;0;ja;ja;ja;nee
+Vaatplanten;Zeealsem;Artemisia maritima;0;0;0;2;0;nee;ja;ja;nee
+Broedvogels;Zeearend;Haliaeetus albicilla;1;0;0;0;1;nee;nee;nee;nee
+Vissen;Zeeprik;Petromyzon marinus;0;2;0;0;0;nee;nee;nee;nee
+Mollusken;Zeggenkorfslak;Vertigo moulinsiana;0;2;0;0;0;nee;ja;nee;nee
+Overwinterende watervogels;Zilvermeeuw;Larus argentatus;2;0;0;0;0;nee;nee;nee;nee
+Broedvogels;Zomertortel;Streptopelia turtur;0;0;2;0;0;ja;ja;ja;nee
+Sprinkhanen;Zompsprinkhaan;Pseudochorthippus montanus;0;0;0;2;0;ja;ja;ja;nee
+Broedvogels;Zwarte specht;Dryocopus martius;2;0;0;0;2;ja;ja;ja;nee
+Broedvogels;Zwarte stern;Chlidonias niger;1;0;0;0;1;nee;ja;ja;nee
+Broedvogels;Zwartkopmeeuw;Ichtyaetus melanocephalus;2;0;0;0;2;ja;ja;ja;nee
+;;;;;;;;;;;
+;;;;;;;;;;;
+;;;;;;;ja;130;193;;
+;;;;;;;nee;106;44;;
+;;;;;;;totaal;237;237;;

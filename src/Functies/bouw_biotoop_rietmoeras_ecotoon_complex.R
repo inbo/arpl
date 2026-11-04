@@ -29,7 +29,6 @@ bouw_biotoop_rietmoeras_ecotoon_complex <- function(soort_naam, params_soort, ds
       r_tp <- extract_bwk_laag(soort_naam, tp, ds_parquet, df_bwk_codes, master_grid)
       lagen[[tp]] <- if (!is.null(r_tp)) r_tp else (master_grid * NA)
     }
-    # Veilig inpakken vóór wegschrijven naar RDS
     lagen_packed <- lapply(lagen, terra::wrap)
     saveRDS(lagen_packed, f_cache_rds)
     message("    💾 [CACHE] Parquet-lagen veilig bewaard.")
@@ -47,30 +46,23 @@ bouw_biotoop_rietmoeras_ecotoon_complex <- function(soort_naam, params_soort, ds
   # ----------------------------------------------------------------------------
   message("    🚫 Stoorlagen isoleren (hooggroen en estuaria 1130)...")
   
-  # A. Hooggroen (Groenkaart 2021)
-  f_groen_al <- hulp_align_gdal(paths$groenkaart, master_grid)
-  r_groen    <- terra::rast(f_groen_al)
-  r_bos_bin  <- terra::ifel(!is.na(r_groen) & (r_groen == 1 | r_groen > 0), 1, NA)
+  # A. Hooggroen (strikt klasse 1 in Groenkaart 2021)
+  f_groen_al     <- hulp_align_gdal(paths$groenkaart, master_grid)
+  r_groen        <- terra::rast(f_groen_al)
+  r_bomen_direct <- terra::ifel(!is.na(r_groen) & r_groen == 1, 1, NA)
   unlink(f_groen_al)
   rm(r_groen)
   
-  # B. Estuarium (code 1130 uit Parquet)
-  t_est <- ds_parquet %>%
-    dplyr::filter(tolower(CODE) == "1130") %>%
-    dplyr::collect() %>%
-    data.table::as.data.table()
+  # B. Estuarium (code 1130 veilig via Parquet helper)
+  r_est_bin <- vul_raster_vanuit_parquet(
+    ds_parquet  = ds_parquet,
+    codes_exact = "1130",
+    master_grid = master_grid,
+    waarde_vast = 1
+  )
   
-  r_est_bin <- master_grid * NA
-  if (nrow(t_est) > 0) {
-    t_est[, CODE := tolower(trimws(CODE))]
-    t_est_cel <- unique(t_est, by = c("cel_id", "CODE"))[, .(Val = 1), by = cel_id]
-    r_est_bin[t_est_cel$cel_id] <- 1
-    rm(t_est_cel)
-  }
-  rm(t_est)
-  
-  stoorlaag <- terra::cover(r_bos_bin, r_est_bin)
-  rm(r_bos_bin, r_est_bin)
+  stoorlaag <- terra::cover(r_bomen_direct, r_est_bin)
+  rm(r_bomen_direct, r_est_bin)
   gc()
   
   # ----------------------------------------------------------------------------
@@ -78,22 +70,22 @@ bouw_biotoop_rietmoeras_ecotoon_complex <- function(soort_naam, params_soort, ds
   # ----------------------------------------------------------------------------
   message("    🌾 Basishabitat (6 componenten) samenvoegen en schonen van stoorlagen...")
   
-  w_c  <- terra::ifel(is.na(r_water_raw),    0, r_water_raw)
-  r_c  <- terra::ifel(is.na(r_riet_raw),     0, r_riet_raw)
-  z_c  <- terra::ifel(is.na(r_zegge_raw),    0, r_zegge_raw)
-  m_c  <- terra::ifel(is.na(r_moeras_raw),   0, r_moeras_raw)
-  g_c  <- terra::ifel(is.na(r_gras_raw),     0, r_gras_raw)
-  s_c  <- terra::ifel(is.na(r_struweel_raw), 0, r_struweel_raw)
+  # Samenvoegen basishabitat via cover conform Bert
+  r_bio_bruto <- terra::cover(r_water_raw, r_riet_raw)
+  r_bio_bruto <- terra::cover(r_bio_bruto, r_zegge_raw)
+  r_bio_bruto <- terra::cover(r_bio_bruto, r_moeras_raw)
+  r_bio_bruto <- terra::cover(r_bio_bruto, r_gras_raw)
+  r_bio_bruto <- terra::cover(r_bio_bruto, r_struweel_raw)
+  r_bio_bruto <- terra::clamp(r_bio_bruto, upper = 1.0)
   
-  r_bio_som <- w_c + r_c + z_c + m_c + g_c + s_c
-  r_bio_bruto <- terra::ifel(r_bio_som > 0, terra::clamp(r_bio_som, upper = 1.0), NA)
-  rm(w_c, r_c, z_c, m_c, g_c, s_c, r_bio_som, r_zegge_raw, r_moeras_raw, r_gras_raw, r_struweel_raw)
+  rm(r_zegge_raw, r_moeras_raw, r_gras_raw, r_struweel_raw)
   gc()
   
+  # Filteren met de stoorlaag
   r_leefgebied1 <- terra::mask(r_bio_bruto, stoorlaag, inverse = TRUE)
   r_riet_clean  <- terra::mask(r_riet_raw,  stoorlaag, inverse = TRUE)
   r_water_clean <- terra::mask(r_water_raw, stoorlaag, inverse = TRUE)
-  rm(r_bio_bruto, stoorlaag, r_riet_raw, r_water_raw)
+  rm(r_bio_bruto, stoorlaag)
   gc()
   
   ha_leef1 <- calc_ha_exact(r_leefgebied1)
@@ -118,15 +110,12 @@ bouw_biotoop_rietmoeras_ecotoon_complex <- function(soort_naam, params_soort, ds
   gc()
   
   if (!all(is.na(suppressWarnings(terra::minmax(r_water_10ha))))) {
-    r_w10_bin <- terra::ifel(!is.na(r_water_10ha) & r_water_10ha > 0, 1, NA)
-    
     f_w10_bin <- tempfile(fileext = ".tif")
-    terra::writeRaster(r_w10_bin, f_w10_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 0)
+    terra::writeRaster(terra::ifel(!is.na(r_water_10ha) & r_water_10ha > 0, 1, NA), f_w10_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
     f_prox_w10 <- hulp_proximity_gdal(f_w10_bin, 100)
     unlink(f_w10_bin)
-    rm(r_w10_bin)
     
-    p_w10 <- terra::rast(f_prox_w10)
+    p_w10      <- terra::rast(f_prox_w10)
     mask_w100m <- terra::ifel(!is.na(p_w10) & p_w10 >= 0 & p_w10 <= 100, 1, NA)
     unlink(f_prox_w10)
     rm(p_w10)
@@ -149,12 +138,12 @@ bouw_biotoop_rietmoeras_ecotoon_complex <- function(soort_naam, params_soort, ds
   
   if (!all(is.na(suppressWarnings(terra::minmax(r_riet_bin)))) && !all(is.na(suppressWarnings(terra::minmax(r_water_clean))))) {
     # 10m buffer rond riet via GDAL proximity
-    f_r_bin   <- tempfile(fileext = ".tif")
-    terra::writeRaster(r_riet_bin, f_r_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 0)
+    f_r_bin    <- tempfile(fileext = ".tif")
+    terra::writeRaster(r_riet_bin, f_r_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
     f_prox_r10 <- hulp_proximity_gdal(f_r_bin, 10)
     unlink(f_r_bin)
     
-    p_r10 <- terra::rast(f_prox_r10)
+    p_r10        <- terra::rast(f_prox_r10)
     mask_riet10m <- terra::ifel(!is.na(p_r10) & p_r10 >= 0 & p_r10 <= 10, 1, NA)
     unlink(f_prox_r10)
     rm(p_r10)
@@ -180,12 +169,12 @@ bouw_biotoop_rietmoeras_ecotoon_complex <- function(soort_naam, params_soort, ds
     gc()
     
     if (!all(is.na(suppressWarnings(terra::minmax(r_wk_05ha))))) {
-      f_wk_bin <- tempfile(fileext = ".tif")
-      terra::writeRaster(terra::ifel(!is.na(r_wk_05ha) & r_wk_05ha > 0, 1, NA), f_wk_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 0)
+      f_wk_bin  <- tempfile(fileext = ".tif")
+      terra::writeRaster(terra::ifel(!is.na(r_wk_05ha) & r_wk_05ha > 0, 1, NA), f_wk_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
       f_prox_wk <- hulp_proximity_gdal(f_wk_bin, 100)
       unlink(f_wk_bin)
       
-      p_wk <- terra::rast(f_prox_wk)
+      p_wk        <- terra::rast(f_prox_wk)
       mask_wk100m <- terra::ifel(!is.na(p_wk) & p_wk >= 0 & p_wk <= 100, 1, NA)
       unlink(f_prox_wk)
       rm(p_wk)
@@ -222,12 +211,12 @@ bouw_biotoop_rietmoeras_ecotoon_complex <- function(soort_naam, params_soort, ds
   gc()
   
   if (!all(is.na(suppressWarnings(terra::minmax(r_nest_05ha))))) {
-    f_nest_bin <- tempfile(fileext = ".tif")
-    terra::writeRaster(terra::ifel(!is.na(r_nest_05ha) & r_nest_05ha > 0, 1, NA), f_nest_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 0)
+    f_nest_bin  <- tempfile(fileext = ".tif")
+    terra::writeRaster(terra::ifel(!is.na(r_nest_05ha) & r_nest_05ha > 0, 1, NA), f_nest_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
     f_prox_nest <- hulp_proximity_gdal(f_nest_bin, 100)
     unlink(f_nest_bin)
     
-    p_nest <- terra::rast(f_prox_nest)
+    p_nest        <- terra::rast(f_prox_nest)
     mask_nest100m <- terra::ifel(!is.na(p_nest) & p_nest >= 0 & p_nest <= 100, 1, NA)
     unlink(f_prox_nest)
     rm(p_nest)
@@ -262,8 +251,24 @@ bouw_biotoop_rietmoeras_ecotoon_complex <- function(soort_naam, params_soort, ds
   rm(res_meta, r_leefgebied4)
   gc()
   
+  ha_finaal <- calc_ha_exact(final_opp)
+  message(sprintf("       -> Definitief metapopulatie-leefgebied Roerdomp: %.2f ha", ha_finaal))
+  
+  # Deellagen isoleren binnen het definitieve netwerkcomplex
+  if (!all(is.na(suppressWarnings(terra::minmax(cl_opp))))) {
+    riet_uitvoer  <- terra::mask(r_riet_raw, cl_opp)
+    water_uitvoer <- terra::mask(r_water_raw, cl_opp)
+  } else {
+    riet_uitvoer  <- master_grid * NA
+    water_uitvoer <- master_grid * NA
+  }
+  rm(r_riet_raw, r_water_raw)
+  gc()
+  
   return(list(
     final_opp = final_opp,
-    cl_opp    = cl_opp
+    cl_opp    = cl_opp,
+    rietland  = riet_uitvoer,
+    openwater = water_uitvoer
   ))
 }

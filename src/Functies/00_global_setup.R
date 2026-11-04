@@ -45,12 +45,14 @@ PATHS <- list(
   
   # Externe Omgevingsrasters
   groenkaart          = here::here("data", "input", "ASCI Files", "Groenkaart_2021.tif"),
+  ecoregio            = here::here("data", "input", "ASCI Files", "ecodistrict.tif"),
+  maas                = here::here("data", "input", "Raster_Vlaanderen", "Maas.tif"),
   drainage            = here::here("data", "input", "Raster_Vlaanderen", "vlaanderen_drainage_n2khab_10m.tif"),
   profiel             = here::here("data", "input", "Raster_Vlaanderen", "Vlaanderen_profiel_10m.tif"),
+  textuur             = here::here("data", "input", "Raster_Vlaanderen", "Vlaanderen_textuur_10m.tif"),
   overstroming        = here::here("data", "input", "Raster_Vlaanderen", "vlaanderen_ovstrg_10m.tif"),
   grb_water           = here::here("data", "input", "Raster_Vlaanderen", "vlaanderen_grb_water_10m.tif"),
   watervlakken        = here::here("data", "input", "Raster_Vlaanderen", "vlaanderen_watervlakken_2024_10m.tif"),
-  maas                = here::here("data", "input", "Raster_Vlaanderen", "maas_10m.tif"),
   huetzon             = here::here("data", "input", "Raster_Vlaanderen", "vlaanderen_huetzon_10m.tif"),
   lgp_landbouw        = here::here("data", "input", "Raster_Vlaanderen", "vlaanderen_lgp_gwscod_2025_10m.tif"),
   grb_wegen           = here::here("data", "input", "Raster_Vlaanderen", "GRB_Wegverbinding_at.tif"),

@@ -4,77 +4,82 @@
 # Geschikt voor: Kwartelkoning, Watersnip, etc.
 # ==============================================================================
 
-bouw_biotoop_vallei_grasland_mozaiek <- function(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths) {
+bouw_biotoop_valleigrasland_vogel <- function(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths) {
   
   bestandsnaam <- tolower(gsub(" ", "", soort_naam))
   soort_cache  <- file.path(paths$dir_cache, bestandsnaam)
   dir.create(soort_cache, showWarnings = FALSE, recursive = TRUE)
   
-  f_cache_rds <- file.path(soort_cache, "01_raw_parquet_layers.rds")
-  
-  # ----------------------------------------------------------------------------
-  # 1. PARQUET EXTRACTIE (met persistente cache)
-  # ----------------------------------------------------------------------------
   types_in_tabel <- unique(params_soort$Type)
   
-  if (file.exists(f_cache_rds)) {
-    message("    📦 [CACHE] Ruwe Parquet-lagen ingeladen van schijf...")
-    lagen_packed <- readRDS(f_cache_rds)
-    lagen <- lapply(lagen_packed, terra::unwrap)
-  } else {
-    message(paste0("    ⏳ Parquet-lagen extraheren voor ", soort_naam, "..."))
-    lagen <- list()
-    for (tp in types_in_tabel) {
+  # ----------------------------------------------------------------------------
+  # 1. PARQUET EXTRACTIE (met robuuste GeoTIFF-caching op schijf)
+  # ----------------------------------------------------------------------------
+  lagen <- list()
+  
+  for (tp in types_in_tabel) {
+    f_tif_cache <- file.path(soort_cache, paste0("laag_", tp, ".tif"))
+    
+    if (file.exists(f_tif_cache)) {
+      message(paste0("    📦 [CACHE] Laag '", tp, "' ingeladen van schijf..."))
+      lagen[[tp]] <- terra::rast(f_tif_cache)
+    } else {
+      message(paste0("    ⏳ Parquet-laag '", tp, "' extraheren voor ", soort_naam, "..."))
       r_tp <- extract_bwk_laag(soort_naam, tp, ds_parquet, df_bwk_codes, master_grid)
-      lagen[[tp]] <- if (!is.null(r_tp)) r_tp else (master_grid * NA)
+      if (is.null(r_tp)) r_tp <- master_grid * NA_real_
+      
+      terra::writeRaster(
+        r_tp, 
+        filename  = f_tif_cache, 
+        overwrite = TRUE, 
+        datatype  = "FLT4S", 
+        gdal      = c("COMPRESS=LZW")
+      )
+      lagen[[tp]] <- terra::rast(f_tif_cache)
     }
-    lagen_packed <- lapply(lagen, terra::wrap)
-    saveRDS(lagen_packed, f_cache_rds)
-    message("    💾 [CACHE] Parquet-lagen veilig bewaard.")
   }
   
-  r_grasland_raw <- if ("grasland" %in% names(lagen)) lagen[["grasland"]] else (master_grid * NA)
-  r_moeras_raw   <- if ("moeras"   %in% names(lagen)) lagen[["moeras"]]   else (master_grid * NA)
+  r_grasland_raw     <- if ("grasland"      %in% names(lagen)) lagen[["grasland"]]      else (master_grid * NA)
+  r_moeras_raw       <- if ("moeras"        %in% names(lagen)) lagen[["moeras"]]        else (master_grid * NA)
+  r_zeergeschikt_raw <- if ("zeergeschikt1" %in% names(lagen)) lagen[["zeergeschikt1"]] else (master_grid * NA)
   
-  # Terrils uitsluiten uit Parquet (kg codes)
-  t_terril <- ds_parquet %>%
-    dplyr::filter(stringr::str_detect(tolower(CODE), "^kg")) %>%
-    dplyr::collect() %>%
-    data.table::as.data.table()
-  
-  r_terril_bin <- master_grid * NA
-  if (nrow(t_terril) > 0) {
-    t_terril[, CODE := tolower(trimws(CODE))]
-    t_terril_cel <- unique(t_terril, by = c("cel_id", "CODE"))[, .(Val = 1), by = cel_id]
-    r_terril_bin[t_terril_cel$cel_id] <- 1
-    rm(t_terril_cel)
-  }
-  rm(t_terril)
-  gc()
+  # Terrils veilig uitsluiten via centrale Parquet helper (^kg codes)
+  r_terril_bin <- vul_raster_vanuit_parquet(
+    ds_parquet  = ds_parquet,
+    codes_bevat = "kg",
+    master_grid = master_grid,
+    waarde_vast = 1
+  )
   
   # ----------------------------------------------------------------------------
   # 2. INITIËLE SAMENVOEGING & DIRECTE UITSLUITINGEN (HOOGGROEN & TERRILS)
   # ----------------------------------------------------------------------------
   message("    🌾 Grasland en moeras samenvoegen, hooggroen en terrils direct uitsluiten...")
-  g_c <- terra::ifel(is.na(r_grasland_raw), 0, r_grasland_raw)
-  m_c <- terra::ifel(is.na(r_moeras_raw),   0, r_moeras_raw)
-  r_bio_bruto <- terra::ifel((g_c + m_c) > 0, terra::clamp(g_c + m_c, upper = 1.0), NA)
-  rm(g_c, m_c)
-  gc()
   
-  # Directe uitsluiting van bomen/hooggroen en terrils
+  # Basisbiotoop samenvoegen via cover
+  r_bio_bruto <- terra::cover(r_grasland_raw, r_moeras_raw)
+  if (!all(is.na(suppressWarnings(terra::minmax(r_zeergeschikt_raw))))) {
+    r_bio_bruto <- terra::cover(r_bio_bruto, r_zeergeschikt_raw)
+  }
+  r_bio_bruto <- terra::clamp(r_bio_bruto, upper = 1.0)
+  
+  # Directe uitsluiting: uitsluitend klasse 1 van de Groenkaart (bomen/bos) en terrils
   f_groen_aligned <- hulp_align_gdal(paths$groenkaart, master_grid)
   r_groen         <- terra::rast(f_groen_aligned)
-  mask_direct_fout <- terra::ifel((!is.na(r_groen) & (r_groen == 1 | r_groen > 0)) | (!is.na(r_terril_bin) & r_terril_bin == 1), 1, NA)
+  r_bomen_direct  <- terra::ifel(!is.na(r_groen) & r_groen == 1, 1, NA)
   unlink(f_groen_aligned)
-  rm(r_groen, r_terril_bin)
+  rm(r_groen)
   
-  r_bio_fase1 <- terra::mask(r_bio_bruto, mask_direct_fout, inverse = TRUE)
-  rm(r_bio_bruto, mask_direct_fout)
+  # Maskeer directe bomen en terrils
+  r_bio_fase1 <- terra::mask(r_bio_bruto, r_bomen_direct, inverse = TRUE)
+  if (!all(is.na(suppressWarnings(terra::minmax(r_terril_bin))))) {
+    r_bio_fase1 <- terra::mask(r_bio_fase1, r_terril_bin, inverse = TRUE)
+  }
+  rm(r_bio_bruto, r_terril_bin)
   gc()
   
   ha_fase1 <- calc_ha_exact(r_bio_fase1)
-  message(sprintf("       -> Biotoop na uitsluiting van hooggroen en terrils: %.2f ha", ha_fase1))
+  message(sprintf("       -> Biotoop na directe uitsluiting van bomen en terrils: %.2f ha", ha_fase1))
   
   # ----------------------------------------------------------------------------
   # 3. VALLEIGRONDEN STUURKAART (PROFIEL p/p+x OF DRAINAGE d-i OF OVERSTROMING 1-2)
@@ -86,7 +91,7 @@ bouw_biotoop_vallei_grasland_mozaiek <- function(soort_naam, params_soort, ds_pa
   
   if (file.exists(f_cache_prof)) {
     mask_profiel <- terra::rast(f_cache_prof)
-  } else if (file.exists(paths$profiel)) {
+  } else if (!is.null(paths$profiel) && file.exists(paths$profiel)) {
     r_prof_orig <- terra::rast(paths$profiel)
     leg_prof    <- terra::cats(r_prof_orig)[[1]]
     
@@ -95,7 +100,6 @@ bouw_biotoop_vallei_grasland_mozaiek <- function(soort_naam, params_soort, ds_pa
       kol_label <- colnames(leg_prof)[tolower(colnames(leg_prof)) %in% c("label", "omschrijving", "naam", "profiel")][1]
       kol_val   <- colnames(leg_prof)[tolower(colnames(leg_prof)) %in% c("value", "id")][1]
       if (is.na(kol_val)) kol_val <- 1
-      
       if (!is.na(kol_label)) {
         ok_prof_ids <- leg_prof[[kol_val]][tolower(trimws(as.character(leg_prof[[kol_label]]))) %in% c("p", "p+x")]
       }
@@ -104,17 +108,9 @@ bouw_biotoop_vallei_grasland_mozaiek <- function(soort_naam, params_soort, ds_pa
     
     f_prof_al <- hulp_align_gdal(paths$profiel, master_grid)
     r_prof    <- terra::rast(f_prof_al)
-    
-    if (length(ok_prof_ids) > 0) {
-      mask_profiel <- terra::ifel(!is.na(r_prof) & r_prof %in% ok_prof_ids, 1, NA)
-    } else {
-      # Fallback: indien profiel p numeriek gecodeerd is of geen cats heeft
-      message("       ℹ️ Geen tekstuele profielcodes 'p'/'p+x' gevonden in cats; controleer profielcodering.")
-      mask_profiel <- master_grid * NA
-    }
+    mask_profiel <- if (length(ok_prof_ids) > 0) terra::ifel(!is.na(r_prof) & r_prof %in% ok_prof_ids, 1, NA) else (master_grid * NA)
     unlink(f_prof_al)
     rm(r_prof)
-    
     terra::writeRaster(mask_profiel, f_cache_prof, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
   } else {
     mask_profiel <- master_grid * NA
@@ -124,7 +120,7 @@ bouw_biotoop_vallei_grasland_mozaiek <- function(soort_naam, params_soort, ds_pa
   mask_drainage <- master_grid * NA
   if (exists("haal_drainage_masker", mode = "function")) {
     mask_drainage <- haal_drainage_masker(paths$drainage, master_grid, paths$dir_cache)
-  } else if (file.exists(paths$drainage)) {
+  } else if (!is.null(paths$drainage) && file.exists(paths$drainage)) {
     f_drain_al <- hulp_align_gdal(paths$drainage, master_grid)
     r_drain    <- terra::rast(f_drain_al)
     leg_drain  <- terra::cats(r_drain)[[1]]
@@ -139,9 +135,8 @@ bouw_biotoop_vallei_grasland_mozaiek <- function(soort_naam, params_soort, ds_pa
         ok_d_ids <- leg_drain[[kol_val_d]][tolower(trimws(as.character(leg_drain[[kol_label_d]]))) %in% drain_codes_ok]
       }
     }
-    if (length(ok_d_ids) > 0) {
-      mask_drainage <- terra::ifel(!is.na(r_drain) & r_drain %in% ok_d_ids, 1, NA)
-    }
+    if (length(ok_d_ids) == 0) ok_d_ids <- c(4, 5, 6, 7, 8, 9, 45, 56, 89)
+    mask_drainage <- terra::ifel(!is.na(r_drain) & r_drain %in% ok_d_ids, 1, NA)
     unlink(f_drain_al)
     rm(r_drain)
   }
@@ -151,10 +146,10 @@ bouw_biotoop_vallei_grasland_mozaiek <- function(soort_naam, params_soort, ds_pa
   
   if (file.exists(f_cache_ovstr)) {
     mask_overstroming <- terra::rast(f_cache_ovstr)
-  } else if (file.exists(paths$overstroming)) {
+  } else if (!is.null(paths$overstroming) && file.exists(paths$overstroming)) {
     f_ovstr_al <- hulp_align_gdal(paths$overstroming, master_grid)
     r_ovstr    <- terra::rast(f_ovstr_al)
-    mask_overstroming <- terra::ifel(!is.na(r_ovstr) & (r_ovstr == 1 | r_ovstr == 2), 1, NA)
+    mask_overstroming <- terra::ifel(!is.na(r_ovstr) & (r_ovstr %in% c(1, 2)), 1, NA)
     unlink(f_ovstr_al)
     rm(r_ovstr)
     terra::writeRaster(mask_overstroming, f_cache_ovstr, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
@@ -162,13 +157,11 @@ bouw_biotoop_vallei_grasland_mozaiek <- function(soort_naam, params_soort, ds_pa
     mask_overstroming <- master_grid * NA
   }
   
-  # OR-koppeling over de drie valleistuurkaarten (profiel OF drainage OF overstroming)
-  w_p <- terra::ifel(!is.na(mask_profiel), 1, 0)
-  w_d <- terra::ifel(!is.na(mask_drainage), 1, 0)
-  w_o <- terra::ifel(!is.na(mask_overstroming), 1, 0)
-  
-  vallei_geschikt <- terra::ifel((w_p + w_d + w_o) > 0, 1, NA)
-  rm(w_p, w_d, w_o, mask_profiel, mask_drainage, mask_overstroming)
+  # OR-koppeling over de drie valleistuurkaarten
+  vallei_geschikt <- terra::cover(mask_profiel, mask_drainage)
+  vallei_geschikt <- terra::cover(vallei_geschikt, mask_overstroming)
+  vallei_geschikt <- terra::ifel(!is.na(vallei_geschikt) & vallei_geschikt > 0, 1, NA)
+  rm(mask_profiel, mask_drainage, mask_overstroming)
   gc()
   
   ha_vallei <- calc_ha_exact(vallei_geschikt)
@@ -232,7 +225,7 @@ bouw_biotoop_vallei_grasland_mozaiek <- function(soort_naam, params_soort, ds_pa
   # ----------------------------------------------------------------------------
   # 6. NEGATIEVE HOOGGROEN BUFFER (100M BUFFER ROND CLUSTERS >= 20 ARE)
   # ----------------------------------------------------------------------------
-  message("    🌲 Predatiestoring uitsluiten (100m buffer rond hooggroenclusters >= 20 are)...")
+  message("    🌲 Predatiestoring uitsluiten (100m buffer rond hooggroen conform Bert)...")
   
   f_cache_groen100 <- file.path(paths$dir_cache, "masker_groen_100m_cluster.tif")
   
@@ -240,44 +233,24 @@ bouw_biotoop_vallei_grasland_mozaiek <- function(soort_naam, params_soort, ds_pa
     message("       -> [CACHE] Hooggroen-100m storingsbuffer ingeladen van schijf...")
     masker_groen_100m <- terra::rast(f_cache_groen100)
   } else {
-    f_groen_al   <- hulp_align_gdal(paths$groenkaart, master_grid)
-    r_groen_raw  <- terra::rast(f_groen_al)
-    r_groen_bin  <- terra::ifel(!is.na(r_groen_raw) & (r_groen_raw == 1 | r_groen_raw > 0), 1, NA)
-    unlink(f_groen_al)
-    rm(r_groen_raw)
+    r_groen_bin <- terra::ifel(!is.na(r_bomen_direct), 1, 0)
+    w_mat <- matrix(1, nrow = 5, ncol = 5)
     
-    # Clump via GRASS om clusters >= 20 are (20 cellen) te detecteren
-    f_g_bin   <- tempfile(fileext = ".tif")
-    f_cl_g    <- tempfile(fileext = ".tif")
-    terra::writeRaster(r_groen_bin, f_g_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
+    f_focal_groen <- tempfile(fileext = ".tif")
+    groen_som <- terra::focal(r_groen_bin, w = w_mat, fun = "sum", na.rm = TRUE, filename = f_focal_groen, overwrite = TRUE)
     rm(r_groen_bin)
-    gc()
     
-    e <- terra::ext(master_grid)
-    qgisprocess::qgis_run_algorithm(
-      "grass:r.clump", input = f_g_bin, output = f_cl_g, title = "cl_groen_20are",
-      "-d" = FALSE, GRASS_REGION_PARAMETER = sprintf("%f,%f,%f,%f", e$xmin, e$xmax, e$ymin, e$ymax),
-      GRASS_REGION_CELLSIZE_PARAMETER = 10, .quiet = TRUE
-    )
-    unlink(f_g_bin)
+    r_groen_cluster <- terra::ifel(!is.na(groen_som) & groen_som >= 12 & !is.na(r_bomen_direct), 1, NA)
+    unlink(f_focal_groen)
+    rm(groen_som)
     
-    cl_g <- terra::rast(f_cl_g)
-    terra::set.cats(cl_g, layer = 1, value = NULL)
-    if (terra::has.colors(cl_g)) try(terra::coltab(cl_g) <- NULL, silent = TRUE)
-    
-    dt_g <- data.table::as.data.table(terra::freq(cl_g))
-    setnames(dt_g, c("layer", "ID", "count"))
-    g20_ids <- dt_g[!is.na(ID) & ID > 0 & count >= 20, ID]
-    rm(dt_g)
-    
-    if (length(g20_ids) > 0) {
-      r_g20_bin <- terra::ifel(cl_g %in% as.integer(g20_ids), 1, NA)
-      f_g20_bin <- tempfile(fileext = ".tif")
-      terra::writeRaster(r_g20_bin, f_g20_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
-      rm(r_g20_bin)
+    if (!all(is.na(suppressWarnings(terra::minmax(r_groen_cluster))))) {
+      f_g_bin <- tempfile(fileext = ".tif")
+      terra::writeRaster(r_groen_cluster, f_g_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
+      rm(r_groen_cluster)
       
-      f_prox_g <- hulp_proximity_gdal(f_g20_bin, 100)
-      unlink(f_g20_bin)
+      f_prox_g <- hulp_proximity_gdal(f_g_bin, 100)
+      unlink(f_g_bin)
       
       p_g <- terra::rast(f_prox_g)
       masker_groen_100m <- terra::ifel(!is.na(p_g) & p_g >= 0 & p_g <= 100, 1, NA)
@@ -286,15 +259,12 @@ bouw_biotoop_vallei_grasland_mozaiek <- function(soort_naam, params_soort, ds_pa
     } else {
       masker_groen_100m <- master_grid * NA
     }
-    unlink(f_cl_g)
-    rm(cl_g)
-    gc()
     
     terra::writeRaster(masker_groen_100m, f_cache_groen100, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
   }
   
   r_bio_fase5 <- terra::mask(r_bio_fase4, masker_groen_100m, inverse = TRUE)
-  rm(r_bio_fase4, masker_groen_100m)
+  rm(r_bio_fase4, masker_groen_100m, r_bomen_direct)
   gc()
   
   ha_fase5 <- calc_ha_exact(r_bio_fase5)
@@ -320,23 +290,23 @@ bouw_biotoop_vallei_grasland_mozaiek <- function(soort_naam, params_soort, ds_pa
   gc()
   
   if (!all(is.na(suppressWarnings(terra::minmax(cl_10ha))))) {
-    cells_10 <- terra::cells(!is.na(cl_10ha) & cl_10ha > 0)
-    dt_gras_check <- data.table::data.table(
-      ID       = as.integer(cl_10ha[cells_10][[1]]),
-      Tot_Val  = as.numeric(r_bio_10ha[cells_10][[1]]),
-      Gras_Val = as.numeric(terra::ifel(is.na(r_grasland_raw[cells_10][[1]]), 0, r_grasland_raw[cells_10][[1]]))
-    )
-    rm(cells_10)
-    gc()
+    df_tot <- terra::zonal(r_bio_10ha, cl_10ha, fun = "sum", na.rm = TRUE)
+    colnames(df_tot) <- c("ID", "Tot_Val")
     
-    dt_agg <- dt_gras_check[, .(
-      Tot_ha  = sum(Tot_Val, na.rm = TRUE) * 0.01,
-      Gras_ha = sum(Gras_Val, na.rm = TRUE) * 0.01
-    ), by = ID]
+    r_gras_clean <- terra::ifel(is.na(r_grasland_raw), 0, r_grasland_raw)
+    df_gras <- terra::zonal(r_gras_clean, cl_10ha, fun = "sum", na.rm = TRUE)
+    colnames(df_gras) <- c("ID", "Gras_Val")
+    rm(r_gras_clean)
+    
+    dt_agg <- merge(data.table::as.data.table(df_tot), data.table::as.data.table(df_gras), by = "ID")
+    dt_agg[, `:=`(
+      Tot_ha  = Tot_Val * 0.01,
+      Gras_ha = Gras_Val * 0.01
+    )]
     dt_agg[, Grasland_Pct := (Gras_ha / Tot_ha) * 100]
     
     ok_complex_ids <- dt_agg[!is.na(ID) & Grasland_Pct >= 75, ID]
-    rm(dt_gras_check, dt_agg)
+    rm(df_tot, df_gras, dt_agg)
     gc()
     
     if (length(ok_complex_ids) > 0) {
@@ -356,8 +326,11 @@ bouw_biotoop_vallei_grasland_mozaiek <- function(soort_naam, params_soort, ds_pa
     gras_uitvoer   <- master_grid * NA
     moeras_uitvoer <- master_grid * NA
   }
-  rm(cl_10ha, r_bio_10ha, r_grasland_raw, r_moeras_raw)
+  rm(cl_10ha, r_bio_10ha, r_grasland_raw, r_moeras_raw, r_zeergeschikt_raw)
   gc()
+  
+  ha_finaal <- calc_ha_exact(final_opp)
+  message(sprintf("       -> Definitief leefgebied: %.2f ha", ha_finaal))
   
   return(list(
     final_opp = final_opp,
