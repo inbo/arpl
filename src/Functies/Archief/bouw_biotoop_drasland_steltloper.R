@@ -1,7 +1,7 @@
 # ==============================================================================
 # bouw_biotoop_drasland_steltloper.R
 # Archetype voor plas-dras steltlopers (drainage x matrixkwaliteit x terrestrische kern)
-# Geschikt voor: Watersnip, Bokje, etc.
+# Geschikt voor: Watersnip, etc.
 # ==============================================================================
 
 bouw_biotoop_drasland_steltloper <- function(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths) {

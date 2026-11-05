@@ -1,7 +1,7 @@
 # ==============================================================================
 # bouw_biotoop_bosrand_lengte.R
 # Archetype: Halfopen habitat x boskerndrempel x minimale bosrandlengte (>= 1.5 km)
-# Geschikt voor: Nachtzwaluw, Boomleeuwerik, etc.
+# Geschikt voor: Nachtzwaluw, etc.
 # ==============================================================================
 
 bouw_biotoop_bosrand_lengte <- function(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths) {

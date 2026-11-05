@@ -1,4 +1,3 @@
-# In 00_global_setup.R:
 haal_drainage_masker <- function(pad_drainage, master_grid, dir_cache, 
                                  drain_letters = c("d", "e", "f", "h", "i", "g", "e-f", "h-i", "e-i")) {
   

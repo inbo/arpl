@@ -14,52 +14,30 @@ source(here::here("src", "Functies", "haal_drainage_masker.R"))
 source(here::here("src", "Functies", "verwerk_soort.R"))
 source(here::here("src", "Functies", "vul_raster_vanuit_parquet.R"))
 #source(here::here("src", "Functies", "bereken_arpl.R"))
-source(here::here("src", "Functies", "bouw_biotoop_complex.R"))
-source(here::here("src", "Functies", "bouw_biotoop_ecotoon.R"))
 source(here::here("src", "Functies", "bouw_biotoop_mozaiek_met_substraat.R"))
 source(here::here("src", "Functies", "bouw_biotoop_kern_met_overgang.R"))
-source(here::here("src", "Functies", "bouw_biotoop_bosrand_gradient.R"))
-source(here::here("src", "Functies", "bouw_biotoop_actieradius_kern.R"))
-source(here::here("src", "Functies", "bouw_biotoop_kle_mozaiek_met_storing.R"))
+source(here::here("src", "Functies", "bouw_biotoop_universeel.R"))
 source(here::here("src", "Functies", "bouw_biotoop_weidevogel_matrix.R"))
 source(here::here("src", "Functies", "bouw_biotoop_oever_gradient.R"))
-source(here::here("src", "Functies", "bouw_biotoop_commuter_watermoeras.R"))
 source(here::here("src", "Functies", "bouw_biotoop_vallei_grasland_mozaiek.R"))
 source(here::here("src", "Functies", "bouw_biotoop_open_grasland_bosrandvrij.R"))
-source(here::here("src", "Functies", "bouw_biotoop_drasland_steltloper.R"))
-source(here::here("src", "Functies", "bouw_biotoop_bosrand_lengte.R"))
 source(here::here("src", "Functies", "bouw_biotoop_open_inundatiemoeras.R"))
 source(here::here("src", "Functies", "bouw_biotoop_rietmoeras_ecotoon_complex.R"))
-source(here::here("src", "Functies", "bouw_biotoop_bos_landschap_actieradius.R"))
 source(here::here("src", "Functies", "bouw_biotoop_rietmoeras_waterkern.R"))
-source(here::here("src", "Functies", "bouw_biotoop_grootschalige_weidevogel.R"))
 source(here::here("src", "Functies", "bouw_biotoop_kleinschalig_cultuurland_driehoek.R"))
-source(here::here("src", "Functies", "bouw_biotoop_bos_metapopulatie_netwerk.R"))
 source(here::here("src", "Functies", "bouw_biotoop_kolonievogel_kust_polder.R"))
 source(here::here("src", "Functies", "bouw_biotoop_open_zand_stuifduin.R"))
 source(here::here("src", "Functies", "bouw_biotoop_kust_stern.R"))
-source(here::here("src", "Functies", "bouw_biotoop_grootschalig_akkercomplex.R"))
 source(here::here("src", "Functies", "bouw_biotoop_kuststeltloper_slik.R"))
-source(here::here("src", "Functies", "bouw_biotoop_dynamisch_kustgrasland.R"))
 source(here::here("src", "Functies", "bouw_biotoop_kleinschalig_struweel_loofbos.R"))
 source(here::here("src", "Functies", "bouw_biotoop_semi_aquatisch_oeverzoogdier.R"))
 source(here::here("src", "Functies", "bouw_biotoop_otter_rivierlandschap.R"))
-source(here::here("src", "Functies", "bouw_biotoop_bever_beekdal.R"))
-source(here::here("src", "Functies", "bouw_biotoop_hamster_leemakker.R"))
 source(here::here("src", "Functies", "bouw_biotoop_waterplant_hydrograaf.R"))
-source(here::here("src", "Functies", "bouw_biotoop_alluviale_vis.R"))
-source(here::here("src", "Functies", "bouw_biotoop_bosrand_ecotoon.R"))
-source(here::here("src", "Functies", "bouw_biotoop_droge_metapopulatie_sprinkhaan.R"))
-source(here::here("src", "Functies", "bouw_biotoop_droge_heide_sprinkhaan.R"))
 source(here::here("src", "Functies", "bouw_biotoop_natte_metapopulatie_sprinkhaan.R"))
 source(here::here("src", "Functies", "bouw_biotoop_saproxyl_hellingbos.R"))
 source(here::here("src", "Functies", "bouw_biotoop_saproxyl_kle_park.R"))
 source(here::here("src", "Functies", "bouw_biotoop_saproxyl_alluviaal_bos.R"))
 source(here::here("src", "Functies", "bouw_biotoop_stromend_water_libel.R"))
-source(here::here("src", "Functies", "bouw_biotoop_vennencomplex_libel.R"))
-source(here::here("src", "Functies", "bouw_biotoop_hoogveen_libel.R"))
-source(here::here("src", "Functies", "bouw_biotoop_bosven_waterjuffer.R"))
-source(here::here("src", "Functies", "bouw_biotoop_dystroof_ven_libel.R"))
 source(here::here("src", "Functies", "bouw_biotoop_verlandingsplas_libel.R"))
 source(here::here("src", "Functies", "bouw_biotoop_speerwaterjuffer.R"))
 source(here::here("src", "Functies", "bouw_biotoop_venglazenmaker.R"))
@@ -109,14 +87,14 @@ master_grid_full <- terra::rast(PATHS$master_grid)[[1]]
 # Zet hier het pad naar je test-shapefile (of een SpatExtent).
 # Om voor HEEL VLAANDEREN te draaien: zet TEST_GEBIED <- NULL
 
-#TEST_GEBIED <- here::here("data", "input", "Turnhouts_Vennegebied.shp")
-TEST_GEBIED <- NULL
+TEST_GEBIED <- here::here("data", "input", "Mechelse_Heide.shp")
+#TEST_GEBIED <- NULL
 
 # Overschrijven forceren (TRUE) of reeds berekende soorten overslaan (FALSE)
-FORCE_OVERWRITE <- F
+FORCE_OVERWRITE <- T
 
 # Selectie van soorten die je wil testen
-soorten_selectie <- c("kwartelkoning") 
+soorten_selectie <- c("gevlektewitsnuitlibel") 
 # ==============================================================================
 
 if (!is.null(TEST_GEBIED)) {
