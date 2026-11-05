@@ -66,4 +66,6 @@ rsconnect/
 
 /data/output/
 
-data/cache/
+/data/cache/
+
+/data/cache_test/
