@@ -1,7 +1,7 @@
 # ==============================================================================
 # bouw_biotoop_kuststeltloper_slik.R
 # Archetype voor kust-/sliksteltlopers (broedlocatie >= 5ha x slikfoerageer >= 5ha binnen 2km)
-# Geschikt voor: Kluut, Bontbekplevier, Strandplevier, etc.
+# Geschikt voor: Kluut, etc.
 # ==============================================================================
 
 bouw_biotoop_kuststeltloper_slik <- function(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths) {

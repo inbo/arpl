@@ -1,7 +1,7 @@
 # ==============================================================================
 # bouw_biotoop_kolonievogel_kust_polder.R
 # Archetype voor kust-/kolonievogels (broedlocatie >= 30ha x water 5km x poldergrasland >= 200ha binnen 20km)
-# Geschikt voor: Zwartkopmeeuw, Kokmeeuw, Visdief, etc.
+# Geschikt voor: Zwartkopmeeuw, etc.
 # ==============================================================================
 
 bouw_biotoop_kolonievogel_kust_polder <- function(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths) {

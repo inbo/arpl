@@ -1,7 +1,7 @@
 # ==============================================================================
 # bouw_biotoop_weidevogel_matrix.R
 # Archetype voor kritische weidevogels (open polder/grasland x drainage x storingsvrij)
-# Geschikt voor: Grutto, Wulp, etc.
+# Geschikt voor: Grutto, etc.
 # ==============================================================================
 
 bouw_biotoop_weidevogel_matrix <- function(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths) {

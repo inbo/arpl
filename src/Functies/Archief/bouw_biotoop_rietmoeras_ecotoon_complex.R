@@ -2,7 +2,7 @@
 # bouw_biotoop_rietmoeras_ecotoon_complex.R
 # Archetype voor grote rietmoerasvogels (3 schillen: water >= 10ha, ecotoon >= 0.5ha, 
 # nestkern >= 0.5ha x metapopulatie >= 25ha op 500m)
-# Geschikt voor: Roerdomp, Woudaap, etc.
+# Geschikt voor: Roerdomp, etc.
 # ==============================================================================
 
 bouw_biotoop_rietmoeras_ecotoon_complex <- function(soort_naam, params_soort, ds_parquet, df_bwk_codes, master_grid, paths) {

@@ -3,7 +3,7 @@
 # Wederzijdse interactiefilter via GDAL Proximity (symmetrisch én asymmetrisch)
 # ==============================================================================
 
-hulp_wederzijdse_koppeling <- function(laag_a, laag_b, dist_a_m, dist_b_m = dist_a_m, master_grid) {
+hulp_wederzijdse_koppeling <- function(laag_a, laag_b, dist_a_m, dist_b_m = dist_a_m, master_grid = NULL) {
   
   heeft_a <- !all(is.na(suppressWarnings(terra::minmax(laag_a))))
   heeft_b <- !all(is.na(suppressWarnings(terra::minmax(laag_b))))
