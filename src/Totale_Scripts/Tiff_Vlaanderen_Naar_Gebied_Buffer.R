@@ -5,62 +5,23 @@ library(here)
 # --- CONFIGURATIE ---
 map_rasters <- here("data/output/Vlaanderen/Rasters_Soorten/01_Potentieel_Leefgebied/")
 map_shapes  <- here("data/input/")
-map_output  <- here("data/output/Rerun/Mechelse_Heide/Potentieel_Leefgebied/")
+map_output  <- here("data/output/Rerun/Voerstreek/Potentieel_Leefgebied/")
 buffer_dist <- 50000  # 50 km in meters
 
 dir.create(map_output, showWarnings = FALSE, recursive = TRUE)
 
-# Definieer hier je combinaties
 combinaties <- data.frame(
   soort = c("Potentieel_Leefgebied_kwartelkoning.tif",
-            "Potentieel_Leefgebied_paapje.tif",
             "Potentieel_Leefgebied_wielewaal.tif",
-            "Potentieel_Leefgebied_geleluzernevlinder.tif",
-            "Potentieel_Leefgebied_gevlektewitsnuitlibel.tif",
-            "Potentieel_Leefgebied_bruinesnavelbies.tif",
-            "Potentieel_Leefgebied_grotewolfsklauw.tif",
-            "Potentieel_Leefgebied_kleinblaasjeskruid.tif",
-            "Potentieel_Leefgebied_kleintasjeskruid.tif",
             "Potentieel_Leefgebied_kleinwarkruid.tif",
-            "Potentieel_Leefgebied_kleinewolfsklauw.tif",
-            "Potentieel_Leefgebied_liggendevleugeltjesbloem.tif",
-            "Potentieel_Leefgebied_rodedophei.tif",
-            "Potentieel_Leefgebied_rondezonnedauw.tif",
-            "Potentieel_Leefgebied_wittesnavelbies.tif",),
-  shapefile = c("Mechelse_Heide.shp"),
+            "Potentieel_Leefgebied_kleineratelaar.tif",
+            "Potentieel_Leefgebied_harigeratelaar.tif",
+            "Potentieel_Leefgebied_geleanemoon.tif",
+            "Potentieel_Leefgebied_grauweklauwier.tif",
+            "Potentieel_Leefgebied_geleluzernevlinder.tif"),
+  shapefile = c("Voerstreek.shp"),
   stringsAsFactors = FALSE
 )
-
-# combinaties <- data.frame(
-#   soort = c("Potentieel_Leefgebied_kwartelkoning.tif",
-#             "Potentieel_Leefgebied_paapje.tif",
-#             "Potentieel_Leefgebied_matkop.tif",
-#             "Potentieel_Leefgebied_watersnip.tif",
-#             "Potentieel_Leefgebied_wielewaal.tif",
-#             "Potentieel_Leefgebied_heivlinder.tif",
-#             "Potentieel_Leefgebied_gevlektewitsnuitlibel.tif",
-#             "Potentieel_Leefgebied_bruinesnavelbies.tif",
-#             "Potentieel_Leefgebied_grotepimpernel.tif",
-#             "Potentieel_Leefgebied_kleinwarkruid.tif",
-#             "Potentieel_Leefgebied_grutto.tif",
-#             "Potentieel_Leefgebied_rondezonnedauw.tif",
-#             "Potentieel_Leefgebied_wittesnavelbies.tif",),
-#   shapefile = c("Heesbossen.shp"),
-#   stringsAsFactors = FALSE
-# )
-
-# combinaties <- data.frame(
-#   soort = c("Potentieel_Leefgebied_kwartelkoning.tif",
-#             "Potentieel_Leefgebied_wielewaal.tif",
-#             "Potentieel_Leefgebied_kleinwarkruid.tif",
-#             "Potentieel_Leefgebied_kleineratelaar.tif",
-#             "Potentieel_Leefgebied_harigeratelaar.tif",
-#             "Potentieel_Leefgebied_geleanemoon.tif",
-#             "Potentieel_Leefgebied_grauweklauwier.tif",
-#             "Potentieel_Leefgebied_geleluzernevlinder.tif"),
-#   shapefile = c("Voerstreek.shp"),
-#   stringsAsFactors = FALSE
-# )
 
 
 # --- VERWERKING ---
