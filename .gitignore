@@ -65,3 +65,7 @@ rsconnect/
 .positai
 
 /data/output/
+
+/data/cache/
+
+/data/cache_test/

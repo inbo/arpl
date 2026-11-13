@@ -109,7 +109,7 @@ if (exists("huidige_soort") && !is.null(huidige_soort)) {
 } else if (exists("params") && !is.null(params$soort_invoer)) {
   soort <- tolower(trimws(params$soort_invoer))
 } else {
-  soort <- "aardbeivlinder"
+  soort <- "argusvlinder"
 }
 
 df <- read_excel(here::here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx"))

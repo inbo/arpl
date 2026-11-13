@@ -1,0 +1,77 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: VISDIEF
+Soort: Sterna hirundo (behendige stootduiker / kolonievogel van kust & estuarium)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Visdief is de meest wijdverspreide sternensoort in Vlaanderen en een prioritaire 
+broedvogel van de Europese Vogelrichtlijn (Bijlage I). De soort nestelt in kolonies 
+op kale of schaars begroeide eilanden, schelpenbanken, grindoevers, havenopspuitingen 
+en kunstmatige broedvlotten. De belangrijkste broedconcentraties bevinden zich in 
+de haven van Zeebrugge (o.a. Sterneneiland), het Zwin, de haven van Antwerpen en 
+lokaal langs grote zandwinningsputten en grindplassen in het binnenland. 
+Als behendige stootduiker jaagt de Visdief op kleine vis (haring, sprot, grondels, 
+driedoornige stekelbaars) en garnalen in zout, brak en zoet water.
+
+A. Voortplantingsbiotoop / Koloniezones ('voortplanting'):
+   - BWK-selectie:
+       dd%, 2120%, dl%, 2110%, ds%, 1130%, 1140%, 1310%, 3270%, dz%
+       (Zandstranden, embryonale duinen, wandelduinen, slikken, zandige en 
+       grindige opspuitingen, schelpenbanken en pioniervegetaties)
+   - Uitsluiting open water/moeras: Cellen die samenvallen met open water of 
+     dichte moerasvegetatie worden via inverse maskering uitgesloten.
+
+B. Foerageer- en Viswater ('foerageer'):
+   - BWK-water:
+       ad%, ae%, 3140%, 3150%, 2190%, ah%, rbbah%, ap%, zee%
+       (Kustwateren, havenbekkens, zandwinningsmeren, lagunes en kreken)
+   - Huet-zones waterlopen ('vlaanderen_huetzon_10m.tif'):
+       Klassen 17 en 19 (Beneden-Zeeschelde en estuariene getijdenwateren)
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+1. Broedgebieden (>= 20 ha op 50 m):
+   - Het gezuiverde broedbiotoop wordt geclusterd met dist_m = 50 m.
+   - Drempelwaarde: >= 20 ha (200.000 m2) werkelijk koloniecomplex.
+   - Ecologische functie: Biedt rustige, predatieveilige vestigingsplaatsen met 
+     voldoende sociale interactie en verdedigingskracht tegen meeuwen en grondpredatoren.
+2. Viswater / Voedselbronnen (>= 1 ha op 10 m / 50 m):
+   - Aaneengesloten open waterpartijen worden geclusterd op minstens 1 ha (10.000 m2).
+   - Ecologische functie: Garandeert voldoende substantiële wateroppervlakten 
+     met permanente aanwezigheid van scholen prooivis.
+
+
+3. WEDERZIJDSE ACTIERADIUSKOPPELING (5 KM BUFFER)
+--------------------------------------------------------------------------------
+- 5 km (5.000 m) Wederzijdse Zoekstraal:
+   * Alleen broedcomplexen (>= 20 ha) die binnen <= 5.000 m van minstens 1 ha 
+     viswater liggen, blijven behouden.
+   * Alleen viswateren die binnen <= 5.000 m van een broedkolonie liggen, 
+     worden als functioneel voedselareaal weerhouden.
+- Ecologische functie: Oudervogels met kuikens vliegen continu af en aan met 
+  prooivisjes. Een foerageerafstand binnen 5 km is energetisch noodzakelijk voor 
+  een succesvol uitvliegsucces.
+
+
+4. FINALE COMPOSIET-LEEFGEBIEDSTOETS & DISPERSIE
+--------------------------------------------------------------------------------
+- Het gekoppelde broed- en foerageergebied wordt gefuseerd en geëvalueerd op 
+  een minimale complexomvang van >= 20 ha (op 50 m).
+- Dispersiecapaciteit (buffer_m / ARPL): 25000 m (25 km).
+   * Ecologische functie: Weerspiegelt de grote mobiliteit tussen kolonies langs 
+     de Vlaamse kust, de Scheldemonding en het Deltagebied.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Visdief (Sterna hirundo) - broedvogel
+Broedbiotoop drempel      : >= 20 ha werkelijk oppervlak (clustering: 50 m)
+Uitsluiting broedbiotoop  : Open water en moerasvegetatie
+Viswater drempel          : >= 1 ha (BWK open water/zee + Huet-zones 17 & 19; clustering: 10 m)
+Actieradiuskoppeling      : Wederzijdse koppeling binnen <= 5.000 m (5 km)
+Finale complexdrempel     : >= 20 ha leefgebied (clustering: 50 m)
+Dispersieradius (ARPL)    : 25000 m
+================================================================================

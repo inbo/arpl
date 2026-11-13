@@ -1,0 +1,85 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: KLEINE ZILVERREIGER
+Soort: Egretta garzetta (slanke reiger / boombroedende moeras- & kustvogel)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Kleine zilverreiger is een elegante, spierwitte reigerachtige en een prioritaire 
+soort van de Europese Vogelrichtlijn (Bijlage I). In Vlaanderen broedt de soort 
+in bomen en struwelen in kolonies (vaak gemengd met Blauwe reiger, Lepelaar of Kwak) 
+in de nabijheid van voedselrijke estuaria, polders en grote riviervalleien 
+(hoofdzakelijk in het Zwin, de haven van Zeebrugge en het Schelde-estuarium). 
+De soort foerageert wadend in ondiep zoet, brak en zout water en jaagt op kleine 
+vissen (brakwatergrondels, driedoornige stekelbaarsjes), garnalen, amfibieën en 
+waterinsecten in kreken, geulen, slikken en natte polderweiden.
+
+A. Voortplantingsbiotoop / Koloniebossen ('voortplanting'):
+   - BWK-selectie:
+       ru%, 2180%, 91E0%, 91F0%, rud%, sf%, rbbsf%, so%, rbbso%, va%, vc%, 
+       vf%, vm%, vn%, vo%, vt%, 91D0%
+       (Alluviale elzen- en essenessenbossen, wilgenstruwelen, moerasbossen en 
+       overstromingsbossen)
+   - Uitsluiting droog bos: Cellen die samenvallen met drogere eiken- en 
+     beukenbossen (f%, q%, 9110%, 9120%, 9130%, 9150%, 9160%, 9190%) worden 
+     via inverse maskering uitgesloten.
+
+B. Foerageer- en Voedselcomplex ('foerageer'):
+   - BWK-moerassen en natte graslanden:
+       3260%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%, dz%, hc%, 
+       2190%, hj%, hp+%, hpr%, hu%, kc%, kn%, 3140%, 3150%, ku%, kz%, mc%, 
+       md%, mr%, mz%
+   - BWK-open water:
+       ae%, 2190%, 3140%, 3150%, ah%, apo%, app%
+   - Huet-zones waterlopen ('vlaanderen_huetzon_10m.tif'):
+       Klassen 1 t.e.m. 6, 9, 11 t.e.m. 19 (inclusief Maas en Beneden-Zeeschelde)
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+1. Broedbossen (>= 5 ha op 50 m):
+   - Alluviaal broedbos wordt geclusterd met dist_m = 50 m.
+   - Drempelwaarde: >= 5 ha (50.000 m2) werkelijk bosareaal.
+   - Ecologische functie: Biedt rustige, predatieveilige nestplaatsen en voldoende 
+     kruinvolume voor boombroedende reigerkolonies.
+2. Foerageercomplex (>= 200 ha op 50 m):
+   - Moerassen, waterpartijen en riviertrajecten worden geclusterd met dist_m = 50 m.
+   - Drempelwaarde: >= 200 ha (2.000.000 m2) aaneengesloten wetlandareaal.
+3. Open Water Drempel (>= 40 ha / 20% water):
+   - Binnen het 200 ha foerageercomplex moet minstens 40 ha bestaan uit open 
+     water of waterlopen (minstens 20% wateraandeel).
+   - Ecologische functie: Sluit droge moeras- of verlande zones zonder open 
+     vis- en waadwater uit.
+
+
+3. WEDERZIJDSE ACTIERADIUSKOPPELING (5 KM BUFFER)
+--------------------------------------------------------------------------------
+- 5 km Wederzijdse Zoekstraal:
+   * Alleen broedbossen (>= 5 ha) die binnen <= 5.000 m van een gekwalificeerd 
+     foerageercomplex liggen, blijven behouden.
+   * Alleen foerageergebieden die binnen <= 5.000 m van een broedbos liggen, 
+     worden als functioneel foerageerareaal meegenomen.
+- Ecologische functie: Kleine zilverreigers zijn pendelaars die tussen broedkolonie 
+  en estuariene foerageergronden dagelijks vliegafstanden tot 5 km overbruggen.
+
+
+4. FINALE COMPOSIET-LEEFGEBIEDSTOETS & DISPERSIE
+--------------------------------------------------------------------------------
+- Het gekoppelde broed- en foerageergebied wordt samengevoegd en onderworpen aan 
+  een finale overkoepelende clustertoets van >= 200 ha (op 50 m).
+- Dispersiecapaciteit (buffer_m / ARPL): 20000 m (20 km).
+   * Ecologische functie: Weerspiegelt de dispersie en uitwisseling tussen 
+     kustkernen, het Scheldebekken en de Zeeuwse delta.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Kleine zilverreiger (Egretta garzetta) - broedvogel
+Broedbiotoop drempel      : >= 5 ha alluviaal bos (clustering: 50 m; eikenbos uitgesloten)
+Foerageercomplex drempel  : >= 200 ha wetlands (clustering: 50 m)
+Minimale watercomponent   : >= 40 ha open water / waterlopen (>= 20% van foerageercomplex)
+Actieradiuskoppeling      : Wederzijdse koppeling binnen <= 5.000 m (5 km)
+Finale complexdrempel     : >= 200 ha leefgebied (clustering: 50 m)
+Dispersieradius (ARPL)    : 20000 m
+================================================================================

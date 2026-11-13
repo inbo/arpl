@@ -1,0 +1,82 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: GRASPIEPER
+Soort: Anthus pratensis (weide- en heidezangvogel van open, boomvrije landschappen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Graspieper is een karakteristieke broedvogel van uitgestrekte, open en 
+laaggroeiende grazige landschappen. De soort broedt op de grond in dichte 
+graspolletjes of heideplaggen en foerageert lopend op bodeminvertebraten (spinnen, 
+vliegen, rupsen, wantsen en kevers). Als uitgesproken grondbroeder van het open veld 
+is de soort uiterst gevoelig voor verticale landschapselementen en nestpredatie. 
+In Vlaanderen broedt de soort voornamelijk in grote poldergraslandcomplexen, 
+riviervalleien, natte tot droge heiden, hoogvenen en op grazige ruderale terreinen 
+en havenopspuitingen.
+
+A. Doelbiotoop Open Grasland & Heide ('bwk'):
+   - BWK-selectie:
+       cd, cd+, 2310%, 4030%, ce, 4010%, 7150%, 7140_oli%, ce+, ces, ces+, cm, 
+       cm+, ha, 2330%, 6230_ha%, ha+, had, had+, 2130%, 2130_had%, 2150%, hc, 
+       hc+, 2190%, 6410%, hd, hd+, 2130%, 2130_hd%, hj, hj+, hk, hk+, 6210%, 
+       hm, hm+, hme, hme+, hmm, hmm+, hmo, hmo+, 6230%, hn, hn+, hp, hp+, 
+       rbbkam%, rbbzil%, hpr, hpr+, hu, hu+, 2190%, 6120%, 6510%, hz, hz+, 
+       ku, ku+, 3270%, 6430%, kz, rbbvos%
+       (Vochtige en droge heiden, dotterbloemgraslanden, kamgrasweiden, zilte 
+       weilanden, schrale graslanden, duinpannen, heischrale graslanden en 
+       grazige ruderale terreinen)
+   - Noot habitatstatus: Zoals consequent aangehouden blijft 'hg' (en afgeleiden) 
+     volledig uitgesloten als habitat.
+
+B. Externe GIS-lagen (Bosdetectie):
+   - Groenkaart 2021 ('Groenkaart_2021.tif'):
+       Hooggroen (waarde 1) representeert opgaande boomopstanden en bomenrijen.
+
+
+2. VERBOSSINGSFILTER & BOSRAND-EXCLUSIEZONE (100 M)
+--------------------------------------------------------------------------------
+De Graspieper mijdt bomenrijen, bosranden en opgaand hout wegens de aanwezigheid 
+van uitkijkposten voor predatoren (Kraaiachtigen, Roofvogels):
+
+1. Bosclusterdetectie (>= 10 are):
+   - Hooggroen uit de Groenkaart wordt geclusterd met dist_m = 20 m.
+   - Boomopstanden van minstens 10 cellen (>= 0.1 ha / 1.000 m2 / 10 are) worden 
+     geselecteerd als functionele bosranden. Kleine geïsoleerde struiken 
+     (die als zangpost dienen) worden hiermee ontzien.
+2. Bosrand-exclusiezone (100 m buffer):
+   - Rond alle gedetecteerde boomopstanden (>= 10 are) wordt via GDAL proximity 
+     een buffer van 100 m getrokken.
+   - Inverse maskering: Alle open biotopen binnen deze 100 m storingszone worden 
+     integraal geëlimineerd.
+   - Ecologische functie: Voorkomt randeffecten en predatie; nesten binnen 100 m 
+     van opgaand hout vertonen een significant lager uitvliegsucces.
+
+
+3. LANDSCHAPPELIJKE CLUSTERING (MIN. 5 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Het ontboste en open gebleven doelbiotoop wordt geclusterd via een 
+  zoekafstand van 50 m (dist_m = 50).
+- Oppervlaktedrempel: >= 5 ha (50.000 m2) werkelijk habitatoppervlak.
+- Ecologische functie: Een territorium van een paar Graspiepers vraagt minstens 
+  enkele hectaren aaneengesloten open structuur. Kleine geïsoleerde weitjes 
+  ingesloten tussen bomenrijen of bebouwing worden verlaten.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): 5000 m (5 km).
+   * Toepassing: ARPL / netwerkanalyses op Vlaams niveau.
+   * Ecologische functie: Graspiepers zijn deeltrekkers en vertonen aanzienlijke 
+     mobiliteit tussen kustpolders, beekdalen en Kempense heidekernen.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Graspieper (Anthus pratensis) - broedvogel
+Basisbiotoop              : Open graslanden, polderweiden, heiden en ruderale graslanden
+Bosdefinitie              : Groenkaart hooggroen >= 10 are (clustering: 20 m)
+Storingsbuffer            : 100 m strikte exclusiezone rondom bos
+Landschappelijke drempel  : >= 5 ha werkelijk open habitat (clustering: 50 m)
+Dispersieradius (ARPL)    : 5000 m
+================================================================================

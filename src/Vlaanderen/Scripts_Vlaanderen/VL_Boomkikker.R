@@ -39,16 +39,44 @@ calc_ha_exact <- function(r) {
   return(as.numeric(val))
 }
 
-cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkelijk = FALSE) {
+cluster_filter_twee_drempels <- function(masker, opp_laag, min_opp_ha, min_totale_opp_ha, dist_m) {
   if (terra::global(is.na(masker), "sum")[[1]] == terra::ncell(masker)) {
     return(list(raster = masker * NA, clusters = masker * NA))
   }
   
-  # 1. Binaire kaart maken
-  r_binair <- terra::ifel(!is.na(masker) & masker > 0, 1, NA)
+  min_opp_m2    <- min_opp_ha * 10000
+  min_totale_m2 <- min_totale_opp_ha * 10000
   
-  # 2. Netwerkvorming via tijdelijke schijfbestanden
+  # 1. Individuele clusters identificeren en filteren op werkelijke opp (MinOpp_ha)
+  tmp_patch_indiv <- tempfile(fileext = ".tif")
+  cl_individueel  <- terra::patches(masker, directions = 8, zeroAsNA = TRUE, 
+                                    filename = tmp_patch_indiv, overwrite = TRUE)
+  
+  df_indiv <- terra::as.data.frame(cl_individueel, cells = TRUE)
+  if (nrow(df_indiv) == 0) {
+    unlink(tmp_patch_indiv)
+    return(list(raster = masker * NA, clusters = masker * NA))
+  }
+  colnames(df_indiv) <- c("cell", "ID")
+  
+  opp_val_indiv <- terra::extract(opp_laag, df_indiv$cell)[[1]]
+  dt_indiv      <- data.table(ID = df_indiv$ID, Waarde = opp_val_indiv)
+  
+  stats_indiv       <- dt_indiv[!is.na(ID) & !is.na(Waarde), .(Area_m2 = sum(Waarde, na.rm = TRUE) * 100), by = ID]
+  voldoet_indiv_ids <- stats_indiv[Area_m2 >= min_opp_m2, ID]
+  
+  unlink(tmp_patch_indiv)
+  rm(df_indiv, dt_indiv, stats_indiv)
+  gc()
+  
+  if (length(voldoet_indiv_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  
+  masker_gefilterd <- terra::ifel(cl_individueel %in% voldoet_indiv_ids, masker, NA)
+  
+  # 2. Netwerkvorming via Dispersiecapaciteit (dist_m) met schijf-buffering
   if (dist_m > 0) {
+    r_binair <- terra::ifel(!is.na(masker_gefilterd) & masker_gefilterd > 0, 1, NA)
+    
     stral_cellen <- ceiling((dist_m / 2) / 10)
     f_matrix     <- matrix(1, nrow = (2 * stral_cellen + 1), ncol = (2 * stral_cellen + 1))
     
@@ -58,42 +86,38 @@ cluster_filter_compleet <- function(masker, opp_laag, drempel_m2, dist_m, werkel
     r_buffered <- terra::ifel(r_buffered > 0, 1, NA)
     
     tmp_patch  <- tempfile(fileext = ".tif")
-    cl_network <- terra::patches(r_buffered, directions = 4, zeroAsNA = TRUE,
+    cl_network <- terra::patches(r_buffered, directions = 4, zeroAsNA = TRUE, 
                                  filename = tmp_patch, overwrite = TRUE)
     
-    cl_biotoop_only <- terra::mask(cl_network, masker)
+    cl_biotoop_only <- terra::mask(cl_network, masker_gefilterd)
     
     unlink(c(tmp_focal, tmp_patch))
     rm(r_buffered, cl_network, r_binair)
   } else {
     tmp_patch       <- tempfile(fileext = ".tif")
-    cl_biotoop_only <- terra::patches(masker, directions = 8, zeroAsNA = TRUE,
+    cl_biotoop_only <- terra::patches(masker_gefilterd, directions = 8, zeroAsNA = TRUE, 
                                       filename = tmp_patch, overwrite = TRUE)
   }
   
-  # 3. Slimme extractie: Enkel actieve cellen verwerken
-  df_cl <- terra::as.data.frame(cl_biotoop_only, cells = TRUE)
-  if (nrow(df_cl) == 0) return(list(raster = masker * NA, clusters = masker * NA))
-  colnames(df_cl) <- c("cell", "ID")
+  # 3. Totale netwerkoppervlakte op basis van werkelijke fracties
+  df_net <- terra::as.data.frame(cl_biotoop_only, cells = TRUE)
+  if (nrow(df_net) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  colnames(df_net) <- c("cell", "ID")
   
-  if (werkelijk) {
-    opp_waarden <- terra::extract(opp_laag, df_cl$cell)[[1]]
-    dt_calc <- data.table(ID = df_cl$ID, Waarde = opp_waarden)
-  } else {
-    dt_calc <- data.table(ID = df_cl$ID, Waarde = 1)
-  }
+  opp_val_net <- terra::extract(opp_laag, df_net$cell)[[1]]
+  dt_net      <- data.table(ID = df_net$ID, Waarde = opp_val_net)
   
-  stats_dt <- dt_calc[!is.na(ID) & !is.na(Waarde), .(Area_m2 = sum(Waarde, na.rm = TRUE) * 100), by = ID]
-  voldoet_ids <- stats_dt[Area_m2 >= drempel_m2, ID]
+  stats_net       <- dt_net[!is.na(ID) & !is.na(Waarde), .(Area_m2 = sum(Waarde, na.rm = TRUE) * 100), by = ID]
+  voldoet_net_ids <- stats_net[Area_m2 >= min_totale_m2, ID]
   
-  if (length(voldoet_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
-  
-  # 4. Resultaat filteren
-  cl_finaal <- terra::ifel(cl_biotoop_only %in% voldoet_ids, cl_biotoop_only, NA)
-  r_finaal  <- terra::mask(masker, cl_finaal)
-  
-  rm(df_cl, dt_calc, stats_dt, cl_biotoop_only)
+  rm(df_net, dt_net, stats_net)
   gc()
+  
+  if (length(voldoet_net_ids) == 0) return(list(raster = masker * NA, clusters = masker * NA))
+  
+  final_network_mask <- cl_biotoop_only %in% voldoet_net_ids
+  r_finaal  <- terra::mask(opp_laag, terra::ifel(final_network_mask, 1, NA))
+  cl_finaal <- terra::mask(cl_biotoop_only, r_finaal)
   
   return(list(raster = r_finaal, clusters = cl_finaal))
 }

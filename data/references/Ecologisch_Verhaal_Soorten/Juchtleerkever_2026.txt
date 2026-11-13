@@ -1,0 +1,84 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: JUCHTLEERKEVER
+Soort: Osmoderma eremita (saproxyle kever / holle bomen, parken, dreven & KLE)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Juchtleerkever (of Kluizenaarskever) is een prioritair beschermde Europese 
+Habitatrichtlijnsoort (Bijlage II & IV) en een van de meest iconische saproxyle 
+relictsoorten van West-Europa. De soort is strikt afhankelijk van reusachtige, 
+overjarige, door wit- en bruinrotschimmels uitgeholde loofbomen – voornamelijk 
+eik (Quercus), beuk (Fagus), linde (Tilia), iep (Ulmus), knotwilg (Salix) en 
+oude fruitbomen. De larven ontwikkelen zich gedurende 2 tot 4 jaar in grote 
+hoeveelheden houtmolm die zich ophoopt in de holle stamvoet of in holtes van 
+dikke gesteltakken. 
+
+De soort vermijdt gesloten, donkere en vochtige oerbossen; de holle bomen 
+moeten voldoende warmte en zoninstraling ontvangen. Daarom zijn parken, 
+kasteeldomeinen, oude dreven, open bosranden, houtkanten en monumentale solitaire 
+bomen in het cultuurlandschap de voornaamste leefgebieden.
+
+A. Doelbiotoop Kleine Landschapselementen & Parken ('bwk'):
+   - BWK-selectie:
+       kj%, kj+%, kp%, kp+%, kpk%, kpk+%, lhb%, pa%
+       (Knotbomenrijen, houtkanten, kasteel- en villaparken met monumentale bomen, 
+       parkbossen en oude lanen)
+   - Noot habitatstatus: Zoals afgesproken blijft 'hg' (en afgeleiden) 
+     consequent uitgesloten als habitat.
+
+B. Houtige KLE's uit de Groenkaart 2021 ('groenkaart'):
+   - Bomen en struweel (klassen 1 en 2) die direct contact maken met open 
+     ruimte / cultuurland (klassen 2, 3, 4). Dit detecteert dreven, 
+     bomenrijen en zonnige bosranden die niet expliciet als 'kp' of 'kj' 
+     op het BWK staan.
+
+
+2. RUIMTELIJKE CONFIGURATIE: KLE-EXTRACTIE & RANDZONES
+--------------------------------------------------------------------------------
+1. Contactzone-detectie (10 m bomen-open):
+   - Bomen (klasse 1) binnen <= 10 m van open land (waarden 2, 3, 4) worden 
+     geselecteerd als zonnige bomenrij of randzone (r_kle_groenkaart).
+2. Fusie:
+   - De BWK-parken en knotboomcomplexen ('bwk_opp') worden samengevoegd met de 
+     Groenkaart-bomenrijen via een cover-operatie (clamp max. 1.0).
+
+
+3. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+De Juchtleerkever is een extreem honkvast en sedentair insect; meer dan 80% van 
+de volwassen kevers verlaat de geboorteboom nooit gedurende hun korte volwassen 
+leven (enkele weken in de zomer). Een lokale metapopulatie kan tientallen jaren 
+overleven in een klein cluster van enkele holle bomen binnen een park of dreef.
+
+- Overbruggingsafstand (dist_m): 50 m
+   * Cellen binnen 50 m worden samengevoegd (overbrugt openingen in lanen, 
+     gazons in parken en graspaden tussen bomen).
+- Minimale clusteroppervlakte: >= 0.5 ha (5.000 m2 werkelijk habitat)
+   * Ecologische functie: Een dreef of parkgedeelte van minstens 0.5 ha aan 
+     kruinen en bomen omvat voldoende potentiële nestbomen om generaties lang 
+     als habitatbron te fungeren. Snippers onder 0.5 ha (enkele losse jonge 
+     boompjes) worden uitgesloten.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): 500 m
+   * Toepassing: ARPL / netwerkanalyses op landschapsniveau.
+   * Ecologische functie: Hoewel zeldzame dispersievluchten tot circa 1 km 
+     zijn gedocumenteerd, is de effectieve uitwisseling tussen holle bomen 
+     beperkt tot circa 250 - 500 m. De dispersiecapaciteit brengt de acute 
+     genetische isolatie tussen kasteeldomeinen en historische parken in beeld.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Juchtleerkever / Kluizenaarskever (Osmoderma eremita)
+Doelbiotoop               : Parken, kasteeldomeinen, dreven, knotbomenrijen & bosranden
+Bronlagen                 : BWK (kj, kp, kpk) + Groenkaart (bomen grenzend aan open groen)
+Fusiemethode              : Cover (BWK aangevuld met Groenkaart-KLE)
+Overbruggingsafstand      : 50 m (lanen en parkruimten)
+Minimale clusteroppervlak : >= 0.5 ha (5.000 m2 werkelijk bomenareaal)
+Dispersieradius (ARPL)    : 500 m
+================================================================================

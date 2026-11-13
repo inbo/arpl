@@ -1,0 +1,74 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: TURELUUR
+Soort: Tringa totanus (rode-poot weidevogel van zilte polders, slikken & schorren)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Tureluur is een typische weidevogel en kuststeltloper van natte, kruidenrijke 
+graslanden, zilte polders, krekengebieden, slikken en schorren. In Vlaanderen 
+ligt het zwaartepunt van de broedpopulatie in de kustpolders (o.a. Uitkerkse Polder, 
+Zwin), de IJzervallei en langs de Zeeschelde en havengebieden van Antwerpen. 
+De soort nestelt op de grond in dichte graspollen en zoekt voedsel wadend in 
+ondiep water of op modderige oevers, waar met een tastende snavel wormen, 
+kreeftachtigen, slakjes en insectenlarven worden gevangen.
+
+A. Doelbiotoop Tureluur ('bwk'):
+   - BWK-selectie:
+       ah%, rbbah%, ao%, 3160%, 7140%, 7150%, da%, 1310%, 1320%, 1330%, 
+       ds%, 1130%, 1140%, 3270%, hpr, hpr+, 2190%, rbbkam%, rbbzil%, kz
+       (Brakke wateren, kreken, slikken, schorren, zilte poldergraslanden, 
+       vochtige kamgrasweiden en ruderale/zandige terreinen)
+
+B. Slikken- & Schorrencomponent ('slik_schor'):
+   - BWK-selectie:
+       ah%, rbbah%, da%, 1310%, 1320%, 1330%, ds%, 1130%, 1140%, 3270%
+       (Dynamische getijdenslikken, schorranden, geulen en brakke kreken)
+
+C. Vennen- en Oligotroof Waterfilter ('vennen_water'):
+   - BWK-selectie:
+       ae%, 2190%, 3140%, 3150%, ao%, 3160%, 7140%, 7150%, 3110%, 3130%
+       (Grote vennen en oligotrofe plassen)
+
+
+2. LANDSCHAPPELIJKE CLUSTERING & DYNAMISCHE OPPERVLAKTEDREMPEL
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (dist_m): 100 m.
+   * Het totale doelbiotoop wordt geaggregeerd met een fuzzy afstand van 100 m.
+- Dynamische oppervlaktedrempel (5 - 10 ha):
+   * Pure slik- en schorrenclusters (100% aandeel slik_schor): drempel = 5 ha 
+     (50.000 m2). In mariene/estuariene biotopen is de prooidichtheid zeer hoog, 
+     waardoor een kleiner leefgebied volstaat.
+   * Pure graslandclusters (0% slik_schor): drempel = 10 ha (100.000 m2). 
+     In agrarische weidecomplexen is een grotere oppervlakte nodig voor 
+     territoriumopbouw en predatiebescherming.
+   * Gemengde clusters: lineaire interpolatie tussen 5 en 10 ha op basis van 
+     het werkelijke percentage slikken en schorren.
+
+
+3. WATERLICHAAM-EXCLUSIE (MAX. 95% OPEN VEN/WATER)
+--------------------------------------------------------------------------------
+- Criterium: Clusters waarin oligotroof water/vennen meer dan 95% van het 
+  totale oppervlak beslaan, worden uitgesloten.
+- Ecologische functie: Sluit grote open vennen (met name in de Kempen) uit 
+  waar water aanwezig is, maar waar een geschikte grazige oeverzone ontbreekt 
+  om succesvol te broeden.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): 10000 m (10 km).
+   * Ecologische functie: Tureluurs zijn mobiele weidevogels die makkelijk 
+     schakelen tussen verschillende polderkernen, beekvalleien en getijdengebieden.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Tureluur (Tringa totanus) - broedvogel
+Basisbiotoop              : Vochtige/zilte graslanden, kreken, slikken en schorren
+Zoekstraal clustering     : 100 m
+Oppervlaktedrempel        : Dynamisch tussen 5 ha (slik/schor) en 10 ha (grasland)
+Vennen/water-beperking    : Cluster mag niet voor >= 95% uit open water/vennen bestaan
+Dispersieradius (ARPL)    : 10000 m
+================================================================================

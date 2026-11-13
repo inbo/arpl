@@ -1,0 +1,84 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: LEPELAAR
+Soort: Platalea leucorodia (grote moerasvogel / lepelbekige pionier van wetlands)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Lepelaar is een karakteristieke, grote witte moerasvogel met een spatelvormige 
+snavel en een strikt beschermde soort van de Europese Vogelrichtlijn (Bijlage I). 
+In Vlaanderen broedt de soort in kolonies in uitgestrekte, natte en moeilijk 
+toegankelijke gebieden: alluviale moerasbossen, wilgenstruwelen, ontoegankelijke 
+rietmoerassen en rustige duinvalleien (o.a. in de Antwerpse haven, het Zwin en 
+het Schelde-estuarium). De Lepelaar foerageert op tast in ondiep zoet, brak en 
+zout water (kreken, slikken, geulen en poldersloten) op kleine vis (driedoornige 
+stekelbaars, grondels), garnalen, amfibieënlarven en waterinsecten.
+
+A. Voortplantingsbiotoop / Koloniebossen ('voortplanting'):
+   - BWK-selectie:
+       ru%, rud%, va%, vc%, vf%, vm%, vn%, vo%, vt%, 2130%, 2190%
+       (Alluviale elzen- en wilgenbroekbossen, duindoorn- en duinstruwelen, 
+       vochtige duinvalleien en natte wilgenstruwelen)
+
+B. Foerageer- en Voedselcomplex ('foerageer'):
+   - BWK-moerassen, slikken & natte polders:
+       1320%, ae%, 2190%, 3140%, 3150%, ah%, rbbah%, ds%, 1130%, 1140%, 
+       1310%, 3270%, hpr%, 1330%, hpr+%, rbbkam%, rbbzil%, ku%, 6430%, kz%
+   - Huet-zones waterlopen ('vlaanderen_huetzon_10m.tif'):
+       Klassen 1, 2, 11 t.e.m. 19 (inclusief Grensmaas en estuariene getijdentrajecten)
+
+C. Open Water Component ('openwater'):
+   - BWK-waterpartijen:
+       ae%, 2190%, 3140%, 3150%, ah%, rbbah% (ondiepe plassen, kreken en lagunes)
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+1. Broedbossen / Struwelen (>= 10 ha op 50 m):
+   - Het broedbiotoop wordt geclusterd met dist_m = 50 m.
+   - Drempelwaarde: >= 10 ha (100.000 m2) werkelijk areaal.
+   - Ecologische functie: Biedt rustige, predatieveilige nestgelegenheid met 
+     voldoende draagkracht voor kolonievestiging.
+2. Foerageercomplex (>= 2.500 ha op 50 m):
+   - Moerassen, waterlopen en getijdengebieden worden geclusterd met dist_m = 50 m.
+   - Drempelwaarde: >= 2.500 ha (25.000.000 m2) aaneengesloten wetlandareaal.
+3. Open Water Toets (>= 20% / >= 500 ha):
+   - Het 2.500 ha foerageercomplex moet minimaal 20% (>= 500 ha) open water en 
+     waterlopen bevatten.
+   - Ecologische functie: Waarborgt de continue aanwezigheid van ondiepe 
+     vis- en waadgronden met voldoende biomassa aan prooidieren.
+
+
+3. WEDERZIJDSE ACTIERADIUSKOPPELING (15 KM BUFFER)
+--------------------------------------------------------------------------------
+- 15 km (15.000 m) Wederzijdse Zoekstraal:
+   * Alleen broedbossen (>= 10 ha) die binnen <= 15 km van een gekwalificeerd 
+     2.500 ha foerageercomplex liggen, blijven behouden.
+   * Alleen foerageercomplexen die binnen <= 15 km van een actieve broedlocatie 
+     liggen, worden geselecteerd.
+- Ecologische functie: Lepelaars zijn mobiele commuters die dagelijks moeiteloos 
+  pendelen tussen veilige broedeilanden/broedbossen en estuariene foerageergebieden 
+  op afstanden tot 15 kilometer.
+
+
+4. FINALE COMPOSIET-LEEFGEBIEDSTOETS & DISPERSIE
+--------------------------------------------------------------------------------
+- Het gekoppelde broed- en foerageergebied wordt samengevoegd en gefilterd 
+  op >= 500 ha complexomvang (op 50 m).
+- Dispersiecapaciteit (buffer_m / ARPL): 25000 m (25 km).
+   * Ecologische functie: Brengt de uitwisseling in beeld tussen de grote 
+     internationale delta- en kustkolonies (Scheldemonding, Verdronken Land van 
+     Saeftinghe, Zeebrugge en het Zwin).
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Lepelaar (Platalea leucorodia) - broedvogel
+Broedbiotoop drempel      : >= 10 ha alluviaal bos/struweel (clustering: 50 m)
+Foerageercomplex drempel  : >= 2.500 ha wetlandcomplex (clustering: 50 m)
+Minimale watercomponent   : >= 20% (>= 500 ha open water / waterlopen)
+Actieradiuskoppeling      : Wederzijdse koppeling binnen <= 15.000 m (15 km)
+Finale complexdrempel     : >= 500 ha leefgebied (clustering: 50 m)
+Dispersieradius (ARPL)    : 25000 m
+================================================================================

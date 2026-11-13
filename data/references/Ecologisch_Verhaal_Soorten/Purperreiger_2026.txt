@@ -1,0 +1,87 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: PURPERREIGER
+Soort: Ardea purpurea (schuwe reiger van uitgestrekte rietmoerassen & laagveen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Purperreiger is een schuwe, slanke moerasreiger, een lange-afstandstrekker 
+(overwinteraar in tropisch Afrika) en een prioritaire soort van de Europese 
+Vogelrichtlijn (Bijlage I). In Vlaanderen broedt de soort uiterst lokaal in 
+uitgestrekte, verlande laagveengebieden, afgesloten kreekstelsels en grote 
+overstromingsgebieden (historisch en actueel o.a. in het krekengebied van het 
+Waasland en Meetjesland en in de Scheldevallei). In tegenstelling tot de 
+Blauwe reiger nestelt de Purperreiger bij voorkeur laag bij de grond of op 
+omgeknikt oud overjarig riet in ontoegankelijke, permanent onder water staande 
+riet- en zeggenmoerassen, en secundair in lage wilgenstruwelen of elzenbroekbossen. 
+De vogel jaagt behoedzaam sluipend in dichte water- en oevervegetatie op vissen, 
+kikkers, salamanders, libellenlarven en woelmuizen.
+
+A. Voortplantingsbiotoop / Broedmoeras & Broedbos ('voortplanting'):
+   - BWK-selectie:
+       mc%, rbbmc%, mcb%, mdb%, 7140%, 91E0%, mr%, 6430_mr%, 7140_mrd%, 
+       rbbmr%, mrb%, mru%, ru%, 2180%, 9160%, 91F0%, rud%, sf%, rbbsf%, 
+       7230%, so%, rbbso%, va%, vc%, vf%, vm%, vn%, vo%, vt%, 91D0%
+       (Rietlanden, zeggenvegetaties, verlandingsmoerassen, wilgenstruwelen, 
+       overstromingsbossen en alluviale broekbossen)
+   - Uitsluiting droog bos: Cellen die samenvallen met drogere eiken- en 
+     beukenbossen (9110%, 9120%, 9130%, 9150%, 9160%, 2180%, 9190%, q%, f%) 
+     worden via inverse maskering uitgesloten.
+
+B. Foerageer- en Voedselmoeras ('foerageer'):
+   - BWK-selectie:
+       ae%, 3140%, 3150%, aev%, ad%, ah%, rbbah%, aom%, 3110%, 3130%, hc%, 
+       rbbhc%, 6410%, hf%, 6430%, rbbhf%, hj%, kn%, ku%, 3270%, kub%, 
+       km%, mc%, mr%, mcb%, mdb%, mrb%, mru%
+       (Ondiepe open wateren, verlandingskragen, dotterbloemgraslanden, 
+       moerassige slenken en overgangsvenen)
+
+
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+1. Broedgebieden (>= 30 ha op 50 m en herclustering op 10 m):
+   - Het broedbiotoop wordt geclusterd met dist_m = 50 m op minstens 30 ha.
+   - Na uitsluiting van eikenbossen wordt geherclusterd op 10 m om versnipperde 
+     stroken uit te sluiten; de drempel blijft >= 30 ha (300.000 m2).
+   - Ecologische functie: Purperreigers nestelen uiterst geconcentreerd en vergen 
+     grote aaneengesloten moeraskernen met minimale verstoring door predatoren 
+     (Vossen, Wilde zwijnen) of menselijke recreatie.
+2. Foerageercomplex (>= 100 ha op 50 m):
+   - Foerageermoerassen worden geclusterd met dist_m = 50 m.
+   - Drempelwaarde: >= 100 ha (1.000.000 m2) aaneengesloten voedselbiotoop.
+   - Ecologische functie: Garandeert een rijk mozaïek van ondiepe poelen, sloten 
+     en rietkragen met continue aanwas van amfibieën en prooivissen.
+
+
+3. WEDERZIJDSE ACTIERADIUSKOPPELING (10 KM BUFFER)
+--------------------------------------------------------------------------------
+- 10 km (10.000 m) Wederzijdse Zoekstraal:
+   * Alleen broedcomplexen (>= 30 ha) die binnen <= 10.000 m van minstens 100 ha 
+     foerageermoeras liggen, worden weerhouden.
+   * Alleen foerageergebieden die binnen <= 10.000 m van een broedgebied 
+     liggen, blijven behouden als functioneel jachtgebied.
+- Ecologische functie: Purperreigers foerageren zowel vlakbij de kolonie als 
+  in omliggende polder- en beekdalsystemen op pendelafstanden tot circa 10 km.
+
+
+4. FINALE COMPOSIET-LEEFGEBIEDSTOETS & DISPERSIE
+--------------------------------------------------------------------------------
+- Het gekoppelde broed- en foerageergebied wordt samengevoegd en onderworpen aan 
+  een finale overkoepelende clustertoets van >= 100 ha (op 100 m).
+- Dispersiecapaciteit (buffer_m / ARPL): 20000 m (20 km).
+   * Ecologische functie: Brengt de netwerksamenhang in beeld tussen de Vlaamse 
+     krekengebieden en de grote Nederlandse kolonies in Zeeland en Zuid-Holland 
+     (Nieuwkoopse Plassen, Kinderdijk).
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Purperreiger (Ardea purpurea) - broedvogel
+Broedbiotoop drempel      : >= 30 ha moeras/broekbos (clustering: 50 m, herclustering: 10 m)
+Uitsluiting broedbiotoop  : Droge eiken- en beukenbossen
+Foerageercomplex drempel  : >= 100 ha moeras/water (clustering: 50 m)
+Actieradiuskoppeling      : Wederzijdse koppeling binnen <= 10.000 m (10 km)
+Finale complexdrempel     : >= 100 ha leefgebied (clustering: 100 m)
+Dispersieradius (ARPL)    : 20000 m
+================================================================================

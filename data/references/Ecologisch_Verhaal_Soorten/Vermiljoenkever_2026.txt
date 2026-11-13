@@ -1,0 +1,77 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: VERMILJOENKEVER
+Soort: Cucujus cinnaberinus (saproxyle kever / alluviale bossen & populieren)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Vermiljoenkever is een opvallende, felrode Europese Habitatrichtlijnsoort 
+(Bijlage II & IV) die leeft als subcorticale specialist onder de loslatende 
+schors van stervende en dode loofbomen. In Vlaanderen en Midden-Europa is de 
+soort sterk geassocieerd met alluviale rivier- en beekvalleien, waar canadapopulier 
+(Populus x canadensis), zwarte populier (P. nigra), schietwilg (Salix alba) en 
+zwarte els (Alnus glutinosa) snelgroeiend en vatbaar voor windworp of afsterving 
+zijn. Larven en adulten jagen onder de vochtige schors op andere insectenlarven 
+en voeden zich met mycelia van saproxyle schimmels.
+
+A. Doelbiotoop Zachthoutooibos & Populierenaanplanten ('bwk'):
+   - BWK-selectie:
+       l%, 91E0%, 91F0%, va%, vm%, vn%, vo%
+       (Canadapopulierenbestanden, wilgenstruwelen, alluviale elzen-essenbossen 
+       en zachthoutooibossen)
+   - Noot habitatstatus: Zoals afgesproken blijft 'hg' (en afgeleiden) 
+     consequent uitgesloten als habitat.
+
+B. Houtige opstanden uit de Groenkaart ('groenkaart'):
+   - Klasse 1 (Hooggroen / Bomen): Garandeert dat ook lijnvormige populierenrijen, 
+     kleinschalige bosjes en houtkanten langs waterlopen worden meegenomen die 
+     op het BWK niet als 'l%' gekarteerd staan.
+
+
+2. MILIEUCONDITIE: ALLUVIALE WETLANDS & VALLEIBODEMS
+--------------------------------------------------------------------------------
+Omdat Cucujus cinnaberinus een uitgesproken vochtminnende soort is waarvan de 
+schorslaag permanent vochtig moet blijven (tegen uitdroging van larven en prooien), 
+wordt het bosbestand strikt gekoppeld aan waterrijke valleisystemen:
+
+- Alluviale Wetlandkaart (of overstromingsgevoelige/natte bodems):
+   - Bron: Wetlandkaart Vlaanderen ('actwet') of de combinatie van Huetzones 
+     waterlopen (buffer 100 m) en natte drainageklassen (d t/m i).
+   - Filteroperatie: Alleen bomenbestanden die binnen actuele of potentiële 
+     wetlands / beekbegeleidende gronden vallen, worden weerhouden.
+   - Ecologische functie: Sluit droge populierenaanplanten op zandruggen of 
+     in heideontginningen uit, waar schors te snel uitdroogt en afschilfert.
+
+
+3. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
+--------------------------------------------------------------------------------
+- Overbruggingsafstand (dist_m): 50 m
+   * Cellen binnen 50 m worden samengevoegd via een 50 m netwerk.
+   * Ecologische functie: Overbrugt weilanden, beekbeddingen en wegen tussen 
+     opeenvolgende populierenpercelen in een beekvallei.
+- Minimale clusteroppervlakte: >= 1.0 ha (10.000 m2 werkelijk alluviaal zachthoutbos)
+   * Ecologische functie: Een aaneengesloten complex van minstens 1 ha biedt een 
+     continue dynamiek van aftakeling en dood hout, zodat er elk jaar bomen in 
+     de juiste subcorticale rotfase verkeren.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (buffer_m / ARPL): 1000 m
+   * Toepassing: ARPL / netwerkanalyses op valleischaal.
+   * Ecologische functie: Volwassen kevers zijn actieve vliegers die zich langs 
+     riviercorridors (bv. Maas, Schelde, Dijle, Nete) over afstanden van 
+     enkele honderden meters tot kilometers kunnen verplaatsen op zoek naar 
+     nieuwe broedbomen.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Vermiljoenkever (Cucujus cinnaberinus)
+Doelbiotoop               : Populierenbossen, zachthoutooibos, elzenbroeken & bomenrijen
+Milieufilter              : Alluviale wetlands (actwet) of natte gronden langs waterlopen
+Overbruggingsafstand      : 50 m (valleinetwerk)
+Minimale clusteroppervlak : >= 1.0 ha (10.000 m2 werkelijk alluviaal bos)
+Dispersieradius (ARPL)    : 1000 m
+================================================================================
