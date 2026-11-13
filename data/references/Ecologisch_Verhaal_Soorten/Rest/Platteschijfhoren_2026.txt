@@ -1,2 +1,80 @@
-voortplanting_a: ae%, 2190%, 3140%, 3150%, aom%, 3130%
-voortplanting_h: hpr%, hpr+%, kn%
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: PLATTE SCHIJFHOREN
+Soort: Anisus vorticulus (zoetwatermollusk / heldere, plantenrijke sloten, poelen & plassen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Platte schijfhoren is een kleine, kritische zoetwaterslak (Habitatrichtlijn 
+Bijlage II en IV) van schone, heldere, niet-verzuurde en matig voedselrijke 
+stilstaande tot zeer zwak stromende wateren met een rijke ondergedoken en 
+drijvende waterplantenvegetatie (o.a. kranswieren, fonteinkruiden, kikkerbeet 
+en waterpest). In Vlaanderen leeft de soort zowel in vrijstaande plassen en 
+poelen als in polder- en beekdalsloten op klei- en veenrijke bodems.
+
+A. Deelbiotoop 1 - Open plassen & poelen ('voortplanting_a', zonder bodemfilter):
+   - BWK stilstaande wateren: ae%, aom%, 2190%, 3130%, 3140%, 3150%
+   - Ecologische functie: Vrijstaande, heldere plassen, vennen met gebufferd 
+     water en oude rivierarmen met rijke waterplantengroei.
+
+B. Deelbiotoop 2 - Sloten, beken & natte graslanden ('voortplanting_h' + Huetzon):
+   - BWK sloten & graslanden met grachten: hpr%, hpr+%, kn%
+   - Huetzon waterlopen (vlaanderen_huetzon_10m.tif): Bk, Bkk, Bkl, Bkz, P, Rk 
+     (kleine laaglandbeken, polderwaterlopen en kleine rivieren)
+   - Bodemtype-voorwaarde op Deelbiotoop 2:
+        * Bron: Bodemkaart Vlaanderen (bodem_bodemtype)
+        * Selectiecodes: 89, 1460, 2830, 2913, 3089, 3381, 3513, 3640, 3687, 
+          4011, 4036 (specifieke klei-, veen- en alluviale bodems die zorgen voor 
+          voldoende buffering en basenrijkdom van het slootwater).
+   - Werkelijke oppervlakte: Per 10x10m rastercel worden de BWK-fracties 
+     (BWK_FRAC) en geschikte waterlopen opgeteld (geclampt op max. 1,0).
+
+
+2. RUIMTELIJKE FILTERING & BOVENLOKALE OPENHEID
+--------------------------------------------------------------------------------
+- Bodemmasker op sloot- en beekhabitat:
+    * Waar het bodemtype-raster beschikbaar is, worden sloten en waterlopen 
+      ('voortplanting_h' + Huetzon) uitsluitend behouden op geschikte 
+      gebufferde klei-/veenbodems, terwijl grotere open waterpartijen 
+      ('voortplanting_a') onafhankelijk van het bodemtype worden meegenomen.
+- Negatieve verstoring- of bosfilters:
+    * Geen expliciete exclusiebuffers; de habitatkwaliteit wordt geborgd door 
+      de selectie van heldere, plantenrijke watertypes en gebufferde bodems.
+
+
+3. LANDSCHAPSCLUSTERING (MINIMAAL 1 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (AfstandBiotopen_m): 50 m (fuzzy clustering via 25 m buffer)
+    * Nabijgelegen sloten, poelen en plaszones die door kades, dijkjes of 
+      smalle percelen (< 50 m) gescheiden zijn, vormen voor de Platte schijfhoren 
+      één samenhangend watersysteem.
+- Oppervlaktedrempel (MinPatch_ha): >= 1 ha (10.000 m2) werkelijk habitat
+    * Clusters van geschikte waterhabitats worden enkel behouden indien de som 
+      van de werkelijke habitatoppervlakte (BWK_FRAC + waterlopen) binnen het 
+      netwerk minstens 1 ha bedraagt.
+    * Ecologische functie: Door snelle verlanding en peilfluctuaties in ondiepe 
+      sloten en poelen heeft een lokale populatie een netwerk van minstens 1 ha 
+      geschikt waterhabitat nodig om tijdelijk droogvallen of opschoning van 
+      individuele sloten te overleven.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (Dispersiecap_m / ARPL): 500 m
+    * Toepassing: ARPL / netwerkanalyses op lokaal watersysteem-niveau.
+    * Ecologische functie: De Platte schijfhoren verspreidt zich passief via 
+      waterstroming en op waterplanten/watervogels over korte afstanden (tot ca. 
+      500 m) tussen hydrologisch verbonden poldersloten en plassen.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Platte schijfhoren (Anisus vorticulus) - mollusk
+Bronlagen habitat         : voortplanting_a (open water) + voortplanting_h & Huetzon (sloten)
+Bodemfilter               : Specifieke klei/veen/alluviale codes op voortplanting_h + Huetzon
+Negatieve filters         : Geen
+Minimale clusterdrempel   : >= 1 ha (10.000 m2) werkelijk habitat
+Koppelafstand clustering  : 50 m tussen geschikte sloten/poelen/plassen
+Dispersieradius (ARPL)    : 500 m
+================================================================================

@@ -1,1 +1,67 @@
-voortplanting_bwk: 3260%
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: GAFFELLIBEL
+Soort: Ophiogomphus cecilia (beek- en rivierlibel / zuurstofrijke, stromende waterlopen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Gaffellibel is een strikte stroomminnende libel (Habitatrichtlijn Bijlage II 
+en IV) die in Vlaanderen gebonden is aan heldere, zuurstofrijke, ongestoorde en 
+dynamische laaglandbeken en -rivieren met een mozaïek van zand- en grindbanken, 
+ondiepe stroomversnellingen, diepere poelen en ondergedoken waterplantenvegetaties 
+(zoals vlottende waterranonkel en sterrenkroos). De larven leven meerdere jaren 
+ingegraven in de zuurstofrijke zandbodem.
+
+A. Voortplantingshabitat BWK ('voortplanting_bwk'):
+   - Natura 2000-habitattype: 3260% (submontane en laaglandrivieren met 
+     vegetaties behorend tot het Ranunculion fluitantis en het 
+     Callitricho-Batrachion).
+   - Werkelijke oppervlakte: Per 10x10m rastercel worden de BWK-fracties 
+     (BWK_FRAC) van de geschikte code opgeteld (geclampt op max. 1,0).
+
+
+2. RUIMTELIJKE FILTERING & BOVENLOKALE OPENHEID
+--------------------------------------------------------------------------------
+- Telgebieden- en landhabitatfilter:
+    * Voor deze beek- en rivierlibel wordt het volledige potentiële 
+      voortplantingsbiotoop in Vlaanderen gekarteerd zonder aparte landbuffer- 
+      of verstoringsexclusie; de geschiktheid wordt strikt bepaald door de 
+      aanwezigheid van het specifieke stromend-waterhabitattype 3260%.
+
+
+3. LANDSCHAPSCLUSTERING (MINIMAAL 0,04 HA OP 20 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (AfstandBiotopen_m): 20 m (fuzzy clustering via 10 m buffer)
+    * Opeenvolgende beek- of riviersecties van habitattype 3260% die door een 
+      smalle brug, stuw of ongekarteerde tussenstrook (< 20 m) onderbroken 
+      zijn, vormen één aaneengesloten voortplantingshabitat.
+- Oppervlaktedrempel (MinPatch_ha): >= 0,04 ha (400 m2 / 4 rastercellen)
+    * Clusters van geschikte beek- en riviertrajecten worden enkel behouden 
+      indien de som van de werkelijke habitatoppervlakte (BWK_FRAC) binnen het 
+      netwerk minstens 0,04 ha bedraagt.
+    * Ecologische functie: De larven van de Gaffellibel hebben een voldoende 
+      lang en aaneengesloten traject met natuurlijke stromingsvariatie nodig 
+      om zich gedurende hun meerjarige larvale ontwikkeling te handhaven zonder 
+      uit te spoelen.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (Dispersiecap_m / ARPL): 5.000 m (5 km)
+    * Toepassing: ARPL / netwerkanalyses op beekdal- en stroomgebiedsniveau.
+    * Ecologische functie: Adulte Gaffellibellen kunnen zich langs beek- en 
+      riviervalleien en aangrenzende bosranden over afstanden tot circa 5 km 
+      verplaatsen om nieuwe geschikte beektrajecten te koloniseren.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Gaffellibel (Ophiogomphus cecilia) - libel
+Bronlaag habitat          : BWK voortplanting_bwk (3260%)
+Externe waterlagen        : Geen (enkel BWK-code 3260%)
+Negatieve filters         : Geen
+Minimale clusterdrempel   : >= 0,04 ha (400 m2) werkelijk habitat
+Koppelafstand clustering  : 20 m tussen geschikte beek-/riviersecties
+Dispersieradius (ARPL)    : 5 km (5.000 m)
+================================================================================

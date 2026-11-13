@@ -1,0 +1,72 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: WATERRIETZANGER
+Soort: Acrocephalus paludicola (doortrekker / laagveenmoerassen, zeggen- & rietvegetaties)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Waterrietzanger is een zeldzame en kritische doortrekker in Vlaanderen 
+(voornamelijk tijdens de najaarstrek in augustus-september) die strikt gebonden 
+is aan uitgestrekte, natte laagveenmoerassen, grote zeggevegetaties, verlandende 
+rietlanden en natte, niet-bemeste dotterbloem- en schraalgraslanden met een 
+weelderige kruidlaag en rijk aan grote insecten en spinnen.
+
+A. Foerageer- en rusthabitat BWK ('foerageer_bwk'):
+   - Grote zeggenvegetaties & trilvenen: mc, mc+, rbbmc%, 7140%, 7140_mrd%
+   - Rietlanden, moerasruigten & verlandingszones: mr, mr+, rbbmr%, 6430_hw%, 
+     6430_mr%, 2190%
+   - Natte, bloemrijke graslanden & brakke moeraszones: hj, hj+, 1130%, 1330%
+   - Lijnvormige riet- en zeggekragen (KLE's): k(mc%, k(mr%
+   - Werkelijke oppervlakte: Per 10x10m rastercel worden de BWK-fracties 
+     (BWK_FRAC) van de unieke geschikte codes opgeteld (geclampt op max. 1,0).
+
+
+2. RUIMTELIJKE FILTERING & BOVENLOKALE OPENHEID
+--------------------------------------------------------------------------------
+- Telgebieden- en ecoregiofilter:
+    * Het historische ecoregio-masker ('ecoregio.asc >= 1') wordt niet apart 
+      toegepast omdat het volledige studiegebied reeds binnen Vlaanderen valt.
+    * Er wordt geen masker op watervogeltelgebieden toegepast, zodat alle 
+      geschikte moeras- en valleisystemen in Vlaanderen in beeld komen.
+- Negatieve verstoring- of bosfilters:
+    * Niet expliciet als aparte exclusiebuffer opgenomen; de geschiktheid wordt 
+      bepaald door de specifieke moeras- en zeggecodes en de minimale 
+      complexgrootte van 5 ha.
+
+
+3. LANDSCHAPSCLUSTERING (MINIMAAL 5 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (AfstandBiotopen_m): 50 m (fuzzy clustering via 25 m buffer)
+    * Nabijgelegen rietpercelen, zeggevelden, slootkragen en natte graslanden 
+      die door smalle watergangen, dijkjes of paden (< 50 m) gescheiden zijn, 
+      vormen voor doortrekkende Waterrietzangers één samenhangend moerascomplex.
+- Oppervlaktedrempel (MinPatch_ha): >= 5 ha (50.000 m2) werkelijk habitat
+    * Clusters van geschikte moeras- en zeggehabitats worden enkel behouden 
+      indien de som van de werkelijke habitatoppervlakte (BWK_FRAC) binnen het 
+      netwerk minstens 5 ha bedraagt.
+    * Ecologische functie: Doortrekkende Waterrietzangers mijden smalle, 
+      geïsoleerde rietstroken en pleisteren enkel in voldoende uitgestrekte, 
+      structuurrijke moeras- en zeggecomplexen van minstens 5 ha waar ze 
+      ongestoord kunnen opvetten voor de verdere trek naar West-Afrika.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (Dispersiecap_m / ARPL): 250.000 m (250 km)
+    * Toepassing: ARPL / netwerkanalyses op landschapsniveau.
+    * Ecologische functie: Als langeafstandstrekker gebruikt de Waterrietzanger 
+      Vlaamse laagveen- en kustmoerassen als stapstenen langs de trekroute 
+      tussen Oost-Europa en Sub-Saharaans Afrika.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Waterrietzanger (Acrocephalus paludicola) - doortrekker (_wv)
+Bronlaag habitat          : BWK foerageer_bwk (zeggevegetaties, rietland, nat grasland)
+Externe waterlagen        : Geen (enkel BWK-codes incl. riet-/zeggekragen)
+Negatieve filters         : Geen (complexgrootte geborgd via 5 ha drempel)
+Minimale clusterdrempel   : >= 5 ha werkelijk habitat
+Koppelafstand clustering  : 50 m tussen geschikte moeras- en zeggepercelen
+Dispersieradius (ARPL)    : 250 km (250.000 m)
+================================================================================

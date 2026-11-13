@@ -1,2 +1,83 @@
-ab: hc%, 2190%, mk%, 7230%, mp%, sf%, 91E0%, rbbsf%, va%, vc%, rbbhc%, 6430_hf%
-voortplanting: hfc%, 2190%, rbbmc%, mc%, mcb%, md%, mr%, 6430_mr%, 7140_mrd%, rbbmr%, vm%, vn%
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: ZEGGEKORFSLAK
+Soort: Vertigo moulinsiana (mollusk / kalkrijke moerassen, grote zeggevegetaties & broekbossen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Zeggekorfslak is een kleine, warmteminnende en vochtminnende landslak 
+(Habitatrichtlijn Bijlage II) van permanente, kalk- en basenrijke laagveen- en 
+beekdalmoerassen. In tegenstelling tot de bodembewonende Nauwe korfslak klimt de 
+Zeggekorfslak bij voorkeur tot 30-60 cm hoog op de stengels en bladeren van 
+forse moerasplanten (zoals pluimzegge, scherpe zegge, liesgras en riet) in 
+een permanent natte, ongestoorde moerasvegetatie.
+
+A. Voortplantings- en kernhabitat ('voortplanting'):
+   - BWK grote zeggevegetaties, rietlanden, trilvenen & elzenbroekbossen: 
+     mc%, mcb%, rbbmc%, md%, mr%, rbbmr%, vm%, vn%, hfc%, 2190%, 6430_mr%, 
+     7140_mrd%
+   - Ecologische functie: Permanent natte, hoog opgaande zegge- en 
+     verlandingsvegetaties die zowel zomervochtigheid als overwinteringsstructuur 
+     bieden.
+
+B. Aanvullende biotopen ('ab_biotoop'):
+   - BWK aangrenzende natte graslanden, kalkmoerassen & alluviale bossen: 
+     hc%, rbbhc%, 6430_hf%, mk%, mp%, sf%, rbbsf%, va%, vc%, 2190%, 7230%, 91E0%
+   - Ruimtelijke koppelingsvoorwaarde: Uitsluitend geschikt indien gelegen 
+     binnen <= 100 m van het kernhabitat ('voortplanting').
+   - Ecologische functie: Aangrenzende natte ruigten, kalkmoerassen en lichte 
+     broekbossen fungeren als bufferzone en uitwijkhabitat mits direct 
+     aansluitend op grote zeggevegetaties.
+   - Werkelijke oppervlakte: Per 10x10m rastercel worden de BWK-fracties 
+     (BWK_FRAC) van de unieke geschikte codes opgeteld (geclampt op max. 1,0).
+
+
+2. RUIMTELIJKE FILTERING & BOVENLOKALE OPENHEID
+--------------------------------------------------------------------------------
+- Ecoregiofilter:
+    * Het historische ecoregio-masker ('ecoregio.asc >= 1') wordt niet apart 
+      toegepast omdat het volledige studiegebied reeds binnen Vlaanderen valt.
+- Negatieve verstoring- of bosfilters:
+    * Geen expliciete exclusiebuffers; natte elzen- en berkenbroekbossen 
+      (vm%, vn%, sf%, 91E0%) maken integraal deel uit van het geschikte 
+      moerasbiotoop.
+
+
+3. LANDSCHAPSCLUSTERING (MINIMAAL 0,04 HA OP 100 M)
+--------------------------------------------------------------------------------
+- Koppeling vóór clustering:
+    * Eerst worden alle cellen van 'ab_biotoop' geselecteerd die binnen <= 100 m 
+      van 'voortplanting' liggen, waarna beide lagen worden samengevoegd.
+- Zoekstraal clustering (AfstandBiotopen_m): 100 m (fuzzy clustering via 50 m buffer)
+    * Nabijgelegen zeggevelden, verlandingszones en broekbosranden binnen 100 m 
+      vormen voor de Zeggekorfslak één functioneel leefgebied.
+- Oppervlaktedrempel (MinPatch_ha): >= 0,04 ha (400 m2 / 4 rastercellen)
+    * Clusters van geschikte moerashabitats worden enkel behouden indien de som 
+      van de werkelijke habitatoppervlakte (BWK_FRAC) binnen het netwerk 
+      minstens 0,04 ha bedraagt.
+    * Ecologische functie: Door de geringe lichaamsgrootte en lage mobiliteit 
+      van deze slak volstaat een stabiele microhabitatplek van 400 m2 (0,04 ha) 
+      om een lokale deelpopulatie duurzaam te onderhouden.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (Dispersiecap_m / ARPL): 200 m
+    * Toepassing: ARPL / netwerkanalyses op lokaal metapopulatieniveau.
+    * Ecologische functie: De Zeggekorfslak heeft een zeer beperkte actieve 
+      dispersiecapaciteit; uitwisseling tussen deelpopulaties vindt enkel plaats 
+      over korte afstanden (tot ca. 200 m) via aaneengesloten natte 
+      moeras- en beekdalcorridors.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Zeggekorfslak (Vertigo moulinsiana) - mollusk
+Bronlagen habitat         : voortplanting (zegge/moeras) + ab_biotoop (binnen <= 100 m)
+Koppelingsvoorwaarde      : ab_biotoop gekoppeld aan voortplanting (<= 100 m, voor_clustering)
+Negatieve filters         : Geen (broekbossen vm%/vn%/sf%/91E0% maken deel uit van biotoop)
+Minimale clusterdrempel   : >= 0,04 ha (400 m2) werkelijk habitat
+Koppelafstand clustering  : 100 m tussen geschikte moeraspercelen
+Dispersieradius (ARPL)    : 200 m
+================================================================================

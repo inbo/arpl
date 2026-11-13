@@ -1,1 +1,72 @@
-foerageer_bwk: da%, 1310%, 1320%, 1330%, dl%, 1140%, 2110%, dla%, dls%, ds%, 1130%, 1140%
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: STEENLOPER
+Soort: Arenaria interpres (overwinterende steltloper / stranden, slikken, schorren & dijkvoeten)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Steenloper is een karakteristieke kust- en estuariumgebonden steltloper die in 
+Vlaanderen overwintert en doortrekt langs de Noordzeekust en het Zeeschelde-
+estuarium. De soort foerageert bij laagwater in kleine groepen op zand- en 
+slikstranden, vloedmerken, schorranden en met wieren en zeepokken begroeide 
+golfbrekers en dijkvoeten, waar hij met zijn wigvormige snavel stenen, schelpen 
+en aanspoelsel omkeert op zoek naar kreeftachtigen, weekdieren en insecten.
+
+A. Foerageer- en rusthabitat BWK ('foerageer_bwk'):
+   - Zandstranden, vloedmerken & embryonale duinen: dl%, dla%, dls%, 1140%, 2110%
+   - Slikken, schorren & getijdenzones: da%, ds%, 1130%, 1310%, 1320%, 1330%, 3270%
+   - Werkelijke oppervlakte: Per 10x10m rastercel worden de BWK-fracties 
+     (BWK_FRAC) van de unieke geschikte codes opgeteld (geclampt op max. 1,0).
+
+
+2. RUIMTELIJKE FILTERING & BOVENLOKALE OPENHEID (GEEN TELGEBIEDSBEPERKING)
+--------------------------------------------------------------------------------
+- Telgebieden- en ecoregiofilter:
+    * In tegenstelling tot het historische ANB-model worden de maskerlagen voor 
+      watervogeltelgebieden ('leefgebied_steenloper_20m') en ecoregio's NIET 
+      toegepast.
+    * Ecologische functie: Hierdoor wordt het volledige potentiële getijden- en 
+      kusthabitat in Vlaanderen gekarteerd in plaats van enkel de reeds 
+      getelde sectoren.
+- Negatieve verstoring- of bosfilters:
+    * Niet expliciet als aparte exclusiebuffer opgenomen; de vereiste schaal 
+      en continuïteit worden afgedwongen via de minimale clusteroppervlakte 
+      van 30 ha.
+
+
+3. LANDSCHAPSCLUSTERING (MINIMAAL 30 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (AfstandBiotopen_m): 50 m (fuzzy clustering via 25 m buffer)
+    * Aangrenzende strandsecties, slikplaten en schorranden die door geulen, 
+      havenhoofden of golfbrekers (< 50 m) onderbroken zijn, vormen voor 
+      foeragerende Steenlopers één aaneengesloten getijdenzone.
+- Oppervlaktedrempel (MinPatch_ha): >= 30 ha (300.000 m2) werkelijk habitat
+    * Clusters van geschikte intergetijdenhabitats worden enkel behouden indien 
+      de som van de werkelijke habitatoppervlakte (BWK_FRAC) binnen het netwerk 
+      minstens 30 ha bedraagt.
+    * Ecologische functie: Steenlopers bewegen tijdens de getijdencyclus mee 
+      met de waterlijn en hebben een uitgestrekte kust- of estuariumstrook van 
+      minstens 30 ha nodig om gedurende het volledige laagwater voldoende 
+      voedsel en bij hoogwater veilige hoogwatervluchtplaatsen te vinden.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (Dispersiecap_m / ARPL): 250.000 m (250 km)
+    * Toepassing: ARPL / netwerkanalyses op landschapsniveau.
+    * Ecologische functie: Als mobiele langeafstandstrekker en wintergast 
+      verplaatst de Steenloper zich over grote afstanden langs de kustlijn en 
+      estuaria afhankelijk van getij, stormen en voedselaanbod.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Steenloper (Arenaria interpres) - wintervogel (_wv)
+Bronlaag habitat          : BWK foerageer_bwk (stranden, slikken, schorren, getijdenzones)
+Externe waterlagen        : Geen (enkel BWK-codes)
+Negatieve filters         : Geen (schaal geborgd via 30 ha oppervlaktedrempel)
+Minimale clusterdrempel   : >= 30 ha werkelijk habitat
+Koppelafstand clustering  : 50 m tussen geschikte intergetijdenzones
+Dispersieradius (ARPL)    : 250 km (250.000 m)
+================================================================================

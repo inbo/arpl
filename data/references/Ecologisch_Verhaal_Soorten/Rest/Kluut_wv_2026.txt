@@ -1,0 +1,75 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: KLUUT (OVERWINTEREND)
+Soort: Recurvirostra avosetta (overwinterende steltloper / slikken, kreken & brakke plassen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Kluut is een karakteristieke steltloper van open, zout- en brakwatergebieden, 
+getijdenslikken, ondiepe kreken en uitgestrekte plas-draszones. Buiten het 
+broedseizoen (najaar en winter) foerageert de soort in groepen op onbegroeide 
+of schaars begroeide modder- en slikplaten waar hij al wandelend en zwemmend 
+in het ondiepe water kleine kreeftachtigen, wormen en insectenlarven zeeft, 
+en rust hij op ondiepe zand- en slikbanken.
+
+A. Foerageer- en rusthabitat BWK ('foerageer_bwk'):
+   - Slikken, schorren, stranden & moeraszones: ad%, da%, ds%, kz%, 1130%, 
+     1140%, 1310%, 1320%, 1330%, 2190%, 3270%
+   - Ondiepe plassen, brakwaterkreken & open water: ae%, aer%, aev%, ah%, 
+     rbbah%, 3140%, 3150%
+   - Zilte en natte graslanden / polderlaagtes: hpr%, hpr+%, rbbkam%, rbbzil%
+   - Werkelijke oppervlakte: Per 10x10m rastercel worden de BWK-fracties 
+     (BWK_FRAC) van de unieke geschikte codes opgeteld (geclampt op max. 1,0).
+
+
+2. RUIMTELIJKE FILTERING & BOVENLOKALE OPENHEID (GEEN TELGEBIEDSBEPERKING)
+--------------------------------------------------------------------------------
+- Telgebieden- en ecoregiofilter:
+    * In tegenstelling tot het historische ANB-model worden de maskerlagen voor 
+      watervogeltelgebieden ('leefgebied_kluut_20m') en ecoregio's NIET 
+      toegepast.
+    * Ecologische functie: Hierdoor wordt het volledige potentiële winter- en 
+      pleistergebied in Vlaanderen gekarteerd in plaats van enkel de reeds 
+      getelde estuariene en poldergebieden.
+- Negatieve verstoring- of bosfilters:
+    * Niet expliciet als aparte exclusiebuffer opgenomen; de vereiste openheid 
+      en rust worden afgedwongen via de minimale clusteroppervlakte van 30 ha.
+
+
+3. LANDSCHAPSCLUSTERING (MINIMAAL 30 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (AfstandBiotopen_m): 50 m (fuzzy clustering via 25 m buffer)
+    * Aangrenzende slikplaten, kreken, ondiepe plassen en natte poldergraslanden 
+      die door dammen, dijken of geulen (< 50 m) van elkaar gescheiden zijn, 
+      vormen voor foeragerende en hoogwatervluchtende Kluten één functioneel 
+      leefgebied.
+- Oppervlaktedrempel (MinPatch_ha): >= 30 ha (300.000 m2) werkelijk habitat
+    * Clusters van geschikte foerageer- en rusthabitats worden enkel behouden 
+      indien de som van de werkelijke habitatoppervlakte (BWK_FRAC) binnen het 
+      netwerk minstens 30 ha bedraagt.
+    * Ecologische functie: Overwinterende groepen Kluten zijn afhankelijk van 
+      grootschalige, open en ongestoorde water- en sliksystemen waar ze zowel 
+      bij laag- als hoogwater voldoende overzicht, voedsel en veilige 
+      rustplaatsen vinden.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (Dispersiecap_m / ARPL): 250.000 m (250 km)
+    * Toepassing: ARPL / netwerkanalyses op landschapsniveau.
+    * Ecologische functie: Overwinterende Kluten verplaatsen zich over grote 
+      afstanden langs de kust, estuaria (Zeeschelde, IJzer) en binnendijkse 
+      kreken- en poldercomplexen afhankelijk van getij, vorst en waterpeil.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Kluut (Recurvirostra avosetta) - wintervogel (_wv)
+Bronlaag habitat          : BWK foerageer_bwk (slikken, schorren, kreken, plassen)
+Externe waterlagen        : Geen (enkel BWK-codes)
+Negatieve filters         : Geen (openheid geborgd via 30 ha oppervlaktedrempel)
+Minimale clusterdrempel   : >= 30 ha werkelijk habitat
+Koppelafstand clustering  : 50 m tussen geschikte slikken/plassen/graslanden
+Dispersieradius (ARPL)    : 250 km (250.000 m)
+================================================================================

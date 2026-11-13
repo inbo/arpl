@@ -1,3 +1,86 @@
-landbiotoop_bwk: ce%, 4010%, 7150%, cg%, 2310%, 4030%, cm%, ha%, hc%, 6410%, hf%, 6430%, hj%, hm%, hr%, hu%, 6510%, ku%, l%, mc%, rbbmc%, md%, 7140%, 91E0%, mk%, 7230%, mm%, mr%, rbbmr%, ms%, rbbms%, ppm%, pm%, q%, se%, sf%, 91E0%, rbbsf%, sm%, 4010%, 7140%, 7230%, rbbsm%, so%, v%
-waterbiotoop_bwk1: 3130%, ae%, 3140%, 3150%, ao%, 7140%, 7150%, k(ae%, k(ao%, hc%, 6410%, hf%, 6430%, hj%, hr%, hu%, mc%, rbbmc%, md%, 91E0%, mk%, 7230%, mm%, 7210%, mr%, rbbmr%, ms%, rbbms%, sf%, rbbsf%
-waterbiotoop_bwk2: ce%, 4010%, 7150%, cg%, 2310%, 4030%, cm%, ha%, hc%, 6410%, hf%, 6430%, hj%, hm%, hr%, hu%, ku%, mc%, rbbmc%, md%, 7140%, 91E0%, mk%, 7230%, mm%, 7210%, mr%, rbbmr%, ms%, rbbms%
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: KEMPENSE HEIDELIBEL
+Soort: Sympetrum depressiusculum (ven- en moeraslibel / verlandingszones & overstromingsgraslanden)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Kempense heidelibel is een uiterst zeldzame en kritische libel van matig 
+voedselrijke, ondiepe vennen, visvijvers en overstromingsgraslanden met een 
+brede, structuurrijke verlandingszone van zegge-, biezen- en rietvegetaties. 
+De eieren overwinteren in droogvallende oeverzones, terwijl de adulten rijpen 
+en jagen in nabijgelegen structuurrijke heiden, ruigten, vochtige graslanden 
+en luwe bos- en struweelranden.
+
+A. Voortplantingscomplex - Spoor A ('waterbiotoop_bwk1'):
+   - Open water & verlandingsmoerassen: ae%, ao%, k(ae%, k(ao%, 3130%, 3140%, 
+     3150%, 7140%, 7150%, hc%, 6410%, hf%, 6430%, hj%, hr%, hu%, mc%, rbbmc%, 
+     md%, 91E0%, mk%, 7230%, mm%, 7210%, mr%, rbbmr%, ms%, rbbms%, sf%, rbbsf%
+   - Werkelijke oppervlakte: Per 10x10m rastercel worden de BWK-fracties 
+     (BWK_FRAC) van de unieke geschikte codes opgeteld (geclampt op max. 1,0).
+
+B. Kwaliteitskern verlanding & moeras - Spoor C ('waterbiotoop_bwk2', voorwaarde):
+   - BWK natte heiden, vochtige graslanden & moerasvegetaties: ce%, cg%, cm%, 
+     2310%, 4010%, 4030%, 7150%, ha%, hc%, 6410%, hf%, 6430%, hj%, hm%, hr%, 
+     hu%, ku%, mc%, rbbmc%, md%, 7140%, 91E0%, mk%, 7230%, mm%, 7210%, mr%, 
+     rbbmr%, ms%, rbbms%
+   - Ecologische functie: Waarborgt dat het voortplantingswater grotendeels 
+     bestaat uit ondiepe, verlandende oever- en moerasvegetaties (>= 0,8 ha).
+
+C. Omgevend rijpings- en jachtbiotoop - Spoor C ('landbiotoop_bwk', voorwaarde):
+   - BWK structuurrijke graslanden, heiden, ruigten, struwelen & bossen: 
+     ce%, cg%, cm%, 2310%, 4010%, 4030%, 7150%, ha%, hc%, 6410%, hf%, 6430%, 
+     hj%, hm%, hr%, hu%, 6510%, ku%, l%, mc%, rbbmc%, md%, 7140%, 91E0%, mk%, 
+     7230%, mm%, mr%, rbbmr%, ms%, rbbms%, ppm%, pm%, q%, se%, sf%, rbbsf%, 
+     sm%, rbbsm%, so%, v%
+   - Ecologische functie: Fungeert uitsluitend als ruimtelijke randvoorwaarde 
+     (geen onderdeel van het eindbiotoop) voor rijping, jacht en luwte.
+
+
+2. RUIMTELIJKE FILTERING & MEERVOUDIGE KOPPELING
+--------------------------------------------------------------------------------
+- Voorwaarde 1 - Aansluiting op kwaliteitskern verlanding (<= 10 m):
+    * Volledige voortplantingsclusters ('waterbiotoop_bwk1', >= 1,0 ha) worden 
+      enkel behouden indien ze binnen <= 10 m aansluiten op een volwaardig 
+      verlandings- en moerascluster ('waterbiotoop_bwk2', >= 0,8 ha).
+    * Ecologische functie: Voorkomt dat grootschalige, diepe open plassen 
+      zonder verlandingszone als geschikt voortplantingshabitat worden 
+      geselecteerd.
+- Voorwaarde 2 - Nabijheid omgevend landbiotoop (<= 100 m):
+    * Van het goedgekeurde voortplantingscomplex worden uitsluitend de 
+      habitatcellen behouden die binnen <= 100 m van een volwaardig landbiotoop 
+      ('landbiotoop_bwk', >= 2,5 ha) liggen.
+    * Ecologische functie: Garandeert directe bereikbaarheid van luwe, 
+      insectenrijke rijpings- en jachtzones rondom het ven of de vijver.
+
+
+3. LANDSCHAPSCLUSTERING (WATER >= 1 HA OP 20 M / MOERAS >= 0,8 HA / LAND >= 2,5 HA)
+--------------------------------------------------------------------------------
+- Clustering voortplantingscomplex ('waterbiotoop_bwk1'):
+    * Zoekstraal: 20 m | Oppervlaktedrempel (MinPatch_ha): >= 1,0 ha
+- Clustering verlandingskern ('waterbiotoop_bwk2', voorwaarde):
+    * Zoekstraal: 20 m | Oppervlaktedrempel (MinPatch_ha): >= 0,8 ha
+- Clustering omgevend landbiotoop ('landbiotoop_bwk', voorwaarde):
+    * Zoekstraal: 50 m | Oppervlaktedrempel (MinPatch_ha): >= 2,5 ha
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (Dispersiecap_m / ARPL): 5.000 m (5 km)
+    * Toepassing: ARPL / netwerkanalyses op landschapsniveau.
+    * Ecologische functie: Adulte Kempense heidelibellen kunnen zich over 
+      afstanden tot circa 5 km verplaatsen tussen nabijgelegen vennen- en 
+      vijvercomplexen.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Kempense heidelibel (Sympetrum depressiusculum) - libel
+Bronlaag eindbiotoop      : waterbiotoop_bwk1 (open water + verlandingsmoeras)
+Voorwaarde-lagen          : waterbiotoop_bwk2 (>= 0,8 ha) + landbiotoop_bwk (>= 2,5 ha)
+Koppelingsvoorwaarden     : Cluster <= 10 m van w2 (>= 0,8 ha) EN cellen <= 100 m van land (>= 2,5 ha)
+Minimale clusterdrempel   : >= 1,0 ha werkelijk voortplantingshabitat
+Koppelafstand clustering  : 20 m (water/moeras) / 50 m (landbiotoop)
+Dispersieradius (ARPL)    : 5 km (5.000 m)
+================================================================================

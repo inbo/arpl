@@ -1,3 +1,85 @@
-ab: hc%, rbbhc%, hfc%, md%, mk%, 7230%, mp%, sf%, rbbsf%, va%, vc%, vm%, 91E0%
-voortplanting_duin: da%, 1330%, gml%, had%, 2130%, 2150%, hd%, hdb%, ls%, lsi%, mp%, 2190_mp%, n, n+, n-, ru%, 2180%, 91E0%, rud%, rud+%, sd%, 2160%, 2170%, sdb%, 2190%
-voortplanting_leem: mc%, rbbmc%, mcb%, mr%, rbbmr%, vn%, 91E0%, 6430_hf%, 7230%
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: NAUWE KORFSLAK
+Soort: Vertigo angustior (mollusk / kalkrijke duinvalleien, zeggevegetaties & basenrijke moerassen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Nauwe korfslak is een zeer kleine, sterk microklimaatgevoelige landslak 
+(Habitatrichtlijn Bijlage II) die gebonden is aan permanent vochtige, maar niet 
+langdurig diep overstroomde, kalk- en basenrijke vegetaties met een goed 
+ontwikkelde strooisel- en moslaag. In Vlaanderen komt de soort voor in twee 
+ecologisch onderscheiden landschapstypes: de kustduinen (ecoregio 1) en 
+kalk-/basenrijke moeras- en zeggevegetaties in het binnenland (ecoregio > 1).
+
+A. Deelmodel 1 - Kustduinen ('voortplanting_duin', ecoregio == 1):
+   - BWK duingraslanden, duinvalleien & duinstruwelen: da%, 1330%, gml%, had%, 
+     2130%, 2150%, hd%, hdb%, ls%, lsi%, mp%, 2190_mp%, n, n+, n-, ru%, 2180%, 
+     91E0%, rud%, rud+%, sd%, 2160%, 2170%, sdb%, 2190%
+   - Ecologische functie: Vochtige duinvalleien, kruipwilg- en duindoornstruwelen 
+     en kalkrijke duingraslanden met stabiele bodemvochtigheid.
+
+B. Deelmodel 2 - Binnenland: Kernhabitat ('voortplanting_leem', ecoregio > 1):
+   - BWK grote zeggevegetaties, rietlanden & kalkmoerassen: mc%, rbbmc%, mcb%, 
+     mr%, rbbmr%, vn%, 91E0%, 6430_hf%, 7230%
+   - Ecologische functie: Basenrijke zeggevelden, verlandingsvegetaties en 
+     alluviale elzenbroekbossen vormen de stabiele voortplantingskern in het 
+     binnenland.
+
+C. Deelmodel 2 - Binnenland: Aanvullende biotopen ('ab_biotoop', ecoregio > 1):
+   - BWK natte graslanden, ruigten & broekbossen: hc%, rbbhc%, hfc%, md%, mk%, 
+     7230%, mp%, sf%, rbbsf%, va%, vc%, vm%, 91E0%
+   - Ruimtelijke koppelingsvoorwaarde: Uitsluitend geschikt indien gelegen 
+     binnen <= 100 m van het kernhabitat ('voortplanting_leem').
+   - Werkelijke oppervlakte: Per 10x10m rastercel worden de BWK-fracties 
+     (BWK_FRAC) van de unieke geschikte codes opgeteld (geclampt op max. 1,0).
+
+
+2. RUIMTELIJKE FILTERING & BOVENLOKALE OPENHEID
+--------------------------------------------------------------------------------
+- Ecoregio-scheiding:
+    * Waar beschikbaar wordt 'ecoregio == 1' gebruikt om duin- en ruigtecodes 
+      te beperken tot de kustzone, en 'ecoregio > 1' voor het zegge- en 
+      moerasmodel in het binnenland (zoals de Kempen / Turnhouts Vennegebied).
+- Negatieve verstoring- of bosfilters:
+    * Geen expliciete exclusiebuffers; bepaalde broek- en duinbossen (zoals 
+      91E0% en 2180%) maken net deel uit van het geschikte microhabitat.
+
+
+3. LANDSCHAPSCLUSTERING (MINIMAAL 0,04 HA OP 50 M / 100 M)
+--------------------------------------------------------------------------------
+- Deelmodel 1 (Kustduinen):
+    * Zoekstraal clustering: 50 m (fuzzy clustering via 25 m buffer)
+    * Oppervlaktedrempel: >= 0,04 ha (400 m2 / 4 rastercellen) werkelijk habitat
+- Deelmodel 2 (Binnenland):
+    * Zoekstraal clustering: 100 m (fuzzy clustering via 50 m buffer)
+    * Oppervlaktedrempel: >= 0,04 ha (400 m2) werkelijk habitat
+- Finale integratie:
+    * Beide deelmodellen worden samengevoegd en nogmaals getoetst op een 
+      minimale netwerkoppervlakte van >= 0,04 ha binnen 100 m.
+    * Ecologische functie: Door de geringe lichaamsgrootte en lage mobiliteit 
+      van deze landslak volstaat een kleine, stabiele microhabitatplek van 
+      400 m2 (0,04 ha) om een lokale deelpopulatie duurzaam te onderhouden.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (Dispersiecap_m / ARPL): 200 m
+    * Toepassing: ARPL / netwerkanalyses op lokaal metapopulatieniveau.
+    * Ecologische functie: De Nauwe korfslak heeft een zeer beperkte actieve 
+      dispersiecapaciteit; uitwisseling tussen deelpopulaties vindt enkel plaats 
+      over korte afstanden (tot ca. 200 m) via aaneengesloten vochtige 
+      vegetatiecorridors.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Nauwe korfslak (Vertigo angustior) - mollusk
+Bronlagen habitat         : voortplanting_duin (kust), voortplanting_leem + ab_biotoop (binnenland)
+Koppelingsvoorwaarde      : ab_biotoop uitsluitend binnen <= 100 m van voortplanting_leem
+Negatieve filters         : Geen (broek- en duinbossen 91E0%/2180% maken deel uit van biotoop)
+Minimale clusterdrempel   : >= 0,04 ha (400 m2) werkelijk habitat
+Koppelafstand clustering  : 50 m (duinen) / 100 m (binnenland)
+Dispersieradius (ARPL)    : 200 m
+================================================================================

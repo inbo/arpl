@@ -1,2 +1,75 @@
-bwk1: 3260%
-landbiotoop_bwk1: hc%, rbbhc%, hj%, kbb%, kh%, lhb%, lhi%, mc%, rbbmc%, md%, 7140%, 91E0%, mm%, 7210%, n, n+, n-, sf%, rbbsf%, sm%, rbbsm%, sp%, rbbsp%, sz%, va%, vm%, vn%
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: GEWONE BRONLIBEL
+Soort: Cordulegaster boltonii (beeklibel / beschaduwde bronbeken in bos- en moerasvalleien)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Gewone bronlibel is een grote, karakteristieke beeklibel van heldere, 
+zuurstofrijke en permanent stromende bovenlopen van laagland- en bronbeken 
+met een zand- of grindbodem en afwisselend beschaduwde en zonnige oeverzones. 
+De larven leven ingegraven in de zandige beekbodem (2 tot 4 jaar), terwijl de 
+adulten jagen en rijpen langs open bosranden, houtkanten, struwelen en 
+natte beekdalgraslanden in de directe omgeving van de beek.
+
+A. Voortplantingsbiotoop - Spoor A ('voortplanting_bwk' + Huetzon):
+   - BWK waterplantenrijke beken: 3260%
+   - Huetzon kleine laaglandbeken (vlaanderen_huetzon_10m.tif): Bk, Bkk, Bkl, Bkz
+   - Werkelijke oppervlakte: Per 10x10m rastercel worden de BWK-fracties 
+     (BWK_FRAC) en geschikte beektrajecten opgeteld (geclampt op max. 1,0).
+
+B. Direct oever- en rijpingsbiotoop - Spoor B ('landbiotoop_bwk'):
+   - BWK broekbossen, struwelen, houtkanten & natte graslanden/moerassen: 
+     hc%, rbbhc%, hj%, kbb%, kh%, lhb%, lhi%, mc%, rbbmc%, md%, 7140%, 91E0%, 
+     mm%, 7210%, n, n+, n-, sf%, rbbsf%, sm%, rbbsm%, sp%, rbbsp%, sz%, va%, 
+     vm%, vn%
+   - Ecologische rol in het model: Vormt het insectenrijke en luwe jacht- en 
+     rustbiotoop langs de beek en wordt als afzonderlijke deellaag (Spoor B) 
+     mee weggeschreven.
+
+
+2. WEDERZIJDSE RUIMTELIJKE KOPPELING WATER-LAND (100 M)
+--------------------------------------------------------------------------------
+- Koppeling na clustering (wederzijds binnen <= 100 m):
+    * Waterbiotoop (Spoor A): Enkel geschikte beektrajecten (>= 0,04 ha) die 
+      binnen <= 100 m van een volwaardig landbiotoopcomplex (>= 10 ha) liggen, 
+      worden behouden.
+    * Landbiotoop (Spoor B): Van het omliggende landbiotoopcomplex (>= 10 ha) 
+      wordt uitsluitend de directe beekdalzone binnen <= 100 m van het 
+      geschikte waterbiotoop behouden in het eindbiotoop en de deellagen.
+    * Ecologische functie: Beektrajecten in open, grootschalige akkergebieden 
+      zonder begeleidende bos- of struweelstructuren worden uitgesloten, 
+      terwijl het landbiotoop strak begrensd blijft tot de functionele 100 m 
+      oeverzone rondom de beek.
+
+
+3. LANDSCHAPSCLUSTERING (WATER >= 0,04 HA OP 50 M / LAND >= 10 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Clustering waterbiotoop (Spoor A):
+    * Zoekstraal clustering: 50 m (fuzzy clustering via 25 m buffer)
+    * Oppervlaktedrempel (MinPatch_ha): >= 0,04 ha (400 m2) werkelijk habitat
+- Clustering landbiotoop (Spoor B):
+    * Zoekstraal clustering: 50 m (fuzzy clustering via 25 m buffer)
+    * Oppervlaktedrempel (MinPatch_ha): >= 10 ha (100.000 m2) werkelijk habitat
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (Dispersiecap_m / ARPL): 5.000 m (5 km)
+    * Toepassing: ARPL / netwerkanalyses op beekdal- en stroomgebiedsniveau.
+    * Ecologische functie: Adulte Gewone bronlibellen volgen beekvalleien en 
+      bosranden over afstanden tot circa 5 km voor voedselvluchten en 
+      kolonisatie van naburige bronbeken.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Gewone bronlibel (Cordulegaster boltonii) - libel
+Deellaag Spoor A (water)  : voortplanting_bwk (3260%) + Huetzon (Bk, Bkk, Bkl, Bkz)
+Deellaag Spoor B (oever)  : landbiotoop_bwk (>= 10 ha op 50 m, begrensd op <= 100 m)
+Koppelingsvoorwaarde      : Wederzijds binnen <= 100 m (na clustering)
+Minimale clusterdrempel   : Water >= 0,04 ha (400 m2) / Landcomplex >= 10 ha
+Koppelafstand clustering  : 50 m
+Dispersieradius (ARPL)    : 5 km (5.000 m)
+================================================================================
