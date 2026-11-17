@@ -1,0 +1,123 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: RUGSTREEPPAD (OUD MODEL / RUST)
+Soort: Epidalea calamita (amfibie / pioniermilieus, duinen, heide & ondiepe, 
+       tijdelijke wateren in uitgestrekte open landschappen)
+Scriptversie: ANB/INBO 2018-2019 / Heel Vlaanderen (20 m resolutie, binaire grid)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Rugstreeppad is een uitgesproken pioniersoort van open, zonnige en dynamische 
+zand-, duin- en heidelandschappen (en secundaire pioniermilieus zoals opspuit- 
+en haventerreinen). De soort plant zich voort in ondiepe, snel opwarmende en 
+vaak tijdelijke plasjes of vennen zonder vispredatie en heeft voor zijn 
+landfase (foerageren en ingraven om te overwinteren) uitgestrekte, losse en 
+open vegetaties nodig.
+
+A. Voortplantings- / Waterbiotoop ('rugstreeppad_waterbiotoop1'):
+   Gecombineerde selectie uit twee bronnen:
+   1. BWK- & Natura 2000-selectie (zonder oppervlaktebeperking):
+      ae%, 2190%, 3140%, 3150%, ao%, 3160%, 7140%, 7150%, ap, ap+, apo, apo+, 
+      mp%, mr%, 6430_hw%, 6430_mr%, rbbmr%, 3130%
+      (Oligotrofe, dystrofe en mesotrofe wateren en vennen [ao, ap, ap+, apo, 
+      apo+, 3110/3130/3160], vochtige duinvalleien [2190], slenkvegetaties en 
+      overgangsveen [7140, 7150], kranswier- en eutrofe wateren [3140, 3150, ae] 
+      en moeras-/rietvegetaties [mp, mr, rbbmr]).
+   2. Blauwe Laag (zeer kleine, geïsoleerde waterelementen):
+      - Bron: `BlauweLaag_Plassen_06042017_20m_.asc` (waarde = 1).
+      - Filter: Plassen geclusterd binnen 500 m (`fuzzyClusterIdU(..., 500)`), 
+        waarna enkel clusters <= 0,04 ha (= max. 1 gridcel van 20x20 m; 
+        `cFilterLeArea(..., 0.04)`) overblijven.
+      - Effect: Door eerst op 500 m te clusteren en pas dan op <= 0,04 ha te 
+        filteren, worden enkel kleine, geïsoleerde plasjes weerhouden die op 
+        minstens 500 m van andere Blauwe Laag-plassen liggen.
+
+B. Zomer- en Overwinterings- / Landbiotoop ('rugstreeppad_land'):
+   - BWK- & Natura 2000-selectie:
+       cd%, 2310%, 4030%, ce%, 4010%, 7150%, cg%, cm%, cp%, cv%, dd%, 2120%, 
+       dm%, 2330%, ha%, 6230_ha%, rbbha%, hc%, 2190%, 6410%, hd%, 2130%, hf%, 
+       6430%, hmo%, 6230%, hn%, hr%, kc%, kg%, kn%, 3150%, kt%, ku%, 3270%, 
+       kz%, mp%, 2190_mp%, mr%, 6430_hw%, 6430_mr%, 7140%, 7140_mrd%, rbbmr%, 
+       sd%, 2160%, 2170%, 2180%, sg%, rbbsg%, sm%, 7140%, 7230%, so%, rbbso%, 
+       sz%
+       (Droge en vochtige heiden, pijpenstrootjes- en hoogveenvegetaties [cd, 
+       ce, cg, cm, cp, cv], witte duinen, stuifzanden en binnenduinen [dd, dm, 
+       2120, 2310, 2330], heischrale graslanden, duingraslanden, dotterbloem- 
+       en blauwgraslanden [ha, hc, hd, hf, hmo, hn, hr], ruderale en pionier- 
+       en oevermilieus [kc, kg, kt, ku, kz, 3270], moeras- en rietvegetaties 
+       [mp, mr] en duin-, gagel-, wilgen- en bremstruwelen [sd, sg, sm, so, sz]).
+   - Expliciete uitsluiting van bos: Bosbiotopen (zoals `9120%`, `pmb%`, `ppmb%`, 
+     `91E0%`) zijn bewust uit de selectie verwijderd om enkel open landschappen 
+     te behouden.
+
+
+2. NEGATIEVE STOORFACTOREN (BEBOUWING & WEGENMETING)
+--------------------------------------------------------------------------------
+- Expliciete exclusielagen: Geen.
+  * Gesloten bos, bebouwing en akkers worden geweerd via de strikt open 
+    BWK-biotoopselectie.
+
+
+3. META-POPULATIESTRUCTUUR & FUNCTIONELE KOPPELING
+--------------------------------------------------------------------------------
+Het script hanteert voor de rugstreeppad een zeer grootschalige landschapsbenadering:
+
+1. Poelendichtheid & Waterclustering (1.000 m schaal):
+   - Functie: `GeUniqueCountInBuffer(rugstreeppad_waterbiotoop1_cluster, 1000, meter, ..., 2)`
+   - Drempelwaarde: Binnen een straal van **1.000 m** (in het commentaar stond 
+     500 m, in de code 1.000 m) moeten minstens 2 unieke waterclusters liggen 
+     (= het eigen water + minstens 1 naburig voortplantingswater).
+   - Vervolgens worden geldige wateren geclusterd binnen **1.000 m** en gefilterd 
+     op >= 0,001 ha (in de praktijk alle geldige watercellen >= 0,04 ha).
+   - Ecologische functie: De rugstreeppad is een mobiele pionier die snel 
+     nieuwe, tijdelijke plassen over afstanden tot 1 km kan bereiken; 2 poelen 
+     binnen 1 km volstaan als minimale voortplantingskern.
+
+2. Lokale Landbiotoop-kernen (50 m clustering / >= 160 ha):
+   - Functie: `fuzzyClusterIdU(rugstreeppad_land, 50, meter)` gevolgd door 
+     `cFilterGeArea(..., 160, hectare)`
+   - Drempelwaarde: Aaneengesloten open landbiotoop (binnen 50 m) moet minstens 
+     **160 ha** (1.600.000 m2 = 4.000 cellen van 20x20 m) groot zijn.
+   - *(Noot: De variabelenaam en commentaarregel spreken nog van `10ha`, maar 
+     de effectieve drempel in de code is opgetrokken naar **160 ha** om enkel 
+     grootschalige open duin-, heide- of pioniercomplexen te weerhouden).*
+
+3. Wederzijdse koppeling Water <-> Land & Gecombineerd Netwerk (500 m / >= 160 ha):
+   - Waterbiotopen binnen **500 m** van een landkern (>= 160 ha) en landkernen 
+     binnen **500 m** van geldig voortplantingswater worden samengevoegd.
+   - Het gecombineerde geheel wordt geclusterd binnen **500 m** en opnieuw 
+     getoetst op een minimale totale oppervlakte van **>= 160 ha**.
+
+
+4. GEOGRAFISCHE & ECOLOGISCHE AFBAKENING (ECOREGIO-FILTER)
+--------------------------------------------------------------------------------
+- Ecoregio-masker: `Ge('ecoregio.asc', 1)`
+  * Toepassing: Na het toepassen van het ecoregio-masker wordt het leefgebied 
+    opnieuw geclusterd op 500 m en gefilterd op **>= 160 ha**, zodat complexen 
+    die op de regiogrens worden afgesneden nog steeds deze omvang halen.
+  * Ecologische functie: Beperkt het model tot de natuurlijke en actuele 
+    kernregio's in Vlaanderen (kustduinen, Kempen en het Antwerpse havengebied/
+    Scheldepolders).
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit: Geïntegreerd op landschapsschaal (1.000 m voor 
+  poelenuitwisseling; 500 m voor land-waterkoppeling en netwerkvorming).
+  * Output is een binaire 0/1-kaart (`ANB2019_Rugstreeppad2018.asc`).
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Rugstreeppad (Epidalea calamita)
+Schaal & Resolutie        : Heel Vlaanderen, 20 m raster (binair 0/1)
+Waterbiotoop              : BWK-vennen/duinvalleien/wateren + geïsoleerde 
+                            Blauwe Laag plasjes (<= 0,04 ha na 500 m clustering)
+Poelendichtheid-eis       : Minstens 2 unieke waterclusters binnen 1.000 m (eigen + 1)
+Landbiotoop               : Open duinen, stuifzand, heide, schrale graslanden, 
+                            moerassen & pioniermilieus (bos expliciet uitgesloten)
+Landkern drempel          : >= 160 ha aaneengesloten landbiotoop (clustering: 50 m)
+Koppeling Water <-> Land  : Max. 500 m onderlinge afstand (wederzijds)
+Totaal leefgebied drempel : >= 160 ha (clustering: 500 m)
+Geografische filter       : Ecoregio >= 1 (`ecoregio.asc`), met hertoetsing >= 160 ha
+================================================================================

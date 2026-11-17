@@ -1,0 +1,123 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: BOOMKIKKER (OUD MODEL / RUST)
+Soort: Hyla arborea (amfibie / poelencomplexen met zonnige ruigten & struwelen)
+Scriptversie: ANB/INBO 2018-2019 / Heel Vlaanderen (20 m resolutie, binaire grid)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Boomkikker is een karakteristieke soort van kleinschalige cultuur- en 
+natuurlandschappen met een dicht netwerk van visvrije, zonbeschenen poelen 
+afgewisseld met structuurrijke ruigten, vochtige graslanden, doornstruwelen en 
+houtkanten. De soort plant zich voort in ondiepe wateren en verblijft de rest 
+van het jaar (zomer- en winterbiotoop) in opgaande, zonnige vegetatiestructuren 
+in de directe omgeving.
+
+A. Voortplantings- / Waterbiotoop ('boomkikker_waterbiotoop1'):
+   Gecombineerde selectie uit twee bronnen:
+   1. BWK- & Natura 2000-selectie:
+      3150%, ae%, 2190%, 3140%, ao%, 3110%, 3130%, 3160%, 7140%, 7150%, kn%, mp%
+      (Eutrofe, mesotrofe, oligotrofe en dystrofe stilstaande wateren en 
+      kranswierwateren [ae, ao, 3110, 3130, 3140, 3150, 3160], vochtige 
+      duinvalleien [2190], overgangsveen en slenkvegetaties [7140, 7150], 
+      poelen [kn] en poel-/moerasvegetaties [mp]).
+   2. Blauwe Laag (kleine waterelementen):
+      - Bron: `BlauweLaag_Plassen_06042017_20m_.asc` (waarde = 1).
+      - Filter: Plassen geclusterd binnen 10 m (`fuzzyClusterIdU(..., 10)`), 
+        waarbij enkel kleine wateren <= 0,4 ha (`cFilterLeArea(..., 0.4)`) 
+        worden weerhouden.
+      - Ecologische functie: Grote vijvers en meren bevatten doorgaans veel 
+        predatievis (zoals snoek of baars) en zijn ongeschikt; kleine poelen 
+        <= 0,4 ha zijn vaker visvrij en warmen snel op in het voorjaar.
+
+B. Zomer- en Overwinterings- / Landbiotoop ('boomkikker_landbiotoop_na'):
+   Opgebouwd uit twee complementaire vegetatiegroepen die ruimtelijk met elkaar 
+   verweven moeten zijn:
+   1. Vochtige graslanden, ruigten, moerassen en struwelen (`boomkikker_landbiotoop_hms`):
+      hc%, 2190%, 6410%, rbbhc%, hd%, 2130%, 2130_hd%, hf%, 6430%, hj%, mp%, 
+      mr%, 7140%, rbbmr%, sd%, sf%, sp%, sz%, 2160%, 2170%, 2180%
+      (Dotterbloemhooilanden, blauwgraslanden, droge duingraslanden, moerasspirea- 
+      en natte ruigten, rietlanden, zeggevegetaties, duindoorn-, kruipwilg- en 
+      bremstruwelen en beboste duinen).
+   2. Kleine Landschapselementen (KLE's) & lijn-/puntstructuren (`boomkikker_landbiotoop_k`):
+      kb%, kh%, khw%, kn%, ku%, mp%, mr% en mozaïek-/lijnkarteringen k(...) / 
+      kt(...) met ae, ao, hc, hd, hf, hj, ku, mr
+      (Bomenrijen, houtkanten, hagen, knotbomen, poelen en riet-/ruigtestroken).
+
+
+2. NEGATIEVE STOORFACTOREN & STRUCTUUREISEN
+--------------------------------------------------------------------------------
+- Akker-exclusie (intensief landbouwgebruik):
+  * Bron: BWK-code `b%` (akkers).
+  * Toepassing: Alle cellen met akker-kartering (`b%`) worden expliciet 
+    uitgesloten uit het landbiotoop (`and(..., not(boomkikker_akkers))`) om 
+    pesticidendruk, bemesting en gebrek aan dekking te weren.
+- Eis van landschapsvariatie / mozaïekstructuur (500 m):
+  * Ruimtelijke logica: Vlakvormige graslanden/ruigten (`hms`) en lineaire 
+    KLE's/struwelen (`k`) zijn enkel geldig als het andere type binnen 500 m 
+    aanwezig is (`cellDistanceLe(..., 500, meter)`).
+  * Ecologische functie: Boomkikkers vereisen zowel open, kruidenrijke 
+    zonplekken als opgaande houtige structuren (braamstruwelen, houtkanten) 
+    om te zonnen en te overwinteren.
+
+
+3. META-POPULATIESTRUCTUUR & FUNCTIONELE KOPPELING (500 M REGEL)
+--------------------------------------------------------------------------------
+Het script hanteert een strikte drieledige ecologische keten binnen een 
+actieradius van 500 m:
+
+1. Poelendichtheid (minstens 6 poelen binnen 500 m):
+   - Functie: `GeUniqueCountInBuffer(boomkikker_waterbiotoop1_cluster, 500, meter, ..., 6)`
+   - Drempelwaarde: Een voortplantingswater is enkel geldig indien er binnen 
+     een straal van 500 m minstens 6 unieke waterclusters aanwezig zijn (= de 
+     eigen poel + minstens 5 naburige poelen).
+   - Ecologische functie: De boomkikker functioneert in klassieke metapopulaties. 
+     Een dicht poelennetwerk vangt jaarlijkse schommelingen in waterstand, 
+     predatie en voortplantingssucces op.
+
+2. Wederzijdse koppeling Water <-> Land (max. 500 m afstand):
+   - Enkel waterbiotopen die binnen 500 m van geschikt landbiotoop liggen 
+     (`boomkikker_waterbiotoop3`) én landbiotopen die binnen 500 m van een 
+     geldig poelennetwerk liggen (`boomkikker_landbiotoop1`) blijven behouden.
+   - Ecologische functie: Zorgt ervoor dat voortplantingspoelen en zomer-/
+     winterverblijven binnen de normale seizoensmigratie-afstand van de soort 
+     liggen.
+
+3. Netwerkclustering & Oppervlaktedrempel (>= 5 ha):
+   - Functie: `FuzzyClusterIdU(..., 500, meter)` gevolgd door `cFilterGeArea(..., 5, hectare)`
+   - Drempelwaarde: Het gecombineerde leefgebied (water + land) op onderlinge 
+     afstand van max. 500 m moet samen minstens 5 ha (50.000 m2) bedragen.
+
+
+4. GEOGRAFISCHE & ECOLOGISCHE AFBAKENING (ECOREGIO-FILTER)
+--------------------------------------------------------------------------------
+- Ecoregio-masker: `Ge('ecoregio.asc', 1)`
+  * Toepassing: Na het ecoregio-masker wordt het resultaat nogmaals geclusterd 
+    op 500 m en gefilterd op >= 5 ha, zodat netwerken die op de regiogrens 
+    worden afgesneden alsnog aan de minimale oppervlakte-eis van 5 ha voldoen.
+  * Ecologische functie: Beperkt het model tot de Vlaamse ecoregio's waar de 
+    boomkikker van nature thuis hoort (voornamelijk de Kempen en de Maasvallei).
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit: Geïntegreerd op lokaal metapopulatieniveau (500 m).
+  * Binnen het script stuurt de 500 m-straal zowel de poelendichtheid, de 
+    land-waterkoppeling als de clustervorming. Bovenlokale uitwisseling tussen 
+    gescheiden metapopulaties (> 500 m) wordt niet apart berekend; de output 
+    is een binaire 0/1-kaart (`ANB2019_Boomkikker2018.asc`).
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Boomkikker (Hyla arborea)
+Schaal & Resolutie        : Heel Vlaanderen, 20 m raster (binair 0/1)
+Waterbiotoop              : BWK-wateren/moerassen + Blauwe Laag plassen <= 0,4 ha
+Poelendichtheid-eis       : Minstens 6 unieke waterclusters binnen 500 m (eigen + 5)
+Landbiotoop               : Vochtige graslanden/ruigten + KLE's binnen 500 m van elkaar
+Stoorfactoren             : Exclusie van akkers (`b%`) uit het landbiotoop
+Koppeling Water <-> Land  : Max. 500 m onderlinge afstand (wederzijds)
+Netwerkclustering         : 500 m koppelingsafstand (`FuzzyClusterIdU`)
+Oppervlaktedrempel        : >= 5 ha totaal gecombineerd leefgebied (water + land)
+Geografische filter       : Ecoregio >= 1 (`ecoregio.asc`), met hertoetsing >= 5 ha
+================================================================================

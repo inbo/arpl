@@ -1,0 +1,125 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: KNOFLOOKPAD (OUD MODEL / RUST)
+Soort: Pelobates fuscus (amfibie / gebufferde, visvrije poelen & vennen met 
+       losse, graafbare zand- of heidebodems)
+Scriptversie: ANB/INBO 2018-2019 / Heel Vlaanderen (20 m resolutie, binaire grid)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Knoflookpad is een nachtactieve, gravende pad van droge, losse zandgronden 
+(stuifzand, heide, schrale graslanden en extensieve zandige cultuurgronden) 
+gecombineerd met matig voedselrijke tot zwak gebufferde, visvrije en diepere 
+voortplantingswateren waarin de uitzonderlijk grote dikkopjes zich kunnen 
+ontwikkelen.
+
+A. Voortplantings- / Waterbiotoop ('knoflookpad_waterbiotoop_bwk' - expertselectie Loïc):
+   Gecombineerde selectie uit twee bronnen:
+   1. BWK- & Natura 2000-selectie (aangescherpt door soortexpert):
+      ae, ae+, aer, aer+, 3150%, aom, aom+, kn
+      (Eutrofe en mesotrofe stilstaande wateren en wateren met kranswieren 
+      [ae, ae+, aer, aer+, aom, aom+, 3150] en poelen [kn]).
+      - Ecologische duiding: Sterk zure/oligotrofe wateren (`ao`, `ap`) en 
+        riet-/moerasvegetaties uit de oorspronkelijke brede lijst zijn bewust 
+        geschrapt; de knoflookpad vereist zwak gebufferde tot matig 
+        voedselrijke wateren met voldoende diepte en open waterzone.
+   2. Blauwe Laag (kleine waterelementen):
+      - Bron: `BlauweLaag_Plassen_06042017_20m_.asc` (waarde = 1).
+      - Oppervlaktefilter: Plassen geclusterd binnen 10 m (`fuzzyClusterIdU(..., 10)`) 
+        en gefilterd op kleine wateren <= 0,4 ha (`cFilterLeArea(..., 0.4)`).
+
+B. Zomer- en Overwinterings- / Landbiotoop ('knoflookpad_landbiotoop_bwk' - expertselectie Loïc):
+   - BWK- & Natura 2000-selectie:
+       bs%, cd%, cg%, cgb%, cvb%, 2310%, 4030%, dm%, 2330%, ha%, hab%, 
+       6230_ha%, rbbha%, 6230%, k(ha%, k(hm%, k(cg%, ku%, ko%, mr%, sf%, 
+       2180%, 91E0%, rbbsf%, sg%, 2310%, rbbsg%, sz%
+       (Zandige akkers/bouwland [bs%], droge struikheide en duinheide [cd, cg, 
+       cgb, 2310, 4030], verboste veenmosvegetaties [cvb], stuifzanden en 
+       binnenduinen [dm, 2330], heischrale graslanden [ha, hab, 6230], 
+       ruderale en open zandige/vergraven plekken [ku, ko], mozaïeken met 
+       heide/grasland [k(...)], rietland [mr] en wilgen-, gagel- en brem-
+       struwelen op zand [sf, sg, sz, 2180, 91E0]).
+   - Ecologische duiding: De opname van `bs%` (zandige akkers, zoals asperge- en 
+     maïsvelden op zand) en open stuifzanden (`dm%`) is essentieel omdat de 
+     knoflookpad zich overdag en in de winter diep ingraaft in losse, goed 
+     doorlatende zandbodems.
+
+
+2. NEGATIEVE STOORFACTOREN (BEBOUWING & WEGENMETING)
+--------------------------------------------------------------------------------
+- Expliciete exclusielagen: Geen.
+  * Gesloten bossen, natte veengronden en bebouwing vallen weg via de strikte 
+    BWK-selectie van open, graafbare zandbiotopen.
+
+
+3. META-POPULATIESTRUCTUUR & FUNCTIONELE KOPPELING (500 M / 250 M / 50 M)
+--------------------------------------------------------------------------------
+Het script hanteert een stapsgewijze ruimtelijke opbouw van poelendichtheid, 
+landkernen en nauwe land-waterbinding:
+
+1. Poelendichtheid (minstens 4 poelen binnen 500 m):
+   - Functie: `GeUniqueCountInBuffer(knoflookpad_waterbiotoop1_cluster, 500, meter, ..., 4)`
+   - Drempelwaarde: Een voortplantingswater is enkel geldig indien er binnen 
+     een straal van 500 m minstens 4 unieke waterclusters aanwezig zijn (= het 
+     eigen water + minstens 3 naburige poelen/wateren).
+   - Ecologische functie: Spreidt het risico op droogval (dikkopjes hebben een 
+     lange ontwikkelingstijd tot laat in de zomer) en tijdelijke vispredatie.
+
+2. Lokale Landbiotoop-kernen (50 m clustering / >= 50 ha):
+   - Functie: `fuzzyClusterIdU(knoflookpad_landbiotoop_bwk, 50, meter)` gevolgd door 
+     `cFilterGeArea(..., 50, hectare)`
+   - Drempelwaarde: Aaneengesloten graafbaar landbiotoop (binnen 50 m) moet 
+     minstens **50 ha** (500.000 m2 = 1.250 cellen van 20x20 m) bedragen.
+   - Ecologische functie: Garandeert een grootschalig, samenhangend zomer- en 
+     overwinteringslandschap op zandgrond.
+
+3. Nauwe wederzijdse koppeling Water <-> Land (max. 250 m afstand):
+   - Enkel geldige poelen die binnen **250 m** van een landkern (>= 50 ha) liggen 
+     (`knoflookpad_waterbiotoop`) én landkernen die binnen **250 m** van geldig 
+     voortplantingswater liggen (`knoflookpad_landbiotoop`) blijven behouden.
+   - Ecologische functie: Knoflookpadden zijn honkvast en verblijven tijdens hun 
+     terrestrische fase doorgaans binnen enkele honderden meters van hun 
+     voortplantingspoel.
+
+4. Netwerkclustering & Finale Oppervlaktedrempel (50 m / >= 50 ha):
+   - Functie: `fuzzyClusterIdU(..., 50, meter)` gevolgd door `cFilterGeArea(..., 50, hectare)`
+   - Drempelwaarde: Het gecombineerde leefgebied (water + land) op onderlinge 
+     afstand van max. **50 m** moet samen minstens **50 ha** groot zijn 
+     (opgetrokken van 20 ha naar 50 ha op vraag van ANB).
+
+
+4. GEOGRAFISCHE & ECOLOGISCHE AFBAKENING (ECOREGIO KEMPEN)
+--------------------------------------------------------------------------------
+- Specifieke ecoregio-selectie: `OrEq('ecoregio.asc', 11, 12, 13, 14, 15, 16, 17)`
+  * Toepassing: Het script beperkt zowel de tussenliggende water- en 
+    landkaarten als de finale leefgebiedenkaart tot de ecoregio-codes **11 t.e.m. 17** 
+    (de Kempische zandstreek), met hertoetsing op 50 m clustering en >= 50 ha.
+  * Ecologische functie: De knoflookpad is in Vlaanderen een zeldzame relictsoort 
+    van de zandige Kempen (vooral Limburgse Kempen en delen van de Antwerpse 
+    Kempen); andere zandregio's zoals de kustduinen worden zo uitgesloten.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit: Geïntegreerd op metapopulatieniveau (500 m voor poelen- 
+  uitwisseling; 250 m voor land-waterkoppeling; 50 m voor netwerkclustering).
+  * Output bestaat uit zowel tussenlagen (`knoflookpad_waterbiotoop.asc`, 
+    `knoflookpad_landbiotoop.asc`) als de finale binaire 0/1-leefgebiedenkaart 
+    (`ANB2019_Knoflookpad2018.asc`).
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Knoflookpad (Pelobates fuscus)
+Schaal & Resolutie        : Heel Vlaanderen, 20 m raster (binair 0/1)
+Waterbiotoop              : Gebufferde/mesotrofe BWK-wateren & poelen + 
+                            Blauwe Laag plassen <= 0,4 ha
+Poelendichtheid-eis       : Minstens 4 unieke waterclusters binnen 500 m (eigen + 3)
+Landbiotoop               : Zandakkers (`bs%`), droge heide, stuifzand, 
+                            heischraal grasland, ruderale zandplekken & struweel
+Landkern drempel          : >= 50 ha aaneengesloten landbiotoop (clustering: 50 m)
+Koppeling Water <-> Land  : Max. 250 m onderlinge afstand (wederzijds)
+Totaal leefgebied drempel : >= 50 ha (clustering: 50 m; aangescherpt op vraag ANB)
+Geografische filter       : Ecoregio Kempen codes 11 t.e.m. 17 (`ecoregio.asc`), 
+                            met hertoetsing >= 50 ha
+================================================================================

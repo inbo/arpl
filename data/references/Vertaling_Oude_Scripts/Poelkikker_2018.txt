@@ -1,0 +1,122 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: POELKIKKER (OUD MODEL / RUST)
+Soort: Pelophylax lessonae (amfibie / voedselarme vennen & heidepoelen met 
+       structuurrijk heide-, moeras- en licht boslandhabitat)
+Scriptversie: ANB/INBO 2018-2019 / Heel Vlaanderen (20 m resolutie, binaire grid)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Poelkikker is een kleine, warmteminnende groene kikker die karakteristiek 
+is voor voedselarme tot matig voedselrijke, zonbeschenen vennen en poelen in 
+heide-, veen- en bosgebieden. Buiten de voortplantingsperiode leeft de soort 
+terrestrisch (foerageren en overwinteren ingegraven in de strooisel- of 
+moslaag) in de directe omgeving van het voortplantingswater.
+
+A. Voortplantings- / Waterbiotoop ('poelkikker_waterbiotoop1'):
+   Gecombineerde selectie uit twee bronnen:
+   1. BWK- & Natura 2000-selectie (zonder oppervlaktebeperking):
+      ao%, 3160%, 7140%, 7150%, aom%, 3110%, 3130%, aoo%, ap, ap+, apo, apo+, 
+      kn%, 3140%, 3150%
+      (Oligotrofe en dystrofe wateren en vennen [ao, aom, aoo, 3110, 3130, 
+      3160], zure en zwak gebufferde vennen/plassen [ap, ap+, apo, apo+], 
+      overgangsveen en slenkvegetaties [7140, 7150], poelen [kn] en 
+      kranswier- en eutrofe wateren [3140, 3150]).
+      - Opmerking: In tegenstelling tot de kamsalamander worden BWK-vennen en 
+        -wateren hier niet gefilterd op <= 0,4 ha, omdat ook grotere vennen met 
+        ondiepe, verlandende oeverzones geschikt zijn voor de poelkikker.
+   2. Blauwe Laag (kleine waterelementen):
+      - Bron: `BlauweLaag_Plassen_06042017_20m_.asc` (waarde = 1).
+      - Oppervlaktefilter: Geclusterd binnen 10 m (`fuzzyClusterIdU(..., 10)`) 
+        en gefilterd op kleine wateren <= 0,4 ha (`cFilterLearea(..., 0.4)`).
+
+B. Zomer- en Overwinterings- / Landbiotoop ('poelkikker_landbiotoop1'):
+   - BWK- & Natura 2000-selectie:
+       ce%, 4010%, 7150%, cg, cg+, 2310%, 4030%, cm, cm+, ct, ct+, 7110%, hf%, 
+       6430%, hj%, hm%, 6410%, hmo%, 6230%, hp+, hpr+, mc%, mcb%, rbbmc%, md%, 
+       7140%, 91E0%, mk%, 7230%, mr%, rbbmr%, ms%, rbbms%, pms, pms+, ppmb, 
+       ppmb+, ppms, ppms+, qb, qb+, 9120%, 9190%, qs, qs+, sm%, 7230%, so%, 
+       rbbso%, sz%, t%, 7110%, vo%, vt%, 91D0%
+       (Vochtige en droge heiden [ce, cg, cg+, 4010, 4030, 2310], hoogveen en 
+       veenmosvegetaties [ct, ct+, t, 7110], natte ruigten, blauwgraslanden, 
+       heischrale graslanden en soortenrijke graslanden [hf, hj, hm, hmo, 
+       hp+, hpr+, 6230, 6410, 6430], grote en kleine zeggevegetaties, 
+       galigaanmoerassen, rietlanden en trilvenen [mc, md, mk, mr, ms, 7140, 
+       7230], open en lichte eiken-, berken- en populierenbossen op zand en 
+       veen [pms, ppmb, ppms, qb, qs, 9120, 9190], gagel-, wilgen- en 
+       bremstruwelen [sm, so, sz, 91E0] en elzen- en berkenbroekbossen [vo, 
+       vt, 91D0]).
+   - Ecologische functie: De poelkikker overwintert altijd op het land (in 
+     tegenstelling tot de bastaardkikker en meerkikker) en vereist daarvoor 
+     vorstvrije, structuurrijke heide-, mos- of bosstrooisellagen vlak bij 
+     het water.
+
+
+2. NEGATIEVE STOORFACTOREN (BEBOUWING & WEGENMETING)
+--------------------------------------------------------------------------------
+- Expliciete exclusielagen: Geen.
+  * Bebouwing, intensieve akkers en infrastructuur worden niet apart gebufferd, 
+    maar vallen weg via de BWK-selectie.
+
+
+3. META-POPULATIESTRUCTUUR & FUNCTIONELE KOPPELING (500 M / 100 M REGEL)
+--------------------------------------------------------------------------------
+Het script hanteert een getrapte ruimtelijke schaal voor wateruitwisseling (500 m) 
+en directe land-waterbinding (100 m):
+
+1. Poelendichtheid (minstens 4 poelen/vennen binnen 500 m):
+   - Functie: `GeUniqueCountInBuffer(poelkikker_waterbiotoop_cluster, 500, meter, ..., 4)`
+   - Drempelwaarde: Een voortplantingswater is enkel geldig indien er binnen 
+     een straal van 500 m minstens 4 unieke waterclusters aanwezig zijn (= het 
+     eigen water + minstens 3 naburige poelen/vennen).
+   - Ecologische functie: Waar de kamsalamander en boomkikker 6 poelen binnen 
+     500 m vereisen, volstaan voor de poelkikker 4 wateren binnen 500 m omdat 
+     grotere vennen stabieler zijn en minder snel volledig droogvallen.
+
+2. Nauwe wederzijdse koppeling Water <-> Land (max. 100 m afstand):
+   - Enkel waterbiotopen die binnen **100 m** van geschikt landbiotoop liggen 
+     (`poelkikker_waterbiotoop3`) én landbiotopen die binnen **100 m** van een 
+     geldig voortplantingswater liggen (`poelkikker_landbiotoop2`) blijven behouden.
+   - Ecologische functie: Poelkikkers zijn sterk honkvast en verblijven tijdens 
+     de zomer en winter doorgaans binnen enkele tientallen tot maximaal 100 meter 
+     van de oever van hun voortplantingswater.
+
+3. Netwerkclustering & Oppervlaktedrempel (>= 10 ha):
+   - Functie: `fuzzyClusterIdU(..., 100, meter)` gevolgd door `cFilterGeArea(..., 10, hectare)`
+   - Drempelwaarde: Het gecombineerde leefgebied (water + land) op onderlinge 
+     afstand van max. 100 m moet samen minstens 10 ha (100.000 m2 = 250 cellen 
+     van 20x20 m) groot zijn.
+
+
+4. GEOGRAFISCHE & ECOLOGISCHE AFBAKENING (ECOREGIO-FILTER)
+--------------------------------------------------------------------------------
+- Ecoregio-masker: `Ge('ecoregio.asc', 1)`
+  * Toepassing: Na het toepassen van het ecoregio-masker wordt het leefgebied 
+    opnieuw geclusterd op 100 m en gefilterd op >= 10 ha, zodat complexen die 
+    op de regiogrens worden afgesneden nog steeds de drempel van 10 ha halen.
+  * Ecologische functie: Beperkt het model tot het natuurlijke Vlaamse areaal 
+    in de Kempen (zandstreek met vennen en heidecomplexen).
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit: Geïntegreerd op metapopulatieniveau (500 m voor poelen- 
+  en vennenuitwisseling; 100 m voor land-watercomplexen).
+  * Output is een binaire 0/1-kaart (`ANB2019_Poelkikker2018.asc`) zonder 
+    afzonderlijke bovenlokale dispersiebuffers rond de eindclusters.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Poelkikker (Pelophylax lessonae)
+Schaal & Resolutie        : Heel Vlaanderen, 20 m raster (binair 0/1)
+Waterbiotoop              : BWK-vennen/wateren/poelen + Blauwe Laag plassen <= 0,4 ha
+Poelendichtheid-eis       : Minstens 4 unieke waterclusters binnen 500 m (eigen + 3)
+Landbiotoop               : Heide, hoogveen, schrale/vochtige graslanden, zegge- en 
+                            rietmoerassen, open zand-/veenbossen & broekbossen
+Stoorfactoren             : Geen expliciete exclusiebuffers (enkel via BWK)
+Koppeling Water <-> Land  : Max. 100 m onderlinge afstand (wederzijds)
+Netwerkclustering         : 100 m koppelingsafstand (`fuzzyClusterIdU`)
+Oppervlaktedrempel        : >= 10 ha totaal gecombineerd leefgebied (water + land)
+Geografische filter       : Ecoregio >= 1 (`ecoregio.asc`), met hertoetsing >= 10 ha
+================================================================================

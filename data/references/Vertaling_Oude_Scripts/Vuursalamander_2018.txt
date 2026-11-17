@@ -1,0 +1,91 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: VUURSALAMANDER (OUD MODEL / RUST)
+Soort: Salamandra salamandra (amfibie / bronbos & structuurrijk oud loofbos)
+Scriptversie: ANB/INBO 2018-2019 / Heel Vlaanderen (20 m resolutie, binaire grid)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Vuursalamander is gebonden aan vochtige, schaduwrijke oude loofbossen op 
+leem-, zandleem- of bronrijke bodems, met zuurstofrijke bosbeken en bronzones 
+voor de afzet van larven.
+
+A. Voortplantings- / Larvebiotoop (in script gecommentarieerd / geïntegreerd):
+   - BWK-selectie: vc%, 7220% (bronbossen en kalktufbronnen).
+   - Opmerking: In de actieve modelberekening wordt deze aparte larvelaag 
+     overschreven en rechtstreeks meegenomen binnen het totale land- en 
+     voortplantingsbiotoop.
+
+B. Totaal leefgebied ('vuursalamander_bwk'):
+   - BWK- & Natura 2000-selectie:
+       fa%, 9120%, fe%, fm%, 9130%, qa%, 9160%, qe%, va%, vc%, 7220%, vf%, 
+       vm%, vn%, vo%, vt%, 91D0%, 2180%, ru%
+       (Zuurminnende en neutrale beukenbossen [fa, fe, fm, 9120, 9130], 
+       eiken-haagbeukenbossen [qa, qe, 9160], bronbossen en kalktufbronnen 
+       [vc, 7220], alluviale elzen- en essenbossen en broekbossen [va, vf, vm, 
+       vn, vo, vt, 91D0], beboste duinen [2180] en kapvlakten/ruigten in 
+       bosverband [ru])
+   - Resolutie & Representatie: 20 x 20 m raster (`vlaanderen_20m.asc`, 400 m2 
+     per cel). Elke geselecteerde BWK-cel telt binair (0/1) voor de volledige 
+     celoppervlakte mee (geen sub-cel fractieberekening).
+
+
+2. NEGATIEVE STOORFACTOREN (BEBOUWING & WEGENMETING)
+--------------------------------------------------------------------------------
+- Expliciete exclusielagen: Geen.
+  * Bebouwing en infrastructuur worden niet apart gebufferd of uitgesloten, 
+    maar vallen weg via de BWK-biotoopselectie.
+
+
+3. KERNBIOTOOP & CLUSTERING (LOKALE POPULATIE-EENHEID)
+--------------------------------------------------------------------------------
+1. Lokale habitatclustering (50 m zoekstraal):
+   - Functie: `fuzzyClusterIdU(vuursalamander_bwk, 50, meter)`
+   - Ruimtelijke logica: Bosfragmenten en bronzones die op maximaal 50 m van 
+     elkaar liggen, worden samengevoegd tot één lokaal leefgebiedscluster.
+   - Ecologische functie: Door zijn sterke plaatstrouw en uitdrogingsgevoeligheid 
+     kan een vuursalamander enkel kleine onderbrekingen (zoals boswegen, smalle 
+     open plekken of beekdalen tot max. 50 m) probleemloos overbruggen binnen 
+     zijn dagelijkse en seizoensgebonden activiteitsgebied.
+2. Oppervlaktedrempel (>= 5 ha per lokaal cluster):
+   - Functie: `cFilterGeArea(vuursalamander_bwk_cluster, 5, hectare)`
+   - Drempelwaarde: Elk lokaal aaneengesloten cluster (binnen 50 m) moet op 
+     zichzelf minstens 5 ha (50.000 m2 = 125 cellen van 20x20 m) groot zijn.
+   - Ecologische functie: Waar de nieuwere R-methodiek meerdere versnipperde 
+     bosjes over 500 m samentelt om aan 10 ha te geraken, eist deze oudere 
+     methodiek een effectief, compact en aaneengesloten boskerngebied van 
+     minstens 5 ha om een levensvatbare lokale deelpopulatie te herbergen.
+
+
+4. GEOGRAFISCHE & ECOLOGISCHE AFBAKENING (ECOREGIO-FILTER)
+--------------------------------------------------------------------------------
+- Ecoregio-masker: `Ge('ecoregio.asc', 1)`
+  * Toepassing: Na het bepalen en filteren van de clusters >= 5 ha wordt de 
+    kaart afgeknipt op de relevante ecoregio's (waarde >= 1).
+  * Ecologische functie: De vuursalamander komt in Vlaanderen van nature enkel 
+    voor in specifieke fysisch-geografische regio's (zoals de leemstreek / 
+    Vlaamse Ardennen / Zoniënwoud en specifieke brongebieden in de Kempen) 
+    waar reliëf, lemige/vochthoudende bodems en kwelwater aanwezig zijn. 
+    Geschikte loofbossen buiten het natuurlijke areaal worden zo uitgesloten.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit: Niet ingebouwd in het script.
+  * Dit script produceert uitsluitend een binaire 0/1-kaart van de geschikte 
+    lokale leefgebiedskernen (`ANB2019_Vuursalamander2018.asc`). Bovenlokale 
+    dispersie (zoals de 1.500 m uit de CSV) wordt hier nog niet op berekend.
+
+
+6. BEKNOPT PARAMETEROVERZICHT (OUD MODEL VS. NIEUW R-MODEL)
+--------------------------------------------------------------------------------
+Doelpopulatie             : Vuursalamander (Salamandra salamandra)
+Schaal & Resolutie        : Heel Vlaanderen, 20 m raster (binair 0/1)
+Stoorfactoren             : Geen expliciete exclusiebuffers
+Koppelingsafstand         : 50 m (`fuzzyClusterIdU`)
+Oppervlaktedrempel        : >= 5 ha per aaneengesloten lokaal cluster
+Geografische filter       : Ecoregio >= 1 (`ecoregio.asc`): geen filtering
+Verschil t.o.v. R-script  : Strengere lokale samenhang (50 m i.p.v. 500 m 
+                            samenvoeging) en kleinere minimale kern (5 ha 
+                            i.p.v. 10 ha totale netwerkoppervlakte)
+================================================================================
