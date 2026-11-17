@@ -5,21 +5,14 @@ library(here)
 # --- CONFIGURATIE ---
 map_rasters <- here("data/output/Vlaanderen/Rasters_Soorten/01_Potentieel_Leefgebied/")
 map_shapes  <- here("data/input/")
-map_output  <- here("data/output/Rerun/Voerstreek/Potentieel_Leefgebied/")
+map_output  <- here("data/output/Rerun/Heesbossen/Potentieel_Leefgebied/")
 buffer_dist <- 50000  # 50 km in meters
 
 dir.create(map_output, showWarnings = FALSE, recursive = TRUE)
 
 combinaties <- data.frame(
-  soort = c("Potentieel_Leefgebied_kwartelkoning.tif",
-            "Potentieel_Leefgebied_wielewaal.tif",
-            "Potentieel_Leefgebied_kleinwarkruid.tif",
-            "Potentieel_Leefgebied_kleineratelaar.tif",
-            "Potentieel_Leefgebied_harigeratelaar.tif",
-            "Potentieel_Leefgebied_geleanemoon.tif",
-            "Potentieel_Leefgebied_grauweklauwier.tif",
-            "Potentieel_Leefgebied_geleluzernevlinder.tif"),
-  shapefile = c("Voerstreek.shp"),
+  soort = c("Potentieel_Leefgebied_grutto.tif"),
+  shapefile = c("Heesbossen.shp"),
   stringsAsFactors = FALSE
 )
 

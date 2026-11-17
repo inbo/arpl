@@ -17,7 +17,7 @@ bouw_biotoop_universeel <- function(soort_naam,
   dir.create(soort_cache, showWarnings = FALSE, recursive = TRUE)
   
   # ----------------------------------------------------------------------------
-  # 0. INTERNE HELPERS (Vervang in bouw_biotoop_universeel.R)
+  # 0. INTERNE HELPERS
   # ----------------------------------------------------------------------------
   is_leeg <- function(r) {
     if (is.null(r)) return(TRUE)
@@ -32,7 +32,6 @@ bouw_biotoop_universeel <- function(soort_naam,
     return(val)
   }
   
-  # Veilig geheugenbeheer zonder trage LZW-compressie op tijdelijke float-rasters
   voeg_toe_geclamped <- function(r_basis, r_nieuw) {
     has_b <- !is_leeg(r_basis)
     has_n <- !is_leeg(r_nieuw)
@@ -40,6 +39,10 @@ bouw_biotoop_universeel <- function(soort_naam,
     if (!has_b && !has_n) return(master_grid * NA_real_)
     if (!has_b) return(r_nieuw)
     if (!has_n) return(r_basis)
+    
+    if (!terra::compareGeom(r_basis, r_nieuw, stopOnError = FALSE)) {
+      r_nieuw <- terra::resample(r_nieuw, r_basis, method = "near")
+    }
     
     f_tmp <- tempfile(fileext = ".tif")
     r_som <- terra::ifel(is.na(r_basis), 0, r_basis) + terra::ifel(is.na(r_nieuw), 0, r_nieuw)
@@ -93,7 +96,6 @@ bouw_biotoop_universeel <- function(soort_naam,
   verwerkte_sporen <- list()
   cl_sporen        <- list()
   
-  
   # ----------------------------------------------------------------------------
   # STAP 2: VERWERKING PER TYPE (RIJ IN EXCEL)
   # ----------------------------------------------------------------------------
@@ -116,6 +118,285 @@ bouw_biotoop_universeel <- function(soort_naam,
       next
     }
     
+    # --------------------------------------------------------------------------
+    # 2-weidevogel: Kritische weidevogels (Grutto) - volledig zelfstandig spoor
+    # --------------------------------------------------------------------------
+    is_weidevogel <- tolower(bestandsnaam) %in% c("grutto", "limosalimosa")
+    
+    if (is_weidevogel) {
+      if (huidig_spoor != "A") next
+      if ("kern" %in% names(verwerkte_sporen)) next
+      
+      message("\n    🔹 Weidevogelmatrix-archetype uitvoeren (natte kern >= 10ha x open matrix in netwerk >= 25ha)...")
+      e <- terra::ext(master_grid)
+      region_str <- sprintf("%f,%f,%f,%f", e$xmin, e$xmax, e$ymin, e$ymax)
+      
+      # 1. Bebouwingsbuffer (GDX >= 10 ha op 100m koppeling, 100m verstoringsbuffer)
+      f_cache_bebouw <- file.path(paths$dir_cache, "masker_bebouwing_grutto_10ha_100m.tif")
+      if (file.exists(f_cache_bebouw) && !force_overwrite) {
+        m_bebouw_100m <- terra::rast(f_cache_bebouw)
+      } else {
+        gdx_codes <- c("u", "ua", "ua-", "uc", "ud", "ui", "ui-", "un", "un-", "ur", "ur-", "ur+", "uv", "uv-", "uv+")
+        r_bebouw_bin <- vul_raster_vanuit_parquet(
+          ds_parquet  = ds_parquet, 
+          codes_exact = gdx_codes, 
+          master_grid = master_grid, 
+          waarde_vast = 1
+        )
+        res_b <- cluster_filter_universeel(r_bebouw_bin, r_bebouw_bin, min_opp_ha = 10, afstand_m = 100, werkelijk = FALSE)
+        if (!is_leeg(res_b$raster)) {
+          f_b_bin <- tempfile(fileext = ".tif")
+          terra::writeRaster(res_b$raster, f_b_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
+          f_prox_b <- hulp_proximity_gdal(f_b_bin, 100)
+          unlink(f_b_bin)
+          p_b <- terra::rast(f_prox_b)
+          m_bebouw_100m <- terra::ifel(!is.na(p_b) & p_b >= 0 & p_b <= 100, 1L, NA_integer_)
+          unlink(f_prox_b)
+          rm(p_b)
+        } else {
+          m_bebouw_100m <- master_grid * NA_real_
+        }
+        rm(res_b, r_bebouw_bin)
+        terra::writeRaster(m_bebouw_100m, f_cache_bebouw, overwrite = TRUE, datatype = "INT2S", NAflag = -9999, gdal = "COMPRESS=LZW")
+      }
+      
+      # 2. Groenkaart 1m -> 10m aggregatie met MAX
+      f_cache_bomen_max <- file.path(paths$dir_cache, "masker_groenkaart_10m_max_bomen.tif")
+      if (file.exists(f_cache_bomen_max) && !force_overwrite) {
+        r_bomen_direct <- terra::rast(f_cache_bomen_max)
+      } else {
+        r_gr_src <- terra::rast(paths$groenkaart)
+        if (round(terra::res(r_gr_src)[1]) == 1) {
+          r_gr_1m_bin <- terra::ifel(!is.na(r_gr_src) & r_gr_src == 1, 1, 0)
+          r_gr_10m    <- terra::aggregate(r_gr_1m_bin, fact = 10, fun = "max", na.rm = TRUE)
+          r_gr_10m    <- terra::resample(r_gr_10m, master_grid, method = "near")
+          r_bomen_direct <- terra::ifel(!is.na(r_gr_10m) & r_gr_10m == 1, 1L, NA_integer_)
+          rm(r_gr_1m_bin, r_gr_10m)
+        } else {
+          f_gr_al <- hulp_align_gdal(paths$groenkaart, master_grid)
+          r_gr_raw <- terra::rast(f_gr_al)
+          r_bomen_direct <- terra::ifel(!is.na(r_gr_raw) & r_gr_raw == 1, 1L, NA_integer_)
+          unlink(f_gr_al)
+          rm(r_gr_raw)
+        }
+        rm(r_gr_src)
+        terra::writeRaster(r_bomen_direct, f_cache_bomen_max, overwrite = TRUE, datatype = "INT2S", NAflag = -9999, gdal = "COMPRESS=LZW")
+      }
+      
+      # 3. Boskernen (>= 12 bomen in 5x5 venster) + 50m verstoringsbuffer
+      f_cache_groen50 <- file.path(paths$dir_cache, "masker_groen_50m_cluster_max.tif")
+      if (file.exists(f_cache_groen50) && !force_overwrite) {
+        m_groen_50m <- terra::rast(f_cache_groen50)
+      } else {
+        r_gr_bin <- terra::ifel(!is.na(r_bomen_direct) & r_bomen_direct == 1, 1, 0)
+        w_mat5x5 <- matrix(1, nrow = 5, ncol = 5)
+        f_fc_g   <- tempfile(fileext = ".tif")
+        
+        gr_som <- terra::focal(r_gr_bin, w = w_mat5x5, fun = "sum", na.rm = TRUE, filename = f_fc_g, overwrite = TRUE)
+        rm(r_gr_bin)
+        
+        r_gr_cluster <- terra::ifel(!is.na(gr_som) & gr_som >= 12 & !is.na(r_bomen_direct) & r_bomen_direct == 1, 1, NA)
+        rm(gr_som)
+        unlink(f_fc_g)
+        
+        if (!is_leeg(r_gr_cluster)) {
+          f_g_tmp <- tempfile(fileext = ".tif")
+          terra::writeRaster(r_gr_cluster, f_g_tmp, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
+          rm(r_gr_cluster)
+          f_prox_g <- hulp_proximity_gdal(f_g_tmp, 50)
+          unlink(f_g_tmp)
+          p_g <- terra::rast(f_prox_g)
+          m_groen_50m <- terra::ifel(!is.na(p_g) & p_g >= 0 & p_g <= 50, 1L, NA_integer_)
+          unlink(f_prox_g)
+          rm(p_g)
+        } else {
+          m_groen_50m <- master_grid * NA_real_
+        }
+        terra::writeRaster(m_groen_50m, f_cache_groen50, overwrite = TRUE, datatype = "INT2S", NAflag = -9999, gdal = "COMPRESS=LZW")
+      }
+      
+      # Combineer storings- en uitsluitingsmaskers veilig met INT2S + NAflag = -9999
+      f_stoor_tmp <- tempfile(fileext = ".tif")
+      m_stoor_totaal <- terra::writeRaster(
+        terra::ifel((!is.na(m_bebouw_100m) & m_bebouw_100m == 1) |
+                      (!is.na(m_groen_50m) & m_groen_50m == 1) |
+                      (!is.na(r_bomen_direct) & r_bomen_direct == 1), 1L, NA_integer_),
+        f_stoor_tmp, overwrite = TRUE, datatype = "INT2S", NAflag = -9999
+      )
+      rm(m_bebouw_100m, m_groen_50m, r_bomen_direct)
+      gc()
+      message(sprintf("       * Totale verstoringsuitsluiting (bebouwing/bomen): %.2f ha", calc_ha_exact(m_stoor_totaal)))
+      
+      # 4. Natte kernen opbouwen (kern of kern1 + kern2 -> drainage -> verstoring uitsluiten -> >= 10 ha op 50m)
+      message("       -> Stap 4/6: Natte kernen (>= 10 ha) filteren...")
+      if ("kern" %in% names(lagen_ruw)) {
+        r_kern_bruto <- lagen_ruw[["kern"]]
+      } else {
+        r_k1 <- if ("kern1" %in% names(lagen_ruw)) lagen_ruw[["kern1"]] else (master_grid * 0)
+        r_k2 <- if ("kern2" %in% names(lagen_ruw)) lagen_ruw[["kern2"]] else (master_grid * 0)
+        r_kern_bruto <- voeg_toe_geclamped(r_k1, r_k2)
+        rm(r_k1, r_k2)
+      }
+      message(sprintf("          * Bruto kern: %.2f ha", calc_ha_exact(r_kern_bruto)))
+      
+      if (!is.null(paths$drainage) && file.exists(paths$drainage)) {
+        drain_letters <- c("d", "e", "f", "h", "i", "g", "e-f", "h-i", "e-i")
+        m_drain <- haal_categorisch_masker(paths$drainage, drain_letters, master_grid, paths$dir_cache, "drainage")
+        r_kern_bruto <- terra::mask(r_kern_bruto, m_drain)
+        rm(m_drain)
+        message(sprintf("          * Kern na drainagefilter: %.2f ha", calc_ha_exact(r_kern_bruto)))
+      }
+      
+      r_kern_clean <- terra::mask(r_kern_bruto, m_stoor_totaal, inverse = TRUE)
+      rm(r_kern_bruto)
+      message(sprintf("          * Kern na verstoringsuitsluiting: %.2f ha", calc_ha_exact(r_kern_clean)))
+      
+      res_kern10 <- cluster_filter_universeel(
+        masker = r_kern_clean, opp_laag = r_kern_clean, min_opp_ha = 10.0,
+        min_totale_opp_ha = NA, afstand_m = 50, dispersie_m = 0, werkelijk = TRUE
+      )
+      f_kern10_tmp <- tempfile(fileext = ".tif")
+      r_kern_10ha <- terra::writeRaster(res_kern10$raster, f_kern10_tmp, overwrite = TRUE, datatype = "FLT4S")
+      rm(res_kern10, r_kern_clean)
+      gc()
+      message(sprintf("          * Kernclusters >= 10 ha: %.2f ha", calc_ha_exact(r_kern_10ha)))
+      
+      # 5. Open matrix opbouwen
+      message("       -> Stap 5/6: Open graslandmatrix samenstellen...")
+      r_cultuur <- if ("cultuur0a" %in% names(lagen_ruw)) lagen_ruw[["cultuur0a"]] else (master_grid * NA_real_)
+      r_akker   <- if ("akker" %in% names(lagen_ruw)) lagen_ruw[["akker"]] else (master_grid * NA_real_)
+      r_hooi    <- if ("hooiland" %in% names(lagen_ruw)) lagen_ruw[["hooiland"]] else (master_grid * NA_real_)
+      r_c1b     <- if ("cultuurhooi1b" %in% names(lagen_ruw)) lagen_ruw[["cultuurhooi1b"]] else (master_grid * NA_real_)
+      r_w_bwk   <- if ("kleinwater_bwk" %in% names(lagen_ruw)) lagen_ruw[["kleinwater_bwk"]] else (master_grid * NA_real_)
+      
+      f_cache_grb_kw <- file.path(paths$dir_cache, "masker_grb_kleinwater_50px.tif")
+      if (file.exists(f_cache_grb_kw) && !force_overwrite) {
+        r_w_grb <- terra::rast(f_cache_grb_kw)
+      } else if (!is.null(paths$grb_water) && file.exists(paths$grb_water)) {
+        f_grb_al <- hulp_align_gdal(paths$grb_water, master_grid)
+        r_grb    <- terra::rast(f_grb_al)
+        r_grb_b  <- terra::ifel(!is.na(r_grb) & r_grb > 0, 1, NA)
+        unlink(f_grb_al)
+        rm(r_grb)
+        
+        f_wb_tmp <- tempfile(fileext = ".tif")
+        f_cl_w   <- tempfile(fileext = ".tif")
+        terra::writeRaster(r_grb_b, f_wb_tmp, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
+        qgisprocess::qgis_run_algorithm(
+          "grass:r.clump", input = f_wb_tmp, output = f_cl_w, title = "cl_water_klein",
+          "-d" = FALSE, GRASS_REGION_PARAMETER = region_str,
+          GRASS_REGION_CELLSIZE_PARAMETER = 10, GRASS_RASTER_FORMAT_OPT = "COMPRESS=LZW", .quiet = TRUE
+        )
+        unlink(f_wb_tmp)
+        
+        cl_w <- terra::rast(f_cl_w)
+        try(terra::set.cats(cl_w, layer = 1, value = NULL), silent = TRUE)
+        try(terra::coltab(cl_w) <- NULL, silent = TRUE)
+        dt_w <- data.table::as.data.table(terra::freq(cl_w))
+        data.table::setnames(dt_w, c("layer", "ID", "count"))
+        klein_w_ids <- dt_w[!is.na(ID) & ID > 0 & count <= 50, ID]
+        r_w_grb <- if (length(klein_w_ids) > 0) terra::ifel(cl_w %in% as.integer(klein_w_ids), 0.01, NA_real_) else (master_grid * NA_real_)
+        unlink(f_cl_w)
+        rm(cl_w, dt_w, r_grb_b)
+        terra::writeRaster(r_w_grb, f_cache_grb_kw, overwrite = TRUE, datatype = "FLT4S", gdal = "COMPRESS=LZW")
+      } else {
+        r_w_grb <- master_grid * NA_real_
+      }
+      
+      # Combineer matrix-lagen stapsgewijs
+      r_mat_som <- r_cultuur
+      r_mat_som <- voeg_toe_geclamped(r_mat_som, r_hooi)
+      r_mat_som <- voeg_toe_geclamped(r_mat_som, r_w_bwk)
+      r_mat_som <- voeg_toe_geclamped(r_mat_som, r_w_grb)
+      r_mat_som <- voeg_toe_geclamped(r_mat_som, r_c1b)
+      rm(r_cultuur, r_hooi, r_w_bwk, r_w_grb, r_c1b)
+      
+      r_mat_som <- terra::mask(r_mat_som, m_stoor_totaal, inverse = TRUE)
+      if (!is_leeg(r_akker)) {
+        r_mat_som <- terra::mask(r_mat_som, terra::ifel(!is.na(r_akker) & r_akker > 0, 1L, NA_integer_), inverse = TRUE)
+      }
+      f_mat_tmp <- tempfile(fileext = ".tif")
+      r_matrix_clean <- terra::writeRaster(r_mat_som, f_mat_tmp, overwrite = TRUE, datatype = "FLT4S")
+      rm(r_mat_som, m_stoor_totaal, r_akker)
+      unlink(f_stoor_tmp)
+      gc()
+      message(sprintf("          * Open graslandmatrix schoon: %.2f ha", calc_ha_exact(r_matrix_clean)))
+      
+      # 6. Integrale netwerkkoppeling (100% streaming C++ zonal)
+      message("       -> Stap 6/6: Netwerkkoppeling (200m overbrugging, totaal >= 25 ha & kern >= 10 ha)...")
+      if (!is_leeg(r_kern_10ha)) {
+        r_comb_val <- voeg_toe_geclamped(r_kern_10ha, r_matrix_clean)
+        
+        f_cb_bin <- tempfile(fileext = ".tif")
+        terra::writeRaster(terra::ifel(!is.na(r_comb_val) & r_comb_val > 0, 1, NA), f_cb_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
+        f_prox_200 <- hulp_proximity_gdal(f_cb_bin, 100)
+        unlink(f_cb_bin)
+        
+        p_200 <- terra::rast(f_prox_200)
+        r_buf_200 <- terra::ifel(!is.na(p_200) & p_200 >= 0 & p_200 <= 100, 1, NA)
+        unlink(f_prox_200)
+        rm(p_200)
+        
+        f_buf_bin <- tempfile(fileext = ".tif")
+        f_cl_net  <- tempfile(fileext = ".tif")
+        terra::writeRaster(r_buf_200, f_buf_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
+        rm(r_buf_200)
+        
+        qgisprocess::qgis_run_algorithm(
+          "grass:r.clump", input = f_buf_bin, output = f_cl_net, title = "cl_grutto_net",
+          "-d" = FALSE, GRASS_REGION_PARAMETER = region_str,
+          GRASS_REGION_CELLSIZE_PARAMETER = 10, GRASS_RASTER_FORMAT_OPT = "COMPRESS=LZW", .quiet = TRUE
+        )
+        unlink(f_buf_bin)
+        
+        cl_net <- terra::rast(f_cl_net)
+        try(terra::set.cats(cl_net, layer = 1, value = NULL), silent = TRUE)
+        try(terra::coltab(cl_net) <- NULL, silent = TRUE)
+        
+        df_tot <- terra::zonal(r_comb_val, cl_net, fun = "sum", na.rm = TRUE)
+        colnames(df_tot) <- c("netwerk_id", "som_tot")
+        
+        df_kern <- terra::zonal(r_kern_10ha, cl_net, fun = "sum", na.rm = TRUE)
+        colnames(df_kern) <- c("netwerk_id", "som_kern")
+        
+        dt_stats <- merge(data.table::as.data.table(df_tot), data.table::as.data.table(df_kern), by = "netwerk_id", all.x = TRUE)
+        dt_stats[is.na(som_kern), som_kern := 0]
+        dt_stats[, totaal_ha := som_tot * 0.01]
+        dt_stats[, kern_ha   := som_kern * 0.01]
+        
+        valide_netwerken <- dt_stats[!is.na(netwerk_id) & netwerk_id > 0 & totaal_ha >= 25 & kern_ha >= 10, netwerk_id]
+        rm(df_tot, df_kern, dt_stats)
+        
+        if (length(valide_netwerken) > 0) {
+          m_net_ok  <- terra::ifel(cl_net %in% as.integer(valide_netwerken), 1, NA)
+          final_opp <- terra::mask(r_comb_val, m_net_ok)
+          kern_out  <- terra::mask(r_kern_10ha, m_net_ok)
+          mat_out   <- terra::mask(r_matrix_clean, m_net_ok)
+          rm(m_net_ok)
+        } else {
+          final_opp <- master_grid * NA_real_
+          kern_out  <- master_grid * NA_real_
+          mat_out   <- master_grid * NA_real_
+        }
+        unlink(f_cl_net)
+        rm(cl_net, r_comb_val)
+      } else {
+        final_opp <- master_grid * NA_real_
+        kern_out  <- master_grid * NA_real_
+        mat_out   <- master_grid * NA_real_
+      }
+      rm(r_kern_10ha, r_matrix_clean)
+      unlink(c(f_kern10_tmp, f_mat_tmp))
+      gc()
+      
+      verwerkte_sporen[["kern"]]   <- kern_out
+      verwerkte_sporen[["matrix"]] <- mat_out
+      
+      message(sprintf("       📊 Na weidevogel-matrixanalyse: %.2f ha (Kern: %.2f ha, Matrix: %.2f ha)", 
+                      calc_ha_exact(final_opp), calc_ha_exact(kern_out), calc_ha_exact(mat_out)))
+      next
+    }
+    
     message(sprintf("\n    🔹 Verwerken van laag/spoor: %s (Spoor %s)...", tp_naam, huidig_spoor))
     r_huidig <- if (tp_naam %in% names(lagen_ruw)) lagen_ruw[[tp_naam]] else (master_grid * NA_real_)
     
@@ -123,7 +404,7 @@ bouw_biotoop_universeel <- function(soort_naam,
     zelfde_spoor_types <- params_gesorteerd %>% 
       dplyr::filter(Spoor == huidig_spoor & 
                       !is.na(MinPatch_ha) & 
-                      !grepl("^not_", tolower(Type)) & 
+                      !grepl("^not_|_notbwk$", tolower(Type)) & 
                       !tolower(Type) %in% c("bosranden", "struweel1", "landbiotoop_bos") & 
                       !grepl("_bos$", tolower(Type))) %>% 
       dplyr::pull(Type)
@@ -131,13 +412,13 @@ bouw_biotoop_universeel <- function(soort_naam,
     if (length(zelfde_spoor_types) > 1 && tp_naam == zelfde_spoor_types[1]) {
       message(sprintf("       -> Deellagen voor Spoor %s sommatief samenvoegen (%s)...", 
                       huidig_spoor, paste(zelfde_spoor_types, collapse = " + ")))
-      r_som_spoor <- master_grid * 0
+      r_som_spoor <- NULL
       for (st in zelfde_spoor_types) {
         if (st %in% names(lagen_ruw)) {
           r_som_spoor <- voeg_toe_geclamped(r_som_spoor, lagen_ruw[[st]])
         }
       }
-      r_huidig <- r_som_spoor
+      r_huidig <- if (is.null(r_som_spoor)) (master_grid * NA_real_) else r_som_spoor
       rm(r_som_spoor)
     } else if (length(zelfde_spoor_types) > 1 && tp_naam != zelfde_spoor_types[1]) {
       next
@@ -1155,7 +1436,7 @@ bouw_biotoop_universeel <- function(soort_naam,
       
       # 2. Spoor B: Nabij land schonen & boseis toetsen
       lnd_tp <- params_gesorteerd %>% 
-        dplyr::filter(Spoor == "B" & !grepl("not", tolower(Type)) & !grepl("bos", tolower(Type))) %>% 
+        dplyr::filter(!is.na(Spoor) & Spoor == "B" & !grepl("not", tolower(Type)) & !grepl("bos", tolower(Type))) %>% 
         dplyr::slice(1)
       
       lnd_tp_naam <- trimws(lnd_tp$Type[1])
@@ -1185,7 +1466,7 @@ bouw_biotoop_universeel <- function(soort_naam,
           r_bos_lnd_clean <- terra::ifel(!is.na(r_bos_lnd) & r_bos_lnd > 0, r_bos_lnd, 0)
           
           if (tolower(bestandsnaam) %in% c("speerwaterjuffer", "coenagrionhastulatum")) {
-            w_50m <- terra::focalMat(master_grid, 50, type = 'circle')
+            w_50m <- terra::focalMat(master_grid, 50, type = "circle")
             w_50m[w_50m > 0] <- 1
             cl_calc_zone <- terra::focal(cl_lnd_10ha, w = w_50m, fun = "max", na.rm = TRUE)
             rm(w_50m)
@@ -1199,8 +1480,7 @@ bouw_biotoop_universeel <- function(soort_naam,
           bos_in_z <- terra::mask(r_bos_lnd_clean, cl_calc_zone)
           df_b_tot <- terra::zonal(bos_in_z, cl_calc_zone, fun = "sum", na.rm = TRUE)
           colnames(df_b_tot) <- c("ID", "Bos_Sum")
-          rm(bos_in_z, r_bos_lnd_clean, r_bos_lnd)
-          if (cl_calc_zone != cl_lnd_10ha) rm(cl_calc_zone)
+          rm(bos_in_z, r_bos_lnd_clean, r_bos_lnd, cl_calc_zone)
           
           dt_l <- merge(data.table::as.data.table(df_l_tot), data.table::as.data.table(df_b_tot), by = "ID", all.x = TRUE)
           dt_l[is.na(Bos_Sum), Bos_Sum := 0]
@@ -1219,7 +1499,7 @@ bouw_biotoop_universeel <- function(soort_naam,
       
       # 3. Spoor C: Ruim land & boseis
       rm_tp <- params_gesorteerd %>% 
-        dplyr::filter(Spoor == "C" & !grepl("bos", tolower(Type))) %>% 
+        dplyr::filter(!is.na(Spoor) & Spoor == "C" & !grepl("bos", tolower(Type))) %>% 
         dplyr::slice(1)
       
       r_rm_ok <- master_grid * 1
@@ -1293,7 +1573,6 @@ bouw_biotoop_universeel <- function(soort_naam,
         r_lnd_gekoppeld <- terra::mask(r_lnd_ok, m_w)
         rm(m_w, m_l)
         
-        # 500m inbedding in ruim complex
         if (nrow(rm_tp) > 0 && tolower(bestandsnaam) %in% c("speerwaterjuffer", "coenagrionhastulatum", 
                                                             "venwitsnuitlibel", "leucorrhiniadubia",
                                                             "zwarteheidelibel", "sympetrumdanae")) {
@@ -1311,7 +1590,6 @@ bouw_biotoop_universeel <- function(soort_naam,
           rm(m_rm500)
         }
         
-        # Water-first afsnijding: land afkappen binnen 500m van het goedgekeurde water
         if (!all(is.na(suppressWarnings(terra::minmax(r_wat_gekoppeld))))) {
           f_wi_tmp <- tempfile(fileext = ".tif")
           terra::writeRaster(terra::ifel(!is.na(r_wat_gekoppeld) & r_wat_gekoppeld > 0, 1, NA), f_wi_tmp, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
@@ -1343,10 +1621,10 @@ bouw_biotoop_universeel <- function(soort_naam,
       
       message(sprintf("       📊 Na boreo-alpiene venlibellen-analyse: %.2f ha (Water: %.2f ha, Land: %.2f ha)", 
                       calc_ha_exact(r_huidig), calc_ha_exact(water_finaal), calc_ha_exact(land_finaal)))
+      next
     }
     
-    # Bij venlibellen worden Spoor B en C integraal afgehandeld door het archetype; sla individuele clustering over
-    if (is_venlibel && (huidig_spoor %in% c("B", "C") || grepl("ruim", tolower(tp_naam)))) {
+    if (isTRUE(is_venlibel && (huidig_spoor %in% c("B", "C") || grepl("ruim", tolower(tp_naam))))) {
       next
     }
     
@@ -1464,279 +1742,12 @@ bouw_biotoop_universeel <- function(soort_naam,
       next
     }
     
-    # 2-weidevogel: Kritische weidevogels (open graslandmatrix met natte kernen >= 10ha in netwerk >= 25ha op 200m)
-    is_weidevogel <- tolower(bestandsnaam) %in% c("grutto", "limosalimosa")
-    
-    if (is_weidevogel && tp_naam == zelfde_spoor_types[1] && huidig_spoor == "A") {
-      message("       -> Weidevogelmatrix-archetype uitvoeren (natte kern >= 10ha x open matrix in netwerk >= 25ha)...")
-      e <- terra::ext(master_grid)
-      region_str <- sprintf("%f,%f,%f,%f", e$xmin, e$xmax, e$ymin, e$ymax)
-      
-      # 1. Bebouwingsbuffer (GDX >= 10 ha op 100m koppeling, 100m verstoringsbuffer)
-      f_cache_bebouw <- file.path(paths$dir_cache, "masker_bebouwing_grutto_10ha_100m.tif")
-      if (file.exists(f_cache_bebouw) && !force_overwrite) {
-        m_bebouw_100m <- terra::rast(f_cache_bebouw)
-      } else {
-        gdx_codes <- c("u", "ua", "ua-", "uc", "ud", "ui", "ui-", "un", "un-", "ur", "ur-", "ur+", "uv", "uv-", "uv+")
-        r_bebouw_bin <- vul_raster_vanuit_parquet(
-          ds_parquet  = ds_parquet, 
-          codes_exact = gdx_codes, 
-          master_grid = master_grid, 
-          waarde_vast = 1
-        )
-        res_b <- cluster_filter_universeel(r_bebouw_bin, r_bebouw_bin, min_opp_ha = 10, afstand_m = 100, werkelijk = FALSE)
-        if (!is_leeg(res_b$raster)) {
-          f_b_bin <- tempfile(fileext = ".tif")
-          terra::writeRaster(res_b$raster, f_b_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
-          f_prox_b <- hulp_proximity_gdal(f_b_bin, 100)
-          unlink(f_b_bin)
-          p_b <- terra::rast(f_prox_b)
-          m_bebouw_100m <- terra::ifel(!is.na(p_b) & p_b >= 0 & p_b <= 100, 1, NA)
-          unlink(f_prox_b)
-          rm(p_b)
-        } else {
-          m_bebouw_100m <- master_grid * NA_real_
-        }
-        rm(res_b, r_bebouw_bin)
-        terra::writeRaster(m_bebouw_100m, f_cache_bebouw, overwrite = TRUE, datatype = "INT1U", gdal = "COMPRESS=LZW")
-      }
-      
-      # 2. Groenkaart 1m -> 10m aggregatie met MAX
-      f_cache_bomen_max <- file.path(paths$dir_cache, "masker_groenkaart_10m_max_bomen.tif")
-      if (file.exists(f_cache_bomen_max) && !force_overwrite) {
-        r_bomen_direct <- terra::rast(f_cache_bomen_max)
-      } else {
-        r_gr_src <- terra::rast(paths$groenkaart)
-        if (round(terra::res(r_gr_src)[1]) == 1) {
-          r_gr_1m_bin <- terra::ifel(!is.na(r_gr_src) & r_gr_src == 1, 1, 0)
-          r_gr_10m    <- terra::aggregate(r_gr_1m_bin, fact = 10, fun = "max", na.rm = TRUE)
-          r_gr_10m    <- terra::resample(r_gr_10m, master_grid, method = "near")
-          r_bomen_direct <- terra::ifel(!is.na(r_gr_10m) & r_gr_10m == 1, 1, NA)
-          rm(r_gr_1m_bin, r_gr_10m)
-        } else {
-          f_gr_al <- hulp_align_gdal(paths$groenkaart, master_grid)
-          r_gr_raw <- terra::rast(f_gr_al)
-          r_bomen_direct <- terra::ifel(!is.na(r_gr_raw) & r_gr_raw == 1, 1, NA)
-          unlink(f_gr_al)
-          rm(r_gr_raw)
-        }
-        rm(r_gr_src)
-        terra::writeRaster(r_bomen_direct, f_cache_bomen_max, overwrite = TRUE, datatype = "INT1U", gdal = "COMPRESS=LZW")
-      }
-      
-      # 3. Boskernen (>= 12 bomen in 5x5 venster) + 50m verstoringsbuffer
-      f_cache_groen50 <- file.path(paths$dir_cache, "masker_groen_50m_cluster_max.tif")
-      if (file.exists(f_cache_groen50) && !force_overwrite) {
-        m_groen_50m <- terra::rast(f_cache_groen50)
-      } else {
-        r_gr_bin <- terra::ifel(!is.na(r_bomen_direct), 1, 0)
-        w_mat5x5 <- matrix(1, nrow = 5, ncol = 5)
-        f_fc_g   <- tempfile(fileext = ".tif")
-        
-        gr_som <- terra::focal(r_gr_bin, w = w_mat5x5, fun = "sum", na.rm = TRUE, filename = f_fc_g, overwrite = TRUE)
-        rm(r_gr_bin)
-        
-        r_gr_cluster <- terra::ifel(!is.na(gr_som) & gr_som >= 12 & !is.na(r_bomen_direct), 1, NA)
-        rm(gr_som)
-        unlink(f_fc_g)
-        
-        if (!is_leeg(r_gr_cluster)) {
-          f_g_tmp <- tempfile(fileext = ".tif")
-          terra::writeRaster(r_gr_cluster, f_g_tmp, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
-          rm(r_gr_cluster)
-          f_prox_g <- hulp_proximity_gdal(f_g_tmp, 50)
-          unlink(f_g_tmp)
-          p_g <- terra::rast(f_prox_g)
-          m_groen_50m <- terra::ifel(!is.na(p_g) & p_g >= 0 & p_g <= 50, 1, NA)
-          unlink(f_prox_g)
-          rm(p_g)
-        } else {
-          m_groen_50m <- master_grid * NA_real_
-        }
-        terra::writeRaster(m_groen_50m, f_cache_groen50, overwrite = TRUE, datatype = "INT1U", gdal = "COMPRESS=LZW")
-      }
-      
-      # Combineer storings- en uitsluitingsmaskers in 1 pass
-      m_stoor_totaal <- terra::ifel(!is.na(m_bebouw_100m) | !is.na(m_groen_50m) | !is.na(r_bomen_direct), 1, NA)
-      rm(m_bebouw_100m, m_groen_50m, r_bomen_direct)
-      
-      # 4. Natte kernen opbouwen (kern1 + kern2 -> drainage -> verstoring uitsluiten -> >= 10 ha op 50m)
-      r_k1 <- if ("kern1" %in% names(lagen_ruw)) lagen_ruw[["kern1"]] else (master_grid * 0)
-      r_k2 <- if ("kern2" %in% names(lagen_ruw)) lagen_ruw[["kern2"]] else (master_grid * 0)
-      r_kern_bruto <- voeg_toe_geclamped(r_k1, r_k2)
-      rm(r_k1, r_k2)
-      
-      if (!is.null(paths$drainage) && file.exists(paths$drainage)) {
-        drain_letters <- c("d", "e", "f", "h", "i", "g", "e-f", "h-i", "e-i")
-        m_drain <- haal_categorisch_masker(paths$drainage, drain_letters, master_grid, paths$dir_cache, "drainage")
-        r_kern_bruto <- terra::mask(r_kern_bruto, m_drain)
-        rm(m_drain)
-      }
-      
-      r_kern_clean <- terra::mask(r_kern_bruto, m_stoor_totaal, inverse = TRUE)
-      rm(r_kern_bruto)
-      
-      res_kern10 <- cluster_filter_universeel(
-        masker = r_kern_clean, opp_laag = r_kern_clean, min_opp_ha = 10.0,
-        min_totale_opp_ha = NA, afstand_m = 50, dispersie_m = 0, werkelijk = TRUE
-      )
-      r_kern_10ha <- res_kern10$raster
-      rm(res_kern10, r_kern_clean)
-      
-      # 5. Open matrix opbouwen (1 stack-som + 1 gecombineerde mask-pass + gecachet GRB kleinwater)
-      r_cultuur <- if ("cultuur0a" %in% names(lagen_ruw)) lagen_ruw[["cultuur0a"]] else (master_grid * NA_real_)
-      r_akker   <- if ("akker" %in% names(lagen_ruw)) lagen_ruw[["akker"]] else (master_grid * NA_real_)
-      r_hooi    <- if ("hooiland" %in% names(lagen_ruw)) lagen_ruw[["hooiland"]] else (master_grid * NA_real_)
-      r_c1b     <- if ("cultuurhooi1b" %in% names(lagen_ruw)) lagen_ruw[["cultuurhooi1b"]] else (master_grid * NA_real_)
-      r_w_bwk   <- if ("kleinwater_bwk" %in% names(lagen_ruw)) lagen_ruw[["kleinwater_bwk"]] else (master_grid * NA_real_)
-      
-      # Cache GRB kleinwater (<= 50 pixels) zodat grass:r.clump niet bij elke run herhaald wordt
-      f_cache_grb_kw <- file.path(paths$dir_cache, "masker_grb_kleinwater_50px.tif")
-      if (file.exists(f_cache_grb_kw) && !force_overwrite) {
-        r_w_grb <- terra::rast(f_cache_grb_kw)
-      } else if (!is.null(paths$grb_water) && file.exists(paths$grb_water)) {
-        f_grb_al <- hulp_align_gdal(paths$grb_water, master_grid)
-        r_grb    <- terra::rast(f_grb_al)
-        r_grb_b  <- terra::ifel(!is.na(r_grb) & r_grb > 0, 1, NA)
-        unlink(f_grb_al)
-        rm(r_grb)
-        
-        f_wb_tmp <- tempfile(fileext = ".tif")
-        f_cl_w   <- tempfile(fileext = ".tif")
-        terra::writeRaster(r_grb_b, f_wb_tmp, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
-        qgisprocess::qgis_run_algorithm(
-          "grass:r.clump", input = f_wb_tmp, output = f_cl_w, title = "cl_water_klein",
-          "-d" = FALSE, "-c" = TRUE, GRASS_REGION_PARAMETER = region_str,
-          GRASS_REGION_CELLSIZE_PARAMETER = 10, GRASS_RASTER_FORMAT_OPT = "COMPRESS=LZW", .quiet = TRUE
-        )
-        unlink(f_wb_tmp)
-        
-        cl_w <- terra::rast(f_cl_w)
-        dt_w <- data.table::as.data.table(terra::freq(cl_w))
-        data.table::setnames(dt_w, c("layer", "ID", "count"))
-        klein_w_ids <- dt_w[!is.na(ID) & ID > 0 & count <= 50, ID]
-        r_w_grb <- if (length(klein_w_ids) > 0) terra::ifel(cl_w %in% as.integer(klein_w_ids), 0.01, NA_real_) else (master_grid * NA_real_)
-        unlink(f_cl_w)
-        rm(cl_w, dt_w, r_grb_b)
-        terra::writeRaster(r_w_grb, f_cache_grb_kw, overwrite = TRUE, datatype = "FLT4S", gdal = "COMPRESS=LZW")
-      } else {
-        r_w_grb <- master_grid * NA_real_
-      }
-      
-      # Combineer alle 5 matrix-deellagen in 1 C++ sum()-pass en maskeer 1x met (stoor + akker)
-      m_exclude_mat <- terra::ifel(!is.na(m_stoor_totaal) | (!is.na(r_akker) & r_akker > 0), 1, NA)
-      rm(m_stoor_totaal, r_akker)
-      
-      s_matrix <- c(r_cultuur, r_hooi, r_w_bwk, r_w_grb, r_c1b)
-      r_matrix_sum <- terra::clamp(sum(s_matrix, na.rm = TRUE), lower = 0, upper = 1.0)
-      r_matrix_sum <- terra::ifel(r_matrix_sum > 0, r_matrix_sum, NA_real_)
-      r_matrix_clean <- terra::mask(r_matrix_sum, m_exclude_mat, inverse = TRUE)
-      rm(s_matrix, r_matrix_sum, m_exclude_mat, r_cultuur, r_hooi, r_w_bwk, r_w_grb, r_c1b)
-      
-      # 6. Integrale netwerkkoppeling (200m overbrugging -> totaal >= 25 ha & kern >= 10 ha)
-      if (!is_leeg(r_kern_10ha)) {
-        r_comb_val <- voeg_toe_geclamped(r_kern_10ha, r_matrix_clean)
-        r_comb_bin <- terra::ifel(!is.na(r_comb_val) & r_comb_val > 0, 1, NA)
-        
-        f_cb_bin <- tempfile(fileext = ".tif")
-        terra::writeRaster(r_comb_bin, f_cb_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
-        f_prox_200 <- hulp_proximity_gdal(f_cb_bin, 100)
-        unlink(f_cb_bin)
-        
-        p_200 <- terra::rast(f_prox_200)
-        r_buf_200 <- terra::ifel(!is.na(p_200) & p_200 >= 0 & p_200 <= 100, 1, NA)
-        unlink(f_prox_200)
-        rm(p_200)
-        
-        f_buf_bin <- tempfile(fileext = ".tif")
-        f_cl_net  <- tempfile(fileext = ".tif")
-        terra::writeRaster(r_buf_200, f_buf_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
-        rm(r_buf_200)
-        
-        qgisprocess::qgis_run_algorithm(
-          "grass:r.clump", input = f_buf_bin, output = f_cl_net, title = "cl_grutto_net",
-          "-d" = FALSE, "-c" = TRUE, GRASS_REGION_PARAMETER = region_str,
-          GRASS_REGION_CELLSIZE_PARAMETER = 10, GRASS_RASTER_FORMAT_OPT = "COMPRESS=LZW", .quiet = TRUE
-        )
-        unlink(f_buf_bin)
-        
-        cl_net <- terra::rast(f_cl_net)
-        terra::set.cats(cl_net, layer = 1, value = NULL)
-        terra::coltab(cl_net) <- NULL
-        
-        # Enkelvoudige sparse extractie voor zowel totaal_ha als kern_ha tegelijk
-        idx_actief <- terra::cells(r_comb_bin)
-        rm(r_comb_bin)
-        
-        if (length(idx_actief) > 0) {
-          c_net_ids <- as.integer(cl_net[idx_actief][[1]])
-          c_comb_v  <- as.numeric(r_comb_val[idx_actief][[1]])
-          c_kern_v  <- as.numeric(r_kern_10ha[idx_actief][[1]])
-          
-          dt_net <- data.table::data.table(
-            netwerk_id = c_net_ids,
-            comb_val   = c_comb_v,
-            kern_val   = c_kern_v
-          )
-          dt_stats <- dt_net[!is.na(netwerk_id) & netwerk_id > 0, .(
-            totaal_ha = sum(comb_val, na.rm = TRUE) * 0.01,
-            kern_ha   = sum(kern_val, na.rm = TRUE) * 0.01
-          ), by = netwerk_id]
-          
-          valide_netwerken <- dt_stats[totaal_ha >= 25 & kern_ha >= 10, netwerk_id]
-          rm(dt_net, dt_stats)
-          
-          if (length(valide_netwerken) > 0) {
-            keep_cells <- idx_actief[!is.na(c_net_ids) & (c_net_ids %in% valide_netwerken)]
-            
-            final_opp <- master_grid * NA_real_
-            final_opp[keep_cells] <- r_comb_val[keep_cells][[1]]
-            
-            kern_out <- master_grid * NA_real_
-            kern_out[keep_cells] <- r_kern_10ha[keep_cells][[1]]
-            
-            mat_out <- master_grid * NA_real_
-            mat_out[keep_cells] <- r_matrix_clean[keep_cells][[1]]
-          } else {
-            final_opp <- master_grid * NA_real_
-            kern_out  <- master_grid * NA_real_
-            mat_out   <- master_grid * NA_real_
-          }
-        } else {
-          final_opp <- master_grid * NA_real_
-          kern_out  <- master_grid * NA_real_
-          mat_out   <- master_grid * NA_real_
-        }
-        unlink(f_cl_net)
-        rm(cl_net, r_comb_val)
-      } else {
-        final_opp <- master_grid * NA_real_
-        kern_out  <- master_grid * NA_real_
-        mat_out   <- master_grid * NA_real_
-      }
-      rm(r_kern_10ha, r_matrix_clean)
-      gc()
-      
-      r_huidig <- final_opp
-      verwerkte_sporen[["kern"]]   <- kern_out
-      verwerkte_sporen[["matrix"]] <- mat_out
-      
-      message(sprintf("       📊 Na weidevogel-matrixanalyse: %.2f ha (Kern: %.2f ha, Matrix: %.2f ha)", 
-                      calc_ha_exact(r_huidig), calc_ha_exact(kern_out), calc_ha_exact(mat_out)))
-      next
-    }
-    
-    if (is_weidevogel && huidig_spoor == "B") {
-      next
-    }
-    
-    # 2-kemphaan: Plasdras-weidevogels (foerageergrasland <= 100m van water/moeras + water/moeras zelf, 5ha op 50m)
+    # 2-kemphaan: Plasdras-weidevogels
     is_kemphaan <- tolower(bestandsnaam) %in% c("kemphaan", "kemphaan_wv", "calidrispugnax", "philomachuspugnax")
     
     if (is_kemphaan && tp_naam == zelfde_spoor_types[1] && huidig_spoor == "A") {
       message("       -> Kemphaan plasdras-archetype uitvoeren (grasland <= 100m van water/moeras + water/moeras)...")
       
-      # 1. Huet-waterlopen (alle > 0)
       if (!is.null(paths$huetzon) && file.exists(paths$huetzon)) {
         f_hz_al <- hulp_align_gdal(paths$huetzon, master_grid)
         r_hz    <- terra::rast(f_hz_al)
@@ -1747,7 +1758,6 @@ bouw_biotoop_universeel <- function(soort_naam,
         r_hz_ok <- master_grid * NA_real_
       }
       
-      # 2. Water- en moeras-BWK (^(31|2190|mr|v|kn|a|da))
       r_bwk_wm <- vul_raster_vanuit_parquet(
         ds_parquet  = ds_parquet,
         codes_bevat = c("31", "2190", "mr", "v", "kn", "a", "da"),
@@ -1758,7 +1768,6 @@ bouw_biotoop_universeel <- function(soort_naam,
       r_water_moeras <- voeg_toe_geclamped(r_bwk_wm, r_hz_ok)
       rm(r_bwk_wm, r_hz_ok)
       
-      # 3. Grasland (foerageer_bwk) beperken tot binnen 100m van water/moeras en samenvoegen
       if (!all(is.na(suppressWarnings(terra::minmax(r_water_moeras))))) {
         f_wm_bin <- tempfile(fileext = ".tif")
         terra::writeRaster(terra::ifel(!is.na(r_water_moeras) & r_water_moeras > 0, 1, NA), f_wm_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
@@ -1778,13 +1787,12 @@ bouw_biotoop_universeel <- function(soort_naam,
       message(sprintf("       📊 Na plasdras-koppeling (<= 100m water/moeras): %.2f ha", calc_ha_exact(r_huidig)))
     }
     
-    # 2-smient: Watervogels met grasland-water-asymmetrie (grasland <= 100m van water; losstaand water >= 1ha op 50m)
+    # 2-smient: Watervogels met grasland-water-asymmetrie
     is_smient <- tolower(bestandsnaam) %in% c("smient", "smient_wv", "marecapenelope", "anaspenelope")
     
     if (is_smient && tp_naam == zelfde_spoor_types[1] && huidig_spoor == "A") {
       message("       -> Smient-archetype uitvoeren (water + Huet/watervlakken <-> grasland <= 100m, losstaand water >= 1ha)...")
       
-      # 1. Bundel alle waterhabitats (foerageer_water + Huet + watervlakken)
       r_wat_tot <- r_huidig
       
       if (!is.null(paths$huetzon) && file.exists(paths$huetzon)) {
@@ -1806,7 +1814,6 @@ bouw_biotoop_universeel <- function(soort_naam,
       
       r_gras_raw <- if ("foerageer_grasland" %in% names(lagen_ruw)) lagen_ruw[["foerageer_grasland"]] else (master_grid * NA_real_)
       
-      # 2. Grasland binnen 100m van water behouden
       if (!all(is.na(suppressWarnings(terra::minmax(r_wat_tot)))) && !all(is.na(suppressWarnings(terra::minmax(r_gras_raw))))) {
         f_w_bin <- tempfile(fileext = ".tif")
         terra::writeRaster(terra::ifel(!is.na(r_wat_tot) & r_wat_tot > 0, 1, NA), f_w_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
@@ -1823,7 +1830,6 @@ bouw_biotoop_universeel <- function(soort_naam,
         r_gras_ok <- master_grid * NA_real_
       }
       
-      # 3. Water splitsen: water aan gekoppeld grasland (<= 20m) vs. losstaand water (>= 1ha op 50m)
       if (!all(is.na(suppressWarnings(terra::minmax(r_gras_ok))))) {
         f_g_bin <- tempfile(fileext = ".tif")
         terra::writeRaster(terra::ifel(!is.na(r_gras_ok) & r_gras_ok > 0, 1, NA), f_g_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
@@ -1850,7 +1856,6 @@ bouw_biotoop_universeel <- function(soort_naam,
       r_wat_los_ok <- res_wlos$raster
       rm(res_wlos, r_wat_los, r_wat_tot)
       
-      # 4. Samenvoegen
       r_wat_finaal <- voeg_toe_geclamped(r_wat_aan_gras, r_wat_los_ok)
       r_huidig     <- voeg_toe_geclamped(r_wat_finaal, r_gras_ok)
       
@@ -1866,7 +1871,7 @@ bouw_biotoop_universeel <- function(soort_naam,
       next
     }
     
-    # 2-kleinerietgans: Foerageercomplex >= 50 ha op 50 m WAARVAN minstens 80% grasland (werkelijke opp.)
+    # 2-kleinerietgans: Foerageercomplex >= 50 ha op 50 m WAARVAN minstens 80% grasland
     is_kleinerietgans <- tolower(bestandsnaam) %in% c("kleinerietgans", "kleinerietgans_wv", "anserbrachyrhynchus")
     
     if (is_kleinerietgans && tp_naam == zelfde_spoor_types[1] && huidig_spoor == "A") {
@@ -1875,7 +1880,6 @@ bouw_biotoop_universeel <- function(soort_naam,
       r_gras_sub <- if ("grasland_bwk" %in% names(lagen_ruw)) lagen_ruw[["grasland_bwk"]] else (master_grid * NA_real_)
       
       if (!all(is.na(suppressWarnings(terra::minmax(r_huidig))))) {
-        # 1. Fuzzy clustering op 50m (buffer 25m -> patches directions=4 -> mask)
         f_bin <- tempfile(fileext = ".tif")
         terra::writeRaster(terra::ifel(!is.na(r_huidig) & r_huidig > 0, 1, NA), f_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
         f_buf <- hulp_proximity_gdal(f_bin, 25)
@@ -1890,7 +1894,6 @@ bouw_biotoop_universeel <- function(soort_naam,
         cl_hab <- terra::mask(cl_net, r_huidig)
         rm(cl_net)
         
-        # 2. Sommeer totale werkelijke oppervlakte en werkelijke graslandoppervlakte per cluster
         df_tot  <- terra::zonal(r_huidig, cl_hab, fun = "sum", na.rm = TRUE)
         colnames(df_tot) <- c("ID", "Som_Tot")
         df_tot$Area_Tot_ha <- (df_tot$Som_Tot * 100) / 10000
@@ -1935,11 +1938,10 @@ bouw_biotoop_universeel <- function(soort_naam,
     if (is_nauwekorfslak && tp_naam == zelfde_spoor_types[1] && huidig_spoor == "A") {
       message("       -> Nauwe korfslak-archetype uitvoeren (Duin 50m + Binnenland leem/zegge + ab <= 100m, min 0.04 ha)...")
       
-      r_duin_raw <- r_huidig # Spoor A = voortplanting_duin
+      r_duin_raw <- r_huidig
       r_leem_raw <- if ("voortplanting_leem" %in% names(lagen_ruw)) lagen_ruw[["voortplanting_leem"]] else (master_grid * NA_real_)
       r_ab_raw   <- if ("ab_biotoop" %in% names(lagen_ruw)) lagen_ruw[["ab_biotoop"]] else (master_grid * NA_real_)
       
-      # Optionele ecoregio-splitsing (1 = kustduinen, > 1 = rest van Vlaanderen)
       pad_eco <- if (!is.null(paths$ecoregio) && file.exists(paths$ecoregio)) paths$ecoregio else here::here("data/input/Raster_Vlaanderen/vlaanderen_ecoregio_10m.tif")
       if (file.exists(pad_eco)) {
         f_eco_al <- hulp_align_gdal(pad_eco, master_grid)
@@ -1951,7 +1953,6 @@ bouw_biotoop_universeel <- function(soort_naam,
         rm(r_eco)
       }
       
-      # 1. Duin-spoor (50m clustering, min 0.04 ha)
       if (!all(is.na(suppressWarnings(terra::minmax(r_duin_raw))))) {
         res_duin <- cluster_filter_universeel(
           masker = r_duin_raw, opp_laag = r_duin_raw, min_opp_ha = 0.04,
@@ -1963,7 +1964,6 @@ bouw_biotoop_universeel <- function(soort_naam,
         r_duin_ok <- master_grid * NA_real_
       }
       
-      # 2. Binnenland-spoor (ab binnen 100m van voortplanting_leem, daarna 100m clustering, min 0.04 ha)
       if (!all(is.na(suppressWarnings(terra::minmax(r_leem_raw))))) {
         if (!all(is.na(suppressWarnings(terra::minmax(r_ab_raw))))) {
           f_l_bin <- tempfile(fileext = ".tif")
@@ -1993,7 +1993,6 @@ bouw_biotoop_universeel <- function(soort_naam,
         r_leem_ok <- master_grid * NA_real_
       }
       
-      # 3. Samenvoegen en finale controle (>= 0.04 ha op 100m)
       r_totaal_nk <- voeg_toe_geclamped(r_duin_ok, r_leem_ok)
       if (!all(is.na(suppressWarnings(terra::minmax(r_totaal_nk))))) {
         res_fin <- cluster_filter_universeel(
@@ -2025,17 +2024,15 @@ bouw_biotoop_universeel <- function(soort_naam,
     if (is_platteschijfhoren && tp_naam == zelfde_spoor_types[1] && huidig_spoor == "A") {
       message("       -> Platte schijfhoren-archetype uitvoeren (Spoor A water + Spoor B grasland/Huet op bodemtype, 50m, min 1 ha)...")
       
-      r_spoor_a <- r_huidig # voortplanting_a
+      r_spoor_a <- r_huidig
       r_spoor_b <- if ("voortplanting_h" %in% names(lagen_ruw)) lagen_ruw[["voortplanting_h"]] else (master_grid * NA_real_)
       
-      # 1. Huet-waterlopen toevoegen aan Spoor B (IDs 3,4,5,6,15,16 = Bk, Bkk, Bkl, Bkz, P, Rk)
       if (!is.null(paths$huetzon) && file.exists(paths$huetzon)) {
         m_huet <- haal_categorisch_masker(paths$huetzon, c("Bk", "Bkk", "Bkl", "Bkz", "P", "Rk"), master_grid, paths$dir_cache, "huet")
         r_spoor_b <- voeg_toe_geclamped(r_spoor_b, m_huet)
         rm(m_huet)
       }
       
-      # 2. Bodemtype-filter op Spoor B (89, 1460, 2830, 2913, 3089, 3381, 3513, 3640, 3687, 4011, 4036)
       pad_bodem <- if (!is.null(paths$bodem_bodemtype) && file.exists(paths$bodem_bodemtype)) {
         paths$bodem_bodemtype
       } else {
@@ -2054,7 +2051,6 @@ bouw_biotoop_universeel <- function(soort_naam,
         warning("⚠️ bodem_bodemtype raster niet gevonden voor Platte schijfhoren; Spoor B wordt zonder bodemfilter meegenomen.")
       }
       
-      # 3. Samenvoegen en clusteren (50m, min 1.0 ha)
       r_comb <- voeg_toe_geclamped(r_spoor_a, r_spoor_b)
       drempel_ps_ha <- as.numeric(dplyr::coalesce(as.numeric(get_param(rij, "MinPatch_ha", NA)), 1.0))
       
@@ -2081,14 +2077,13 @@ bouw_biotoop_universeel <- function(soort_naam,
       next
     }
     
-    # 2-kempenseheidelibel: waterbiotoop_bwk1 (>= 1 ha, 20m) moet binnen 10m raken aan waterbiotoop_bwk2 (>= 0.8 ha, 20m)
-    # én binnen 100m liggen van landbiotoop_bwk (>= 2.5 ha, 50m; landbiotoop is enkel voorwaarde)
+    # 2-kempenseheidelibel
     is_kempenseheidelibel <- tolower(bestandsnaam) %in% c("kempenseheidelibel", "sympetrumdepressiusculum")
     
     if (is_kempenseheidelibel && tp_naam == zelfde_spoor_types[1] && huidig_spoor == "A") {
       message("       -> Kempense heidelibel-archetype uitvoeren (water >= 1 ha met >= 0.8 ha moeras/ruigte <= 10m + land >= 2.5 ha <= 100m)...")
       
-      r_w1_raw <- r_huidig # waterbiotoop_bwk1
+      r_w1_raw <- r_huidig
       r_w2_raw <- if ("waterbiotoop_bwk2" %in% names(lagen_ruw)) lagen_ruw[["waterbiotoop_bwk2"]] else (master_grid * NA_real_)
       r_lb_raw <- if ("landbiotoop_bwk" %in% names(lagen_ruw))   lagen_ruw[["landbiotoop_bwk"]]   else (master_grid * NA_real_)
       
@@ -2096,7 +2091,6 @@ bouw_biotoop_universeel <- function(soort_naam,
           !all(is.na(suppressWarnings(terra::minmax(r_w2_raw)))) &&
           !all(is.na(suppressWarnings(terra::minmax(r_lb_raw))))) {
         
-        # 1. Cluster waterbiotoop_bwk1 (>= 1.0 ha op 20m) en behoud cluster-ID's
         res_w1 <- cluster_filter_universeel(
           masker = r_w1_raw, opp_laag = r_w1_raw, min_opp_ha = 1.0,
           min_totale_opp_ha = NA, afstand_m = 20, dispersie_m = 0, werkelijk = TRUE
@@ -2104,7 +2098,6 @@ bouw_biotoop_universeel <- function(soort_naam,
         r_w1_ok  <- res_w1$raster
         cl_w1_ok <- res_w1$clusters
         
-        # 2. Cluster waterbiotoop_bwk2 (>= 0.8 ha op 20m)
         res_w2 <- cluster_filter_universeel(
           masker = r_w2_raw, opp_laag = r_w2_raw, min_opp_ha = 0.8,
           min_totale_opp_ha = NA, afstand_m = 20, dispersie_m = 0, werkelijk = TRUE
@@ -2112,7 +2105,6 @@ bouw_biotoop_universeel <- function(soort_naam,
         r_w2_ok <- res_w2$raster
         rm(res_w1, res_w2)
         
-        # 3. Cluster landbiotoop_bwk (>= 2.5 ha op 50m)
         res_lb <- cluster_filter_universeel(
           masker = r_lb_raw, opp_laag = r_lb_raw, min_opp_ha = 2.5,
           min_totale_opp_ha = NA, afstand_m = 50, dispersie_m = 0, werkelijk = TRUE
@@ -2124,7 +2116,6 @@ bouw_biotoop_universeel <- function(soort_naam,
             !all(is.na(suppressWarnings(terra::minmax(r_w2_ok)))) &&
             !all(is.na(suppressWarnings(terra::minmax(r_lb_ok))))) {
           
-          # 4. Behoud hele clusters van w1 waarvan minstens 1 cel binnen <= 10m van w2 ligt (cFilter)
           f_w2_bin <- tempfile(fileext = ".tif")
           terra::writeRaster(terra::ifel(!is.na(r_w2_ok) & r_w2_ok > 0, 1, NA), f_w2_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
           f_prox_w2 <- hulp_proximity_gdal(f_w2_bin, 10)
@@ -2143,7 +2134,6 @@ bouw_biotoop_universeel <- function(soort_naam,
           if (length(geldige_w1_ids) > 0) {
             r_w3 <- terra::mask(r_w1_ok, terra::ifel(cl_w1_ok %in% geldige_w1_ids, 1, NA))
             
-            # 5. Behoud cellen van w3 binnen <= 100m van landbiotoop (>= 2.5 ha)
             f_lb_bin <- tempfile(fileext = ".tif")
             terra::writeRaster(terra::ifel(!is.na(r_lb_ok) & r_lb_ok > 0, 1, NA), f_lb_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
             f_prox_lb <- hulp_proximity_gdal(f_lb_bin, 100)
@@ -2350,7 +2340,8 @@ bouw_biotoop_universeel <- function(soort_naam,
           rm(r_b1)
         }
         
-        if (!is.na(min_raaklijn_m) && min_raaklijn_m > 0 && !all(is.na(suppressWarnings(terra::minmax(cl_huidig))))) {
+        if (!is.na(min_raaklijn_m) && min_raaklijn_m > 0 && grens_moment_val == "na_clustering" &&
+            !all(is.na(suppressWarnings(terra::minmax(cl_huidig))))) {
           message(sprintf("       -> Ecotonale bosrandtoets (>= %dm raaklijn met '%s') & %dm boszoom...", 
                           as.integer(min_raaklijn_m), bos_zoom_tp, as.integer(bos_zoom_dist)))
           
@@ -2437,7 +2428,7 @@ bouw_biotoop_universeel <- function(soort_naam,
           }
           message(sprintf("       📊 Na bosrandraaklijntoets (>= %dm) + boszoom: %.2f ha", as.integer(min_raaklijn_m), calc_ha_exact(r_huidig)))
           
-        } else if (!is.na(bos_zoom_dist) && bos_zoom_dist > 0) {
+        } else if (!is.na(bos_zoom_dist) && bos_zoom_dist > 0 && grepl("bos|struweel", tolower(bos_zoom_tp))) {
           message(sprintf("       -> Directe bosrandzoom (%dm) meenemen vanuit '%s'...", as.integer(bos_zoom_dist), bos_zoom_tp))
           f_hab_bin <- tempfile(fileext = ".tif")
           terra::writeRaster(terra::ifel(!is.na(r_huidig) & r_huidig > 0, 1, NA), f_hab_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
@@ -2642,7 +2633,7 @@ bouw_biotoop_universeel <- function(soort_naam,
         }
       }
       
-      # SCENARIO 2e: Inbedding in overkoepelend type (inclusief cluster-inbedding met buffer)
+      # SCENARIO 2e: Inbedding in overkoepelend type
       inbedding_tp <- trimws(get_param(rij, "Inbedding_In_Type", NA))
       if (!is.na(inbedding_tp) && inbedding_tp %in% names(verwerkte_sporen) && !all(is.na(suppressWarnings(terra::minmax(r_huidig))))) {
         message(sprintf("       -> Inbeddingstoets: '%s' controleren op inbedding in '%s'...", tp_naam, inbedding_tp))
@@ -2926,21 +2917,24 @@ bouw_biotoop_universeel <- function(soort_naam,
   # STAP 3: KOPPELINGEN TUSSEN TYPES
   # ----------------------------------------------------------------------------
   kol_rand_l <- intersect(c("Min_Rand_Lengte_m", "Min_Oever_Lengte_m"), colnames(params_soort))[1]
-  waarden_rand_l <- if (!is.na(kol_rand_l)) params_soort[[kol_rand_l]] else NA
-  min_rand_m <- suppressWarnings(max(as.numeric(waarden_rand_l), na.rm = TRUE))
-  heeft_rand_lengte_toets <- !is.infinite(min_rand_m) && !is.na(min_rand_m) && min_rand_m > 0
+  waarden_rand_l <- if (!is.na(kol_rand_l)) suppressWarnings(as.numeric(params_soort[[kol_rand_l]])) else numeric(0)
+  min_rand_m <- if (any(!is.na(waarden_rand_l))) max(waarden_rand_l, na.rm = TRUE) else NA_real_
+  heeft_rand_lengte_toets <- isTRUE(!is.na(min_rand_m) && min_rand_m > 0)
   
-  rand_diepte_m <- suppressWarnings(max(as.numeric(params_soort$Randzone_Diepte_m), na.rm = TRUE))
-  heeft_ecotoon_archetype <- !is.infinite(rand_diepte_m) && !is.na(rand_diepte_m) && rand_diepte_m > 0 && 
-    !("na_clustering" %in% tolower(trimws(params_soort$Grens_Moment)))
+  waarden_diepte <- if ("Randzone_Diepte_m" %in% colnames(params_soort)) suppressWarnings(as.numeric(params_soort$Randzone_Diepte_m)) else numeric(0)
+  rand_diepte_m <- if (any(!is.na(waarden_diepte))) max(waarden_diepte, na.rm = TRUE) else NA_real_
   
-  is_wederzijds <- any(as.logical(params_soort$Gebruik_Wederzijds) == TRUE, na.rm = TRUE)
+  grens_momenten_v <- if ("Grens_Moment" %in% colnames(params_soort)) tolower(trimws(as.character(params_soort$Grens_Moment))) else character(0)
+  heeft_ecotoon_archetype <- isTRUE(!is.na(rand_diepte_m) && rand_diepte_m > 0 && !("na_clustering" %in% grens_momenten_v))
+  
+  wed_vals <- if ("Gebruik_Wederzijds" %in% colnames(params_soort)) as.logical(params_soort$Gebruik_Wederzijds) else logical(0)
+  is_wederzijds <- isTRUE(any(wed_vals == TRUE, na.rm = TRUE))
   
   if (heeft_rand_lengte_toets && length(verwerkte_sporen) >= 2) {
     rij_rl     <- params_soort %>% 
-      dplyr::filter(!is.na(.data[[kol_rand_l]]) & as.numeric(.data[[kol_rand_l]]) > 0) %>% 
+      dplyr::filter(!is.na(.data[[kol_rand_l]]) & suppressWarnings(as.numeric(.data[[kol_rand_l]])) > 0) %>% 
       dplyr::slice(1)
-    open_tp    <- trimws(rij_rl$Type)
+    open_tp    <- trimws(rij_rl$Type[1])
     bos_tp     <- trimws(get_param(rij_rl, "Grens_Met_Type", NA))
     groep_buf  <- as.numeric(get_param(rij_rl, "Grens_Afstand_m", 25))
     min_pixels <- round(min_rand_m / 10)
@@ -2954,27 +2948,25 @@ bouw_biotoop_universeel <- function(soort_naam,
       
       if (!all(is.na(suppressWarnings(terra::minmax(r_open)))) && 
           !all(is.na(suppressWarnings(terra::minmax(r_bos))))) {
-        r_bos_bin <- terra::ifel(!is.na(r_bos) & r_bos > 0, 1, 0)
+        r_bos_bin <- terra::ifel(!is.na(r_bos) & r_bos > 0, 1L, 0L)
         w_3x3     <- matrix(1, nrow = 3, ncol = 3)
-        f_fc_b    <- tempfile(fileext = ".tif")
-        r_b_focal <- terra::focal(r_bos_bin, w = w_3x3, fun = "max", na.rm = TRUE, filename = f_fc_b, overwrite = TRUE)
-        unlink(f_fc_b)
+        r_b_focal <- terra::focal(r_bos_bin, w = w_3x3, fun = "max", na.rm = TRUE)
         rm(r_bos_bin)
         
-        r_open_bin <- terra::ifel(!is.na(r_open) & r_open > 0, 1, 0)
-        r_rand_bin <- terra::ifel(r_open_bin == 1 & r_b_focal == 1, 1, 0)
+        r_open_bin <- terra::ifel(!is.na(r_open) & r_open > 0, 1L, 0L)
+        r_rand_bin <- terra::ifel(r_open_bin == 1L & r_b_focal == 1L, 1L, 0L)
         rm(r_b_focal)
         
-        r_open_alleen <- terra::ifel(r_open_bin == 1, 1, NA)
+        r_open_alleen <- terra::ifel(r_open_bin == 1L, 1L, NA_integer_)
         rm(r_open_bin)
         
-        f_op_bin   <- tempfile(fileext = ".tif")
-        terra::writeRaster(r_open_alleen, f_op_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 0)
-        f_prox_op  <- hulp_proximity_gdal(f_op_bin, groep_buf)
+        f_op_bin  <- tempfile(fileext = ".tif")
+        terra::writeRaster(r_open_alleen, f_op_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
+        f_prox_op <- hulp_proximity_gdal(f_op_bin, groep_buf)
         unlink(f_op_bin)
         
         p_op <- terra::rast(f_prox_op)
-        mask_op_buf <- terra::ifel(!is.na(p_op) & p_op >= 0 & p_op <= groep_buf, 1, NA)
+        mask_op_buf <- terra::ifel(!is.na(p_op) & p_op >= 0 & p_op <= groep_buf, 1L, NA_integer_)
         unlink(f_prox_op)
         rm(p_op)
         
@@ -2995,29 +2987,34 @@ bouw_biotoop_universeel <- function(soort_naam,
         try(terra::set.cats(cl_comp, layer = 1, value = NULL), silent = TRUE)
         try(terra::coltab(cl_comp) <- NULL, silent = TRUE)
         cl_comp_open <- terra::mask(cl_comp, r_open_alleen)
-        unlink(f_cl_c)
-        rm(r_open_alleen)
         
-        cells_c <- terra::cells(!is.na(cl_comp_open) & cl_comp_open > 0)
-        if (length(cells_c) > 0) {
-          dt_rand <- data.table::data.table(
-            ID         = as.integer(cl_comp_open[cells_c][[1]]),
-            Rand_Pixel = as.integer(r_rand_bin[cells_c][[1]])
-          )
-          dt_stats <- dt_rand[, .(Totaal_Rand = sum(Rand_Pixel, na.rm = TRUE)), by = ID]
-          ok_ids   <- dt_stats[Totaal_Rand >= min_pixels, ID]
-          rm(dt_rand, dt_stats)
+        df_rand_som <- terra::zonal(r_rand_bin, cl_comp_open, fun = "sum", na.rm = TRUE)
+        colnames(df_rand_som) <- c("ID", "Totaal_Rand")
+        dt_stats <- data.table::as.data.table(df_rand_som)
+        ok_ids   <- dt_stats[!is.na(ID) & ID > 0 & Totaal_Rand >= min_pixels, ID]
+        rm(df_rand_som, dt_stats, r_rand_bin, r_open_alleen, cl_comp)
+        
+        message(sprintf("       📊 Complexen met >= %dm bosrand: %d", as.integer(min_rand_m), length(ok_ids)))
+        if (length(ok_ids) > 0) {
+          r_open_ok <- terra::mask(r_open, cl_comp_open %in% as.integer(ok_ids))
           
-          message(sprintf("       📊 Complexen met >= %dm bosrand: %d", as.integer(min_rand_m), length(ok_ids)))
-          if (length(ok_ids) > 0) {
-            verwerkte_sporen[[open_tp]] <- terra::mask(r_open, cl_comp_open %in% as.integer(ok_ids))
-          } else {
-            verwerkte_sporen[[open_tp]] <- master_grid * NA_real_
-          }
+          # Boszoom (groep_buf, bv. 25m) vanuit het gekoppelde bos meenemen
+          f_hab_ok <- tempfile(fileext = ".tif")
+          terra::writeRaster(terra::ifel(!is.na(r_open_ok), 1L, NA_integer_), f_hab_ok, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
+          f_prox_bz <- hulp_proximity_gdal(f_hab_ok, groep_buf)
+          unlink(f_hab_ok)
+          p_bz <- terra::rast(f_prox_bz)
+          r_bos_zoom <- terra::mask(r_bos, terra::ifel(!is.na(p_bz) & p_bz >= 0 & p_bz <= groep_buf, 1L, NA_integer_))
+          unlink(f_prox_bz)
+          rm(p_bz)
+          
+          verwerkte_sporen[[open_tp]] <- voeg_toe_geclamped(r_open_ok, r_bos_zoom)
+          rm(r_open_ok, r_bos_zoom)
         } else {
           verwerkte_sporen[[open_tp]] <- master_grid * NA_real_
         }
-        rm(cells_c, r_rand_bin, cl_comp, cl_comp_open)
+        unlink(f_cl_c)
+        rm(cl_comp_open)
       } else {
         verwerkte_sporen[[open_tp]] <- master_grid * NA_real_
       }
@@ -3112,18 +3109,19 @@ bouw_biotoop_universeel <- function(soort_naam,
     
   } else {
     if (is_wederzijds && length(verwerkte_sporen) >= 2) {
-      rij_a <- params_soort %>% dplyr::filter(as.logical(Gebruik_Wederzijds) == TRUE & Spoor == "A") %>% dplyr::slice(1)
-      rij_b <- params_soort %>% dplyr::filter(as.logical(Gebruik_Wederzijds) == TRUE & Spoor == "B") %>% dplyr::slice(1)
+      rij_a <- params_soort %>% dplyr::filter(!is.na(Gebruik_Wederzijds) & as.logical(Gebruik_Wederzijds) & Spoor == "A") %>% dplyr::slice(1)
+      rij_b <- params_soort %>% dplyr::filter(!is.na(Gebruik_Wederzijds) & as.logical(Gebruik_Wederzijds) & Spoor == "B") %>% dplyr::slice(1)
       
-      tp_a <- trimws(rij_a$Type)
-      tp_b <- trimws(rij_b$Type)
+      tp_a <- if (nrow(rij_a) > 0) trimws(rij_a$Type[1]) else names(verwerkte_sporen)[1]
+      tp_b <- if (nrow(rij_b) > 0) trimws(rij_b$Type[1]) else setdiff(names(verwerkte_sporen), tp_a)[1]
       
-      dist_a <- as.numeric(dplyr::coalesce(as.numeric(get_param(rij_a, "Grens_Afstand_m", NA)),
-                                           as.numeric(get_param(rij_a, "Wederzijdse_Afstand_m", NA)), 50))
-      dist_b <- as.numeric(dplyr::coalesce(as.numeric(get_param(rij_b, "Grens_Afstand_m", NA)),
-                                           as.numeric(get_param(rij_b, "Wederzijdse_Afstand_m", NA)), dist_a))
+      dist_a <- if (nrow(rij_a) > 0) as.numeric(dplyr::coalesce(as.numeric(get_param(rij_a, "Grens_Afstand_m", NA)),
+                                                                as.numeric(get_param(rij_a, "Wederzijdse_Afstand_m", NA)), 50)) else 50
+      dist_b <- if (nrow(rij_b) > 0) as.numeric(dplyr::coalesce(as.numeric(get_param(rij_b, "Grens_Afstand_m", NA)),
+                                                                as.numeric(get_param(rij_b, "Wederzijdse_Afstand_m", NA)), dist_a)) else dist_a
       
-      if (!is.na(tp_b) && tp_a %in% names(verwerkte_sporen) && tp_b %in% names(verwerkte_sporen)) {
+      if (length(tp_a) == 1 && length(tp_b) == 1 && !is.na(tp_a) && !is.na(tp_b) &&
+          tp_a %in% names(verwerkte_sporen) && tp_b %in% names(verwerkte_sporen)) {
         message(sprintf("\n    🔗 Wederzijdse koppeling: '%s' (<= %dm) <-> '%s' (<= %dm)...", 
                         tp_a, as.integer(dist_a), tp_b, as.integer(dist_b)))
         
@@ -3142,13 +3140,12 @@ bouw_biotoop_universeel <- function(soort_naam,
       }
     }
     
-    # Eventuele eenzijdige koppelingen (ook op Spoor C bij soorten met wederzijdse koppeling zoals Heivlinder)
     for (i in 1:nrow(params_soort)) {
-      rij         <- params_soort[i, ]
-      doel_tp     <- trimws(rij$Type)
-      kern_tp_raw <- get_param(rij, "Grens_Met_Type", NA)
-      grens_m_raw <- get_param(rij, "Grens_Afstand_m", NA)
-      grens_mom   <- tolower(trimws(get_param(rij, "Grens_Moment", "")))
+      rij          <- params_soort[i, ]
+      doel_tp      <- trimws(rij$Type)
+      kern_tp_raw  <- get_param(rij, "Grens_Met_Type", NA)
+      grens_m_raw  <- get_param(rij, "Grens_Afstand_m", NA)
+      grens_mom    <- tolower(trimws(get_param(rij, "Grens_Moment", "")))
       
       if (!is.na(kern_tp_raw) && !is.na(grens_m_raw) && grens_mom != "" && grens_mom != "voor_clustering" && doel_tp %in% names(verwerkte_sporen)) {
         kern_types <- trimws(strsplit(as.character(kern_tp_raw), "[,;]+")[[1]])
@@ -3424,7 +3421,7 @@ bouw_biotoop_universeel <- function(soort_naam,
     
     dir_id   <- file.path(base_dir, "00_ID_Rasters")
     dir_leef <- file.path(base_dir, "01_Potentieel_Leefgebied")
-    dir_deel <- file.path(base_dir, "01_Potentieel_Leefgebied/Deellagen")   # 📂 Aparte submap voor deellagen
+    dir_deel <- file.path(base_dir, "01_Potentieel_Leefgebied/Deellagen")
     
     dir.create(dir_id, showWarnings = FALSE, recursive = TRUE)
     dir.create(dir_leef, showWarnings = FALSE, recursive = TRUE)
@@ -3444,7 +3441,7 @@ bouw_biotoop_universeel <- function(soort_naam,
       message(sprintf("    💾 [EXPORT] Netwerk-ID raster bewaard: %s", basename(f_out_id)))
     }
     
-    # 2. Totaal Potentieel Leefgebied exporteren (in 01_Potentieel_Leefgebied)
+    # 2. Totaal Potentieel Leefgebied exporteren
     if (!is.null(final_opp) && !all(is.na(suppressWarnings(terra::minmax(final_opp))))) {
       f_out_tot <- file.path(dir_leef, paste0("Potentieel_Leefgebied_", bestandsnaam, ".tif"))
       terra::writeRaster(
@@ -3458,7 +3455,7 @@ bouw_biotoop_universeel <- function(soort_naam,
       message(sprintf("    💾 [EXPORT] Totaal leefgebied bewaard: %s (%.2f ha)", basename(f_out_tot), calc_ha_exact(final_opp)))
     }
     
-    # 3. Deellagen exporteren (in aparte map Deellagen)
+    # 3. Deellagen exporteren
     if (length(types_te_fuseren) > 1) {
       for (nm in types_te_fuseren) {
         r_deel <- res_uitvoer[[nm]]
