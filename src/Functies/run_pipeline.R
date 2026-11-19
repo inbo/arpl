@@ -95,10 +95,18 @@ prepareer_test_grid <- function(master_grid_full, studiegebied_input, buffer_m =
 #   - c(72000, 226000)                                      -> XY in Lambert 72 (EPSG:31370)
 #TEST_GEBIED <- NULL
 
-TEST_GEBIED      <- here::here("data", "input", "Voerstreek.shp")
-TEST_BUFFER_M    <- 5000
+TEST_GEBIED      <- NULL
+#c(4.22, 51.15)
+#TEST_BUFFER_M    <- 10000
 FORCE_OVERWRITE  <- FALSE
-soorten_selectie <- c("gewonebronlibel")
+soorten_selectie <- c(# Niet gevonden in afstanden-tabel (26)
+  "parnassia", "purperorchis", "rondezegge",
+  "schedegeelster", "schubzegge", "veenbies", "walstrobremraap", "wijdbloeienderus", "wondklaver", "zeealsem",
+  # Typfout in Type-kolom (1)
+  "ongelijkbladigfonteinkruid",
+  # Onderbroken / Huet-aanpassing (1)
+  "slijkzegge", "europeseotter"
+)
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
