@@ -45,7 +45,8 @@ PATHS <- list(
   
   # Externe Omgevingsrasters
   groenkaart          = here::here("data", "input", "ASCI Files", "Groenkaart_2021.tif"),
-  ecoregio            = here::here("data", "input", "ASCI Files", "ecodistrict.tif"),
+  vha_waterlopen      = here::here("data", "input", "Raster_Vlaanderen", "vlaanderen_vha_cat012_fractie_10m.tif"),
+  ecoregio            = here::here("data", "input", "Raster_Vlaanderen", "ecodistrict.tif"),
   maas                = here::here("data", "input", "Raster_Vlaanderen", "Maas.tif"),
   drainage            = here::here("data", "input", "Raster_Vlaanderen", "vlaanderen_drainage_n2khab_10m.tif"),
   profiel             = here::here("data", "input", "Raster_Vlaanderen", "Vlaanderen_profiel_10m.tif"),
