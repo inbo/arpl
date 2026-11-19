@@ -23,10 +23,15 @@ A. Spoor A: Algemeen Leefgebied & Water ('leefgebied_algemeen'):
        91F0%, rud%, sf%, rbbsf%, sm%, 4010%, 7230%, rbbsm%, sz%, va%, vc%, vf%, 
        vm%, vn%, vo%, vt%, 91D0%
        (Waterplassen, rietmoerassen, natte ruigten, alluviale bossen en struwelen)
-   - Hydrografische waterlopen (Huetzon):
-       Klassen 1, 17, 18, 19 (primaire rivieren, beektrajecten en getijdenwateren)
-   - Maas-rivierbedding:
-       Aanvullende bedding van de Grensmaas
+   - Hydrografische waterlopen (VHA cat. 0, 1 en 2):
+       Bevaarbare en onbevaarbare waterlopen van categorie 0, 1 en 2 uit de 
+       Vlaamse Hydrografische Atlas (VHA), verrasterd naar werkelijke waterfracties 
+       op 10 m resolutie (via 1m-subsampling) om de echte waterbreedte zonder 
+       overschatting van smalle beken mee te nemen.
+   - Verbonden watervlakken (beverspecifiek):
+       Stilstaande of langzaam stromende watervlakken met een minimale aaneengesloten 
+       oppervlakte van > 1.000 m2 (0,10 ha) die binnen een afstand van <= 500 m 
+       van een VHA-waterloop (cat. 0, 1 of 2) liggen.
 
 B. Spoor B: Houtige Opslag / Voedsel- & Bouwhout ('houtig'):
    - BWK-selectie van ooibos- en struweelhout:
@@ -39,13 +44,14 @@ B. Spoor B: Houtige Opslag / Voedsel- & Bouwhout ('houtig'):
 2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPELS
 --------------------------------------------------------------------------------
 1. Algemeen Beekdal- en Watersysteem (>= 50 ha op 50 m):
-   - Het gecombineerde water- en beekdalbiotoop wordt geclusterd met dist_m = 50 m.
+   - Het gecombineerde water- en beekdalbiotoop (geclampt op max. fractie 1,0 
+     per cel) wordt geclusterd met dist_m = 50 m.
    - Drempelwaarde: >= 50 ha (500.000 m2) werkelijk aaneengesloten leefgebied.
    - Ecologische functie: Een beverfamilie heeft een territorium nodig van 1 tot 
      enkele kilometers beekoever om overbegrazing van de houtopslag te voorkomen.
-2. Houtige Voedsel- en Burchtkernen (>= 5 ha op 50 m):
+2. Houtige Voedsel- en Burchtkernen (>= 1 ha op 50 m):
    - De houtige component wordt afzonderlijk geclusterd met dist_m = 50 m.
-   - Drempelwaarde: >= 5 ha (50.000 m2) werkelijke houtopslag.
+   - Drempelwaarde: >= 1 ha (10.000 m2) werkelijke houtopslag.
    - Ecologische functie: Garandeert voldoende wintervoorraad aan schors en 
      stevig bouwmateriaal voor dammen en winterburchten.
 
@@ -55,7 +61,7 @@ B. Spoor B: Houtige Opslag / Voedsel- & Bouwhout ('houtig'):
 Bevers zijn ter land zwaarlijvig en kwetsbaar voor predatie (bijv. honden). Ze 
 foerageren daarom zelden verder dan 20 tot 50 m van de waterrand:
 - Algemeen complex (>= 50 ha) moet binnen <= 50 m van een houtige kern liggen.
-- Houtige kern (>= 5 ha) moet binnen <= 50 m van het algemene watercomplex liggen.
+- Houtige kern (>= 1 ha) moet binnen <= 50 m van het algemene watercomplex liggen.
 
 
 4. FINALE COMPOSIET-LEEFGEBIEDSTOETS & DISPERSIE
@@ -71,8 +77,9 @@ foerageren daarom zelden verder dan 20 tot 50 m van de waterrand:
 5. BEKNOPT PARAMETEROVERZICHT
 --------------------------------------------------------------------------------
 Doelpopulatie             : Europese bever (Castor fiber)
-Water- en dalcomplex      : BWK water/moeras/bos + Huetzon 1, 17, 18, 19 + Maas (>= 50 ha op 50 m)
-Houtige kernen            : Zacht ooibos, populier, wilg, els, berk (>= 5 ha op 50 m)
+Water- en dalcomplex      : BWK water/moeras/bos + VHA cat. 0, 1, 2 (fracties) 
+                            + watervlakken (> 1.000 m2 binnen 500 m) + Maas (>= 50 ha op 50 m)
+Houtige kernen            : Zacht ooibos, populier, wilg, els, berk (>= 1 ha op 50 m)
 Wederzijdse koppeling     : <= 50 m actieradius tussen watercomplex en houtige kern
 Dispersieradius (ARPL)    : 50000 m
 ================================================================================

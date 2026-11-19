@@ -29,48 +29,25 @@ A. Doelbiotoop ('bwk'):
      resolutie (BWK_FRAC gesommeerd tot maximaal 1.0).
 
 
-2. DUBBELE DREMPELFILTERING OP TWEE SCHAALNIVEAUS
+2. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPEL
 --------------------------------------------------------------------------------
-De soort heeft een beperkte dispersiecapaciteit en een uitgesproken lokale 
-populatiedynamiek. Het habitatmodel hanteert daarom een getrapte dubbele 
-drempeltoets (lokale patchgrootte versus netwerkomvang):
-
-A. Stap 1: Voorfilter individuele vlekken (>= 5 ha, afstand_m = 0 m):
-   - Ruimtelijke identificatie van losse aaneengesloten vlekken via 
-     8-richtingen rasterbuurcellen (zonder overbruggingsafstand, afstand_m = 0 m).
-   - Drempelwaarde: drempel_vlek_m2 = 5 ha * 10.000 m2 = 50.000 m2 werkelijk habitat.
-   - Filterregel: Alleen aaneengesloten patches met minstens 5 ha werkelijke 
-     habitatoppervlakte blijven behouden (opp_gefilterd).
+1. Minimale Patchgrootte (MinPatch_ha = 5 ha op 10 m):
+   - Methode: Geschikte habitatcellen worden geclusterd met een maximale 
+     overbruggingsafstand van 10 m (afstand_m = 10 m) om smalle paden, 
+     greppels en spoorwegonderbrekingen te overbruggen.
+   - Filterregel: Alleen aaneengesloten patches met een werkelijke habitat-
+     oppervlakte van minstens 5 ha (50.000 m2) worden weerhouden als duurzaam 
+     leefgebied.
    - Ecologische functie: Snippers kleiner dan 5 ha bieden onvoldoende 
      draagkracht voor een zelfstandige, inteeltvrije voortplantingsgroep en 
      zijn te kwetsbaar voor predatiedruk (o.a. Fazant, Kat, Kraaiachtigen) 
      en randeffecten.
 
-B. Stap 2: Netwerkclustering & metapopulatiedrempel (>= 10 ha op 100 m):
-   - De goedgekeurde vlekken (>= 5 ha) worden geclusterd met een koppelingsafstand 
-     van 100 m (buffer_m = 100 m, directions = 4).
-   - Drempelwaarde: drempel_netwerk_m2 = 10 ha * 10.000 m2 = 100.000 m2 totaal habitat.
-   - Filterregel: Het totale netwerk van onderling verbonden vlekken binnen 100 m 
-     moet minstens 10 ha werkelijk habitat omvatten.
-   - Ecologische functie: Garandeert dat lokale clusters niet als geïsoleerde 
-     5 ha-eilandjes overblijven, maar ingebed zijn in een groter metapopulatiesysteem 
-     van minstens 10 ha waarbinnen genetische uitwisseling tussen naburige kernen 
-     mogelijk blijft.
 
-
-3. FINALE SAMENVOEGING & NETWERK-ID'S
+3. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
 --------------------------------------------------------------------------------
-- Definitief leefgebied: Cellen die voldoen aan de individuele vlekdrempel (>= 5 ha) 
-  EN deel uitmaken van een 100 m-netwerk van minstens 10 ha werkelijke oppervlakte.
-- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
-  gefilterde werkelijke oppervlakten (export naar '00_ID_Rasters' en 
-  '01_Werkelijke_Oppervlaktes').
-
-
-4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
---------------------------------------------------------------------------------
-- Dispersiecapaciteit (buffer_m / ARPL): 100 m
-    * Toepassing: Vormt direct de functionele aggregatiestraal in stap 2.
+- Dispersiecapaciteit (buffer_m / ARPL): 100 m (vast in script & Excel)
+    * Toepassing: Vormt de functionele aggregatiestraal in de netwerk- en ARPL-stap.
     * Ecologische functie: Levendbarende hagedissen zijn honkvast en bewegen 
       zich traag en voorzichtig door dichte vegetatie; open akkers, brede wegen 
       of waterlopen vormen absolute barrières. Een afstand van 100 m door 
@@ -78,12 +55,11 @@ B. Stap 2: Netwerkclustering & metapopulatiedrempel (>= 10 ha op 100 m):
       subadulte individuen tussen heidekernen migreren.
 
 
-5. BEKNOPT PARAMETEROVERZICHT
+4. BEKNOPT PARAMETEROVERZICHT
 --------------------------------------------------------------------------------
 Doelpopulatie             : Levendbarende hagedis (Zootoca vivipara)
 Doelbiotoop               : Vochtige/droge heide, vennen, schraalgrasland & spoorwegzates
-Individuele vlekdrempel   : >= 5 ha werkelijk habitat per patch (directions = 8, 0 m)
-Koppelafstand netwerk     : 100 m (buffer_m / Dispersiecapaciteit)
-Totale netwerkoppervlakte : >= 10 ha totaal werkelijk habitat binnen het 100 m-netwerk
+Overbruggingsafstand      : 10 m (afstand_m = 10 m)
+Minimale patchgrootte     : >= 5 ha werkelijk habitat
 Dispersieradius (ARPL)    : 100 m
 ================================================================================
