@@ -1,0 +1,99 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: LEVENDBARENDE HAGEDIS (OUD MODEL / RUST)
+Soort: Zootoca vivipara (reptiel / vochtige tot droge heide, hoogveen, 
+       structuurrijke graslanden, weg- & spoorwegbermen)
+Scriptversie: ANB/INBO 2018-2019 / Heel Vlaanderen (20 m resolutie, binaire grid)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Levendbarende hagedis is een eierlevendbarend, koudbloedig reptiel dat 
+gekozen is voor zijn binding aan vochtige tot natte, structuurrijke en kruidige 
+vegetaties met voldoende zonplekken én dekking (zoals pijpenstrootjesbulten, 
+dwergstruiken, zeggepollen, ruige bermen en spoorwegtaluds). In tegenstelling 
+tot de strikt droogteminnende zandhagedis verdraagt deze soort zowel vochtige 
+heiden en hoogvenen als drogere heiden, duingraslanden en schrale bermen.
+
+A. Totaal leefgebied ('levendbarendehagedis_bwk'):
+   - BWK- & Natura 2000-selectie:
+       cd%, 2310%, ce%, 4010%, 7150%, 7140_oli%, cg%, 4030%, 5130%, cm%, ct%, 
+       7110%, 7120%, cv%, ha%, 2330%, 6230_ha%, 2130%, 2150%, hc%, 2190%, 
+       6410%, rbbhc%, hd%, hj%, hk%, 6210%, hn%, 6230%, hp+, rbbkam%, hu%, 
+       6120%, 6510%, ks%, ku%, 3270%, 6430%, k(ku%, k(cg%, k(cv%, k(cm%, 
+       k(cd%, k(ce%, k(hu%, k(ha%, k(hk%, k(hc%, k(hj%, k(hd%, se%, spoor%
+       (Vochtige en droge heiden en jeneverbesstruwelen [cd, ce, cg, 2310, 
+       4010, 4030, 5130, 7150], hoogveen, veenmos- en pijpenstrootjesvegetaties 
+       [cm, ct, cv, 7110, 7120, 7140_oli], heischrale, duin-, kalk- en 
+       soortenrijke graslanden en dotterbloemhooilanden [ha, hc, hd, hj, hk, 
+       hn, hp+, hu, 2130, 2150, 2190, 2330, 6120, 6210, 6230, 6410, 6510], 
+       ruderale en lineaire berm-/taludmilieus [ks, ku, 3270, 6430], 
+       kleinschalige mozaïekkarteringen met bovenstaande types [k(...)], 
+       bremstruwelen [se%] en spoorwegbermen/-beddingen [spoor%]).
+   - Ecologische functie: De expliciete opname van spoorwegbermen (`spoor%`), 
+     wegbermen (`ks%`) en mozaïekstructuren (`k(...)`) weerspiegelt de rol van 
+     zonnige, weinig betreden lijnvormige ruigten als belangrijke leef- en 
+     migratiecorridors in het Vlaamse cultuurlandschap.
+   - Resolutie & Representatie: 20 x 20 m raster (`vlaanderen_20m.asc`, 400 m2 
+     per cel). Elke geselecteerde BWK-cel telt binair (0/1) mee.
+
+
+2. NEGATIEVE STOORFACTOREN (BEBOUWING & WEGENMETING)
+--------------------------------------------------------------------------------
+- Expliciete exclusielagen: Geen.
+  * Gesloten bossen, intensieve akkers en bebouwing vallen weg via de 
+    BWK-biotoopselectie.
+
+
+3. KERNBIOTOOP & CLUSTERING (LOKALE POPULATIE-EENHEID)
+--------------------------------------------------------------------------------
+1. Lokale habitatclustering (50 m zoekstraal):
+   - Functie: `fuzzyClusterIdU(levendbarendehagedis_bwk, 50, meter)`
+   - Ruimtelijke logica: Geschikte biotoopfragmenten die op maximaal 50 m van 
+     elkaar liggen, smelten samen tot één functioneel leefgebiedscluster.
+   - Ecologische functie: Levendbarende hagedissen zijn zeer plaatstrouw met 
+     een kleine individuele actieradius (vaak slechts enkele tientallen meters); 
+     smalle bospaden, sloten of lokale onderbrekingen tot 50 m vormen nog geen 
+     absolute barrière binnen een lokale deelpopulatie.
+
+2. Oppervlaktedrempel (>= 1 ha per lokaal cluster):
+   - Functie: `cFilterGeArea(levendbarendehagedis_bwk_cluster, 1, hectare)`
+   - Drempelwaarde: Elk aaneengesloten cluster (binnen 50 m) moet minstens 
+     **1 ha** (10.000 m2 = 25 cellen van 20x20 m) bedragen.
+   - Ecologische functie: Door zijn geringe lichaamsomvang en kleine home-range 
+     kan de levendbarende hagedis — in tegenstelling tot grotere reptielen zoals 
+     de adder (25 ha) of gladde slang (20 ha) — al vanaf 1 ha structuurrijk 
+     biotoop een duurzame lokale populatie handhaven.
+
+
+4. GEOGRAFISCHE & ECOLOGISCHE AFBAKENING (ECOREGIO-FILTER)
+--------------------------------------------------------------------------------
+- Ecoregio-masker: `Ge('ecoregio.asc', 1)`
+  * Toepassing: Het resultaat wordt afgeknipt op de relevante ecoregio's 
+    (waarde >= 1).
+  * Opmerking: In tegenstelling tot bijvoorbeeld de gladde slang of kamsalamander 
+    wordt na het toepassen van het ecoregio-masker *geen* tweede oppervlaktefilter 
+    (>= 1 ha) meer uitgevoerd op de afgesneden randcellen.
+  * Ecologische functie: Beperkt de leefgebiedenkaart tot de Vlaamse ecoregio's 
+    waar de soort van nature voorkomt (hoofdzakelijk de Kempen, duinen/polders 
+    en delen van de zandleem-/leemstreek).
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit: Niet ingebouwd in het script.
+  * Het script levert een binaire 0/1-kaart (`ANB2019_LevendbarendeHagedis2018.asc`) 
+    van de geschikte lokale leefgebiedskernen (>= 1 ha binnen 50 m).
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Levendbarende hagedis (Zootoca vivipara)
+Schaal & Resolutie        : Heel Vlaanderen, 20 m raster (binair 0/1)
+Biotopen                  : Vochtige & droge heiden, hoogveen, schrale/vochtige 
+                            graslanden, bermen, mozaïeken (`k`), bremstruweel 
+                            en spoorwegbermen (`spoor%`)
+Stoorfactoren             : Geen expliciete exclusiebuffers (enkel via BWK)
+Koppelingsafstand         : 50 m (`fuzzyClusterIdU`)
+Oppervlaktedrempel        : >= 1 ha per lokaal cluster (`cFilterGeArea`)
+Geografische filter       : Ecoregio >= 1 (`ecoregio.asc`)
+================================================================================

@@ -1,0 +1,109 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: GLADDE SLANG (OUD MODEL / RUST)
+Soort: Coronella austriaca (reptiel / structuurrijke heide, open zand & bosranden)
+Scriptversie: ANB/INBO 2018-2019 / Heel Vlaanderen (20 m resolutie, binaire grid)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Gladde slang is een warmteminnende, verborgen levende slang van schrale, 
+structuurrijke heide-, veen- en stuifzandlandschappen met een uitgesproken 
+microreliëf en afwisseling tussen open plekken, dwergstruiken, pijpenstrootjes-
+bulten en zonnige bosranden of taluds.
+
+A. Vlakdekkend leefgebied ('gladdeslang_biotoop_bwk'):
+   - BWK- & Natura 2000-selectie:
+       cd%, 2310%, 4030%, ce%, 4010%, 7150%, cg%, 5130%, cm%, cp%, cv%, dm%, 
+       2330%, ha%, 6230_ha%, hc%, 2190%, 6410%, hk%, 6210%, hm%, hn%, 6230%, 
+       kc%, kg%, ks%, kt%, ppmb%, rbbppm%, ppmh%, ppms%, pmb%, pmh%, pms%, qb%, 
+       qs%, se%, sg%, rbbsg%, sk%, sm%, 7140%, 7230%, rbbsm%
+       (Droge en vochtige heiden, jeneverbesstruwelen, hoogveen en veenmos-
+       vegetaties, stuifzanden, heischrale en soortenrijke graslanden, 
+       karteringseenheden voor spoorwegbermen/taluds/holle wegen [kc, kg, ks, kt], 
+       open populieren- en eikenbestanden op zand/heide [ppmb/h/s, pmb/h/s, qb, qs] 
+       en open brem-, gagel- en wilgenstruwelen [se, sg, sk, sm]).
+
+B. Lijnvormige en puntvormige varianten ('gladdeslang_lijn_bwk'):
+   - BWK-selectie: Alle bovenstaande codes wanneer gekarteerd als punt- (`k`), 
+     lijn- (`kl`/`kt`) of haag-/houtkantstructuur (`kh`), met specifieke 
+     toepassing van +, - en b-subtypes (zoals ha+, ha-, hab, kt+, ppmb+, qb-, 
+     sg+, sm-).
+   - Ecologische functie: Langgerekte heidebermen, spoorwegbermen, taluds en 
+     struweelranden fungeren als belangrijke leef- en verbindingslinten in 
+     versnipperd heidelandschap.
+
+
+2. VERBOSSINGSEIS & BOSRAND-INTEGRATIE (GROENKAART 2013)
+--------------------------------------------------------------------------------
+Omdat open heideterreinen ongeschikt worden bij dichtgroeien, maar de gladde 
+slang wél intensief gebruikmaakt van zonnige bosranden (voor thermoregulatie, 
+dekking en prooien zoals hagedissen), hanteert het script een tweetrapsfilter 
+met de Vlaamse Groenkaart (`groenkaart2013_20m.asc`, waarde 1 = hooggroen):
+
+1. Uitsluiting gesloten bos / verbossing uit de BWK-kern:
+   - Alle geselecteerde BWK-cellen die op de Groenkaart als 'hooggroen' staan 
+     ingekleurd, worden eerst verwijderd (`and(gladdeslang_biotoop1, not(hooggroen))`). 
+     Hiermee worden verboste heidepercelen en gesloten aanplanten uitgefilterd.
+2. Toevoeging van een 50 m bosrand- en mantelzone:
+   - Alle hooggroen-cellen die op maximaal 50 m afstand liggen van niet-verbost, 
+     open heide-/graslandbiotoop worden opnieuw aan het leefgebied toegevoegd 
+     (`and(hooggroen, cellDistanceLe(gladdeslang_biotoop2, 50, meter))`).
+   - Ecologische functie: De buitenste 50 m van bosranden vormt een warm, 
+     structuurrijk overgangsmilieu (mantel-zoomvegetatie) dat integraal deel 
+     uitmaakt van het activiteitsgebied, terwijl diep, beschaduwd bos (> 50 m) 
+     buiten beeld blijft.
+   *(Noot: Een oudere testregel met bosinventaris-sluitingsgraad <= 2/3 en een 
+   percentage-eis van 80% open terrein uit de ontwerpcommentaren zijn in de 
+   actieve berekening weggelaten).*
+
+
+3. KERNBIOTOOP & CLUSTERING (LOKALE POPULATIE-EENHEID)
+--------------------------------------------------------------------------------
+1. Lokale habitatclustering (50 m zoekstraal):
+   - Functie: `fuzzyClusterIdU(gladdeslang_biotoop3, 50, meter)`
+   - Ruimtelijke logica: Open heidebiotopen en hun bijbehorende 50 m-bosranden 
+     die op maximaal 50 m van elkaar liggen, worden samengevoegd tot één 
+     functioneel cluster. (In de inleidende commentaarnota stond 500 m vermeld, 
+     maar het script past een strengere lokale koppeling van 50 m toe).
+2. Oppervlaktedrempel (>= 20 ha per cluster):
+   - Functie: `cFilterGeArea(gladdeslang_biotoop3_cluster, 20, hectare)`
+   - Drempelwaarde: Elk aaneengesloten complex (inclusief de 50 m bosrandzone) 
+     moet minstens 20 ha (200.000 m2 = 500 cellen van 20x20 m) bedragen.
+   - Ecologische functie: De gladde slang leeft in lage dichtheden en heeft 
+     relatief grote activiteitsgebieden met zowel droge zonplekken als vochtigere 
+     overgangen en vorstvrije overwinteringsplaatsen nodig om een duurzame 
+     populatie te ondersteunen.
+
+
+4. GEOGRAFISCHE & ECOLOGISCHE AFBAKENING (ECOREGIO-FILTER)
+--------------------------------------------------------------------------------
+- Ecoregio-masker: `Ge('ecoregio.asc', 1)`
+  * Toepassing: Het resultaat wordt afgeknipt op de relevante ecoregio's 
+    (waarde >= 1). Vervolgens wordt opnieuw geclusterd op 50 m en gefilterd 
+    op >= 20 ha, zodat deelgebieden die door de ecoregiogrens worden verkleind 
+    nog steeds minstens 20 ha groot zijn.
+  * Ecologische functie: Beperkt de leefgebiedenkaart tot het natuurlijke 
+    Vlaamse areaal in de Kempen (voornamelijk Limburgse Kempen en delen van 
+    de Antwerpse Kempen).
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit: Niet apart berekend buiten de 50 m-clustering.
+  * De gladde slang is zeer honkvast en heeft een beperkt dispersievermogen; 
+    het script levert een binaire 0/1-kaart (`ANB2019_GladdeSlang2018.asc`) 
+    van de levensvatbare leefgebiedscomplexen (>= 20 ha).
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Gladde slang (Coronella austriaca)
+Schaal & Resolutie        : Heel Vlaanderen, 20 m raster (binair 0/1)
+Biotopen                  : Heiden, hoogveen, stuifzanden, schrale graslanden, 
+                            bermen/taluds + lijnvormige k/kh/kt-varianten
+Verbossingsfilter         : Exclusie van 'hooggroen' (Groenkaart 2013) uit BWK-kern
+Bosrand-integratie        : Wel opname van 'hooggroen' binnen 50 m van open biotoop
+Koppelingsafstand         : 50 m (`fuzzyClusterIdU`)
+Oppervlaktedrempel        : >= 20 ha per cluster (`cFilterGeArea`)
+Geografische filter       : Ecoregio >= 1 (`ecoregio.asc`), met hertoetsing >= 20 ha
+================================================================================

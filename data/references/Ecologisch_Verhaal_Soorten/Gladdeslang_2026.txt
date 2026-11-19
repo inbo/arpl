@@ -24,10 +24,11 @@ B. Lineaire elementen & houtkanten ('lijn_bwk'):
    - BWK-selectie:
        k(...), kh(...), kt(...) varianten van heide-, heischrale en lichte 
        bosvegetaties (struwelen, heggen, houtkanten, kapvlaktes en bermen)
-   - Fusie: Cover van vlakvormige en lineaire BWK-elementen.
+   - Fusie: Sommatieve samenvoeging (geclampt op 1,0) van vlakvormige en 
+     lineaire BWK-elementen.
 
 C. Externe Groenkaart (Hooggroen):
-   - Bron: Groenkaart_2021.tif (kruinlaag/hooggroen >= 50% = gesloten bomenrij/bos).
+   - Bron: Groenkaart (kruinlaag/hooggroen klasse 1 = gesloten bomenrij/bos).
 
 
 2. HABITATOPBOUW: OPEN BIOTOOP + 50 M BOSRAND
@@ -36,63 +37,45 @@ De Gladde slang mijdt dichte, donkere binnenbossen, maar is sterk afhankelijk
 van de zonbeschenen, luwe overgangszone tussen heide en bos:
 
 1. Extractie open habitat:
-   - Gesloten bomen/hooggroen wordt uit het BWK-biotoop gemaskerd, waardoor 
-     zuiver open heide- en schraalland overblijft.
+   - Gesloten bomen/hooggroen (Groenkaart klasse 1) wordt uit het BWK-biotoop 
+     gemaskerd, waardoor zuiver open heide- en schraalland overblijft.
 2. Inclusie van de 50 m bosrandzone:
    - Rond het open habitat wordt een buffer van 50 m gelegd.
    - Aangrenzend hooggroen dat binnen deze 50 m zoekzone valt, wordt meegenomen 
      als functionele bosrand.
-3. Bruto biotoop: Cover van open heide/schraalland en de aangrenzende 50 m bosrand.
+3. Bruto biotoop: Sommatieve samenvoeging van open heide/schraalland en de 
+   aangrenzende 50 m bosrand.
 
 
-3. DUBBELE DREMPELFILTERING (LOKALE KERN >= 20 HA & NETWERK >= 760 HA)
+3. RUIMTELIJKE CLUSTERING & OPPERVLAKTEDREMPEL
 --------------------------------------------------------------------------------
-De Gladde slang heeft een lage mobiliteit en een strikte metapopulatiestructuur. 
-Het model toetst het leefgebied daarom gelijktijdig op twee schaalniveaus:
-
-A. Individuele kernoppervlakte (min_oppervlakte_ha = 20 ha):
-   - Individuele patches worden afgebakend via 8-richtingen buurcellen 
-     (zonder overbruggingsafstand, afstand_m = 0 m).
-   - Drempelwaarde: >= 20 ha (200.000 m2) werkelijke habitatoppervlakte per patch.
-   - Ecologische functie: Een aaneengesloten kern van minstens 20 ha is het 
-     kritische minimum voor een lokaal stabiele voortplantingsgroep met 
-     voldoende prooidichtheid en winterverblijfplaatsen. Snippers < 20 ha vallen af.
-
-B. Bovenlokale netwerkgrootte (min_totale_opp_ha = 760 ha):
-   - De goedgekeurde kernen (>= 20 ha) worden geclusterd met een koppelafstand 
-     van 500 m (buffer_m / Dispersiecap_m = 500 m, directions = 4).
-   - Drempelwaarde: Het totale geclusterde netwerk moet minstens 760 ha 
-     (7.600.000 m2) werkelijk habitat omvatten.
-   - Ecologische functie: Een genetisch gezonde en levensvatbare metapopulatie 
-     (die op lange termijn bestand is tegen inteelt en lokale catastrofes zoals 
-     grootschalige heidebranden) vereist een groot netwerk van minstens 760 ha 
-     aan heidekernen die op maximaal 500 m van elkaar liggen.
+1. Minimale Patchgrootte (MinPatch_ha = 20 ha op 10 m):
+   - Methode: Het gecombineerde biotoop (open heide/schraalland + 50 m bosrand) 
+     wordt geclusterd met een maximale overbruggingsafstand van 10 m 
+     (afstand_m = 10 m) om smalle paden en brandgangen te overbruggen.
+   - Filterregel: Alleen aaneengesloten patches met een werkelijke habitat-
+     oppervlakte van minstens 20 ha (200.000 m2) worden weerhouden als duurzaam 
+     leefgebied.
+   - Ecologische functie: Een kern van minstens 20 ha is het kritische minimum 
+     voor een lokaal stabiele voortplantingsgroep met voldoende prooidichtheid 
+     en winterverblijfplaatsen. Geïsoleerde snippers < 20 ha vallen af.
 
 
-4. FINALE SAMENVOEGING & NETWERK-ID'S
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
 --------------------------------------------------------------------------------
-- Definitief leefgebied: Cellen die zowel deel uitmaken van een kern >= 20 ha 
-  als ingebed liggen in een 500 m-netwerk >= 760 ha.
-- Analytische netwerken worden gevormd via 8-richtingen buurcellen op de 
-  gefilterde werkelijke oppervlakten.
-
-
-5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
---------------------------------------------------------------------------------
-- Dispersiecapaciteit (buffer_m): 500 m
-    * Toepassing: Vormt direct de functionele koppelafstand in de netwerkstap.
+- Dispersiecapaciteit (buffer_m / ARPL): 500 m (vast in script & Excel)
+    * Toepassing: Vormt de functionele koppelafstand in de netwerk- en ARPL-stap.
     * Ecologische functie: Gladde slangen leggen zelden grote afstanden af door 
       vijandig landschap; 500 m door open/halfopen tussenland representeert 
       de absolute bovengrens van hun dispersiebereik tussen nabijgelegen heidekernen.
 
 
-6. BEKNOPT PARAMETEROVERZICHT
+5. BEKNOPT PARAMETEROVERZICHT
 --------------------------------------------------------------------------------
 Doelpopulatie             : Gladde slang (Coronella austriaca)
 Doelbiotoop               : Droge/vochtige heide, schraalland, houtkanten & bosrand
 Bosrandintegratie         : 50 m aangrenzend hooggroen rond open biotoop
-Lokale kerndrempel        : >= 20 ha werkelijk habitat (individuele patch, 0 m)
-Netwerk koppelafstand     : 500 m (Dispersiecap_m)
-Metapopulatie drempel     : >= 760 ha totaal werkelijk habitat binnen 500 m-netwerk
+Overbruggingsafstand      : 10 m (afstand_m = 10 m)
+Minimale patchgrootte     : >= 20 ha werkelijk habitat
 Dispersieradius (ARPL)    : 500 m
 ================================================================================

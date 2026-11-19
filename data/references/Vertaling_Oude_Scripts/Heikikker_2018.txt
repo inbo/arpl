@@ -1,0 +1,120 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: HEIKIKKER (OUD MODEL / RUST)
+Soort: Rana arvalis (amfibie / voedselarme tot zwak gebufferde vennen, hoogveen 
+       & natte heide- en moeraslandschappen)
+Scriptversie: ANB/INBO 2018-2019 / Heel Vlaanderen (20 m resolutie, binaire grid)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Heikikker is een karakteristieke soort van uitgestrekte, vochtige tot natte 
+heide-, veen- en beekdallandschappen. De soort plant zich voort in ondiepe, 
+voedselarme tot matig voedselrijke vennen, slenken en poelen en verblijft het 
+grootste deel van het jaar in natte heide, pijpenstrootjesvegetaties, 
+zegge- en rietmoerassen, vochtige graslanden en lichte broek- of zandbossen.
+
+A. Voortplantings- / Waterbiotoop ('heikikker_waterbiotoop1'):
+   Gecombineerde selectie uit twee bronnen:
+   1. BWK- & Natura 2000-selectie (zonder oppervlaktebeperking):
+      3110%, 3130%, ao%, 3160%, 7140%, 7150%
+      (Oligotrofe en dystrofe wateren en vennen [ao, 3110, 3130, 3160] en 
+      overgangsveen- en slenkvegetaties [7140, 7150]).
+      - Opmerking: Eutrofe wateren (`ae%`, `3150%`) zijn hier bewust uitgesloten 
+        omdat de heikikker strikter gebonden is aan zure tot zwak gebufferde, 
+        voedselarme milieus dan bijvoorbeeld de poelkikker.
+   2. Blauwe Laag (kleine waterelementen):
+      - Bron: `BlauweLaag_Plassen_06042017_20m_.asc` (waarde = 1).
+      - Oppervlaktefilter: Plassen geclusterd binnen 10 m (`fuzzyClusterIdU(..., 10)`) 
+        en gefilterd op kleine wateren <= 0,4 ha (`cFilterLeArea(..., 0.4)`).
+
+B. Zomer- en Overwinterings- / Landbiotoop ('heikikker_landbiotoop1'):
+   - BWK- & Natura 2000-selectie:
+       ce%, 4010%, 7150%, cm, cm+, 4030%, ct, ct+, 7110%, hj%, hm%, hmo%, 
+       6230%, mc%, mcb%, rbbmc%, md%, 7140%, mk%, 7230%, ms%, rbbms%, pms, 
+       pms+, ppms, ppms+, rbbppm%, qb, qb+, 9120%, 9190%, 2180%, qs, qs+, sm%, 
+       91E0%, so%, rbbso%, t%, vo%, vt%, 91D0%
+       (Vochtige heide en dopheidevegetaties [ce, 4010, 7150], vochtige 
+       pijpenstrootjesvegetaties [cm, cm+], hoogveen en veenmosvegetaties [ct, 
+       ct+, t, 7110], natte ruigten, blauwgraslanden en heischrale graslanden 
+       [hj, hm, hmo, 6230], grote en kleine zeggevegetaties, galigaanmoerassen 
+       en trilvenen [mc, md, mk, ms, 7140, 7230], lichte berken- en 
+       populierenbossen op veen en zand [pms, ppms, rbbppm], open eikenbossen 
+       en beboste duinen [qb, qs, 9120, 9190, 2180], gagel- en wilgenstruwelen 
+       [sm, so, 91E0] en elzen- en berkenbroekbossen [vo, vt, 91D0]).
+   - Ecologische functie: Droge struikheide (`cg%`) is hier weggelaten; de 
+     nadruk ligt op natte, structuurrijke vegetaties met polvormende zegge- 
+     en pijpenstrootjesbulten die dekking en vorstvrije schuilplaatsen bieden.
+
+
+2. NEGATIEVE STOORFACTOREN (BEBOUWING & WEGENMETING)
+--------------------------------------------------------------------------------
+- Expliciete exclusielagen: Geen.
+  * Bebouwing, intensieve landbouw en droge, gecultiveerde gronden vallen 
+    weg via de strikte BWK-selectie van voedselarme, natte biotopen.
+
+
+3. META-POPULATIESTRUCTUUR & FUNCTIONELE KOPPELING (500 M REGEL)
+--------------------------------------------------------------------------------
+Het script hanteert een ruimtelijke koppeling op 500 m gecombineerd met een 
+hoge minimale oppervlakte-eis:
+
+1. Poelendichtheid (minstens 6 poelen/vennen binnen 500 m):
+   - Functie: `GeUniqueCountInBuffer(heikikker_waterbiotoop1_cluster, 500, meter, ..., 6)`
+   - Drempelwaarde: Een voortplantingswater is enkel geldig indien er binnen 
+     een straal van 500 m minstens 6 unieke waterclusters aanwezig zijn (= het 
+     eigen water + minstens 5 naburige voortplantingswateren).
+   - Ecologische functie: Vangt het risico op droogval van ondiepe vennen en 
+     heidepoelen in droge voorjaren op.
+
+2. Wederzijdse koppeling Water <-> Land (max. 500 m afstand):
+   - Enkel geldige wateren die binnen 500 m van geschikt landbiotoop liggen 
+     (`heikikker_waterbiotoop3`) én landbiotopen die binnen 500 m van een 
+     geldig voortplantingswater liggen (`heikikker_landbiotoop2`) blijven behouden.
+   - Ecologische functie: De heikikker kan tot enkele honderden meters van het 
+     voortplantingswater wegtrekken naar zomerfoerageergebieden en natte 
+     overwinteringsplekken.
+
+3. Netwerkclustering & Oppervlaktedrempel (>= 50 ha):
+   - Functie: `fuzzyClusterIdU(..., 500, meter)` gevolgd door `cFilterGeArea(..., 50, hectare)`
+   - Drempelwaarde: Het gecombineerde leefgebied (water + land) op onderlinge 
+     afstand van max. 500 m moet samen minstens **50 ha** (500.000 m2 = 1.250 
+     cellen van 20x20 m) bedragen.
+   - Ecologische functie: De heikikker is gevoelig voor versnippering en 
+     verdroging; enkel grootschalige, aaneengesloten heide- en vennencomplexen 
+     van minstens 50 ha kunnen op lange termijn een stabiele populatie dragen.
+
+
+4. GEOGRAFISCHE & ECOLOGISCHE AFBAKENING (ECODISTRICT-FILTER)
+--------------------------------------------------------------------------------
+- Specifieke ecoregio-/ecodistrictselectie: `OrEq('ecoregio.asc', 12, 13, 14, 15, 16, 17)`
+  * Toepassing: In plaats van de algemene `Ge(..., 1)` filtert dit script 
+    expliciet op de ecoregio-codes **12 t.e.m. 17**. Na deze uitsnede wordt 
+    opnieuw geclusterd op 500 m en getoetst op **>= 50 ha**.
+  * Ecologische functie: Beperkt de leefgebiedenkaart tot het natuurlijke 
+    Vlaamse verspreidingsgebied van de heikikker (de Kempische zandstreek en 
+    aangrenzende natte heide-/vennengebieden).
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit: Geïntegreerd op metapopulatieniveau (500 m voor poelen- 
+  en landkoppeling en clustervorming).
+  * Output is een binaire 0/1-kaart (`ANB2019_Heikikker2018.asc`) zonder 
+    afzonderlijke bovenlokale dispersiebuffers rond de eindclusters.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Heikikker (Rana arvalis)
+Schaal & Resolutie        : Heel Vlaanderen, 20 m raster (binair 0/1)
+Waterbiotoop              : BWK-oligotrofe/dystrofe vennen & slenken + Blauwe Laag <= 0,4 ha
+Poelendichtheid-eis       : Minstens 6 unieke waterclusters binnen 500 m (eigen + 5)
+Landbiotoop               : Vochtige heide, hoogveen, zegge-/rietmoerassen, 
+                            blauwgraslanden & lichte veen-/broekbossen
+Stoorfactoren             : Geen expliciete exclusiebuffers (enkel via BWK)
+Koppeling Water <-> Land  : Max. 500 m onderlinge afstand (wederzijds)
+Netwerkclustering         : 500 m koppelingsafstand (`fuzzyClusterIdU`)
+Oppervlaktedrempel        : >= 50 ha totaal gecombineerd leefgebied (water + land)
+Geografische filter       : Ecoregio codes 12 t.e.m. 17 (`ecoregio.asc`), met 
+                            hertoetsing >= 50 ha
+================================================================================

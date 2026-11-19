@@ -1,0 +1,80 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: KLEINE RIETGANS
+Soort: Anser brachyrhynchus (overwinterende watervogel / open poldergraslanden & plassen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Kleine rietgans is een uitgesproken wintergast van open, vlakke en rustige 
+polderlandschappen. Overdag foerageert de soort in grote groepen voornamelijk op 
+vochtige, kortgrazige weilanden en hooilanden (en in mindere mate op akkers met 
+oogstresten), terwijl grote open waterpartijen, kreken en plassen dienen als 
+veilige slaap- en rustplaatsen.
+
+A. Totaal foerageer- en rusthabitat BWK ('foerageer_bwk'):
+   - Open graslanden (hoofdbiotoop): hp%, hp+%, hpr%, hpr+%, hx%, rbbkam%, rbbzil%
+   - Open water, plassen & kreken: ae%, aer%, aev%, ah%, rbbah%, 3140%, 3150%
+   - Open akkers (aanvullend foerageerhabitat): bu%
+   - Slikken, schorren & moeras: da%, 1310%, 1320%, 1330%, 2190%
+   - Werkelijke oppervlakte: Per 10x10m rastercel worden de BWK-fracties 
+     (BWK_FRAC) van de unieke geschikte codes opgeteld (geclampt op max. 1,0).
+
+B. Grasland-sublaag voor kwaliteitsdrempel ('grasland_bwk'):
+   - BWK graslanden: hp%, hp+%, hpr%, hpr+%, hx%, rbbkam%, rbbzil%
+   - Functie: Wordt gebruikt om te toetsen of het totale foerageercomplex 
+     overwegend uit grasland bestaat (>= 80%).
+
+
+2. RUIMTELIJKE FILTERING & BOVENLOKALE OPENHEID (GEEN TELGEBIEDSBEPERKING)
+--------------------------------------------------------------------------------
+- Telgebiedenfilter:
+    * In tegenstelling tot het historische ANB-model wordt het masker voor 
+      watervogeltelgebieden ('leefgebied_kleinerietgans_20m') NIET toegepast.
+    * Ecologische functie: Hierdoor wordt het volledige potentiële winter- en 
+      pleistergebied in Vlaanderen gekarteerd in plaats van enkel de reeds 
+      getelde poldergebieden.
+- Negatieve verstoring- of bosfilters:
+    * Niet expliciet als aparte exclusiebuffer opgenomen; de vereiste 
+      grootschalige openheid en rust worden afgedwongen via de minimale 
+      clusteroppervlakte van 50 ha.
+
+
+3. LANDSCHAPSCLUSTERING & GRASLANDAANDEEL (>= 50 HA & >= 80% GRASLAND)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (AfstandBiotopen_m): 50 m (fuzzy clustering via 25 m buffer)
+    * Aangrenzende graslandpercelen, kreken, akkers en waterpartijen die door 
+      sloten, dijken of smalle landwegen (< 50 m) gescheiden zijn, vormen voor 
+      foeragerende ganzen één functioneel leefgebied.
+- Criterium 1 - Totale oppervlaktedrempel (MinPatch_ha): >= 50 ha (500.000 m2)
+    * De som van de werkelijke habitatoppervlakte (BWK_FRAC) binnen het 
+      geclusterde netwerk moet minstens 50 ha bedragen.
+- Criterium 2 - Graslandaandeel binnen het netwerk: >= 80% werkelijk grasland
+    * Minimaal 80% van de werkelijke habitatoppervlakte binnen het goedgekeurde 
+      cluster moet bestaan uit grasland ('grasland_bwk', dus minstens 40 ha 
+      grasland bij een cluster van 50 ha).
+    * Ecologische functie: Kleine rietganzen zijn sterk gebonden aan 
+      uitgestrekte graslandpolders; grote akkercomplexen met slechts een 
+      klein aandeel grasland of water zijn ongeschikt als zelfstandig 
+      winterleefgebied.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (Dispersiecap_m / ARPL): 250.000 m (250 km)
+    * Toepassing: ARPL / netwerkanalyses op landschapsniveau.
+    * Ecologische functie: Kleine rietganzen wisselen dagelijks tussen 
+      slaapplaatsen en foerageergebieden en verplaatsen zich over tientallen 
+      tot honderden kilometers tussen verschillende polder- en kustsystemen.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Kleine rietgans (Anser brachyrhynchus) - wintervogel (_wv)
+Bronlaag habitat          : BWK foerageer_bwk + sublaag grasland_bwk
+Externe waterlagen        : Geen (enkel BWK-codes)
+Negatieve filters         : Geen (openheid geborgd via 50 ha oppervlaktedrempel)
+Minimale clusterdrempel   : >= 50 ha werkelijk habitat EN >= 80% werkelijk grasland
+Koppelafstand clustering  : 50 m tussen geschikte percelen/waterpartijen
+Dispersieradius (ARPL)    : 250 km (250.000 m)
+================================================================================

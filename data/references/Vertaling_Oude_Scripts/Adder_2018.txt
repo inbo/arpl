@@ -1,0 +1,113 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: ADDER (OUD MODEL / RUST)
+Soort: Vipera berus (reptiel / droge en vochtige heide, hoogveen & structuurrijk 
+       heidelandschap)
+Scriptversie: ANB/INBO 2018-2019 / Heel Vlaanderen (20 m resolutie, binaire grid)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Adder is een koudbloedig, eierlevendbarend reptiel van structuurrijke, 
+open tot halfopen heide- en veenlandschappen. De soort vereist een mozaïek van 
+open zonnige plekken (om op te warmen), dichte dwergstruikvegetatie (dekking en 
+beschutting) en vochtigere delen of overgangen (prooibeschikbaarheid en 
+vorstvrije overwinteringsplaatsen).
+
+[BELANGRIJKE SCRIPT-OPMERKING: 'exit'-instructie halverwege]
+Het script bevat een vroegtijdige `exit`-opdracht na het eerste rekenblok. 
+Hierdoor zijn er twee modeldefinities in het bestand aanwezig:
+
+A. Actief uitgevoerde versie (Bovenste blok - vóór 'exit'):
+   - BWK- & Natura 2000-selectie: 4030%, cg%
+     (Uitsluitend droge struikheidevegetaties [cg] en Europees beschermde 
+     droge heide [4030]).
+   - Resolutie: 20 x 20 m raster (`vlaanderen_20m.asc`, 400 m2 = 0,04 ha per cel).
+
+B. Oorspronkelijke volledige modelversie (Onderste blok - na 'exit', inactief):
+   - BWK- & Natura 2000-selectie:
+       cd%, 2310%, 4030%, ce%, 4010%, 7150%, cg%, cm%, cv%, k(cg%, k(cv%, 
+       k(cm%, k(cd%, k(ce%
+       (Droge heide [cg, 4030], vochtige heide en slenkvegetaties [ce, 4010, 
+       7150], duinheide en open stuifzand/binnenduinen met heide [cd, 2310], 
+       pijpenstrootjes- en bochtige smele-vegetaties in heideverband [cm], 
+       veenmos- en hoogveenvegetaties [cv] en complexen/mozaïeken met deze 
+       heide- en veentypen [k(...)]).
+
+
+2. NEGATIEVE STOORFACTOREN (BEBOUWING & WEGENMETING)
+--------------------------------------------------------------------------------
+- Expliciete exclusielagen: Geen.
+  * Bebouwing, wegen en bos worden niet apart gebufferd, maar vallen weg via 
+    de BWK-heideselectie.
+
+
+3. KERNBIOTOOP & CLUSTERING (LOKALE POPULATIE-EENHEID)
+--------------------------------------------------------------------------------
+Ook hier verschillen het actieve bovenste blok en het oorspronkelijke onderste 
+blok sterk van elkaar:
+
+A. Actief uitgevoerde versie (Bovenste blok - strikte kartering zonder drempel):
+   1. Lokale clustering (1 m zoekstraal):
+      - Functie: `fuzzyClusterIdU(adder_bwk, 1, meter)`
+      - Ruimtelijke logica: Enkel aangrenzende 20x20 m cellen met droge heide 
+        (4030%, cg%) worden samengevoegd; elke onderbreking van >= 1 cel (20 m) 
+        breekt het cluster op.
+   2. Oppervlaktedrempel (>= 0,04 ha = 1 cel):
+      - Functie: `cFilterGeArea(adder_bwk_cluster, 0.04, hectare)`
+      - Drempelwaarde: Hoewel het commentaar nog "minstens 25 hectare" vermeldt, 
+        is de drempel in de code verlaagd naar 0,04 ha (= exact 1 gridcel van 
+        20x20 m). Elke snipper droge heide blijft dus behouden.
+
+B. Oorspronkelijke volledige modelversie (Onderste blok - ecologisch kernmodel):
+   1. Lokale habitatclustering (100 m zoekstraal):
+      - Functie: `fuzzyClusterIdU(adder_bwk, 100, meter)`
+      - Ruimtelijke logica: Heide- en veenfragmenten die op maximaal 100 m van 
+        elkaar liggen, smelten samen tot één functioneel leefgebiedscluster.
+      - Ecologische functie: Adders kunnen smalle bospaden, brandgangen of 
+        kleine onderbrekingen tot 100 m overbruggen tijdens seizoensmigraties 
+        tussen winterverblijven (droge heide) en zomer-/foerageergebieden 
+        (vochtige heide/veen).
+   2. Oppervlaktedrempel (>= 25 ha):
+      - Functie: `cFilterGeArea(adder_bwk_cluster, 25, hectare)`
+      - Drempelwaarde: Minimaal 25 ha (250.000 m2 = 625 cellen) per cluster.
+      - Ecologische functie: De adder heeft een relatief groot aaneengesloten 
+        heideareaal nodig om een duurzame populatie met voldoende genetische 
+        uitwisseling, prooidichtheid (levendbarende hagedissen, muizen) en 
+        microreliëf in stand te houden.
+
+
+4. GEOGRAFISCHE & ECOLOGISCHE AFBAKENING (ECOREGIO-FILTER)
+--------------------------------------------------------------------------------
+- Ecoregio-masker: `Ge('ecoregio.asc', 1)`
+  * Toepassing: Zowel het bovenste als het onderste blok knipt het resultaat 
+    af op de relevante ecoregio's (waarde >= 1).
+  * Ecologische functie: De adder is in Vlaanderen strikt gebonden aan de 
+    Kempische zandstreek (Noorderkempen / Limburgse Kempen). Geschikte heiden 
+    in andere regio's (zoals de kustduinen of de Vlaamse Ardennen) worden zo 
+    uitgesloten omdat die buiten het natuurlijke verspreidingsgebied liggen.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit: Niet ingebouwd in het script.
+  * Output is een binaire 0/1-kaart (`ANB2019_Adder2018.asc`) zonder 
+    bovenlokale dispersiebuffers.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Adder (Vipera berus)
+Schaal & Resolutie        : Heel Vlaanderen, 20 m raster (binair 0/1)
+Stoorfactoren             : Geen expliciete exclusiebuffers
+Geografische filter       : Ecoregio >= 1 (`ecoregio.asc` - Kempen)
+
+[Parameters Actief Blok (vóór exit)]
+Biotopen                  : Enkel droge heide (4030%, cg%)
+Koppelingsafstand         : 1 m (enkel aangrenzende cellen)
+Oppervlaktedrempel        : >= 0,04 ha (1 cel; alle snippers behouden)
+
+[Parameters Oorspronkelijk Model (na exit)]
+Biotopen                  : Droge & vochtige heide, hoogveen en heidemozaïeken
+Koppelingsafstand         : 100 m (`fuzzyClusterIdU`)
+Oppervlaktedrempel        : >= 25 ha per lokaal cluster (`cFilterGeArea`)
+================================================================================

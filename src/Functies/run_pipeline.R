@@ -93,15 +93,20 @@ prepareer_test_grid <- function(master_grid_full, studiegebied_input, buffer_m =
 #   - here::here("data", "input", "Turnhouts_Vennegebied.shp") -> Shapefile
 #   - c(3.25, 51.33)                                        -> XY in GPS (lon, lat) bv. Oostkust / Zwin
 #   - c(72000, 226000)                                      -> XY in Lambert 72 (EPSG:31370)
-TEST_GEBIED <- NULL
-#TEST_GEBIED  <- here::here("data", "input", "Turnhouts_Vennegebied.shp")
-TEST_BUFFER_M <- 0   # Buffer in meters rond shapefile of XY-punt (bv. 2000, 15000, 50000)
+#TEST_GEBIED <- NULL
 
-# Overschrijven forceren (TRUE) of reeds berekende layers hergebruiken (FALSE)
-FORCE_OVERWRITE <- TRUE
-
-# Selectie van soorten die je wil uitvoeren
-soorten_selectie <- c("grutto")
+TEST_GEBIED      <- NULL
+#c(4.22, 51.15)
+#TEST_BUFFER_M    <- 10000
+FORCE_OVERWRITE  <- FALSE
+soorten_selectie <- c(# Niet gevonden in afstanden-tabel (26)
+  "parnassia", "purperorchis", "rondezegge",
+  "schedegeelster", "schubzegge", "veenbies", "walstrobremraap", "wijdbloeienderus", "wondklaver", "zeealsem",
+  # Typfout in Type-kolom (1)
+  "ongelijkbladigfonteinkruid",
+  # Onderbroken / Huet-aanpassing (1)
+  "slijkzegge", "europeseotter"
+)
 # ==============================================================================
 
 # ------------------------------------------------------------------------------

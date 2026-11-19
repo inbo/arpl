@@ -183,7 +183,7 @@ for(i in 1:nrow(resultaten_gegroepeerd)) {
   
   tabel_TV <- tabel_gefilterd[cel_id %in% studiegebied_globale_ids]
   tabel_TV_unique <- unique(tabel_TV, by = c("cel_id", "CODE"))
-
+  
   tabel_cel_som <- tabel_TV_unique[, .(Oppervlakte = pmin(sum(BWK_FRAC, na.rm = TRUE), 1.0)), by = .(cel_id)]
   
   r_match_type <- id_raster_TV * NA
@@ -384,7 +384,7 @@ if (!all(is.na(suppressWarnings(terra::minmax(r_voortplanting_finaal_max))))) {
   r_foerageer_geclipt_max <- terra::mask(foerageerbiotoop_max, buffer_100m_kern_max)
   
   r_leefgebied_bruto_max <- (!is.na(r_voortplanting_finaal_max) & r_voortplanting_finaal_max == 1) | 
-                            (!is.na(r_foerageer_geclipt_max) & r_foerageer_geclipt_max == 1)
+    (!is.na(r_foerageer_geclipt_max) & r_foerageer_geclipt_max == 1)
   r_leefgebied_bruto_max <- terra::ifel(r_leefgebied_bruto_max == 1, 1, NA)
   
   cl_leefgebied_max <- cluster_filter_compleet(

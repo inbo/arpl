@@ -1,0 +1,84 @@
+================================================================================
+ECOLOGISCH VERHAAL & MODELVERANTWOORDING: KRUIPEND MOERASSCHERM (Apium repens)
+================================================================================
+
+1. ECOLOGISCHE CONTEXT IN VLAANDEREN
+Kruipend moerasscherm (Apium repens) is een zeldzame, wettelijk beschermde 
+plantensoort van Bijlage II en IV van de Europese Habitatrichtlijn. De soort is 
+sterk gebonden aan dynamische, pionierachtige en lichtrijke milieus met een 
+wisselende waterstand. Ze verdraagt zowel tijdelijke overstroming (in de 
+winter en het voorjaar) als ondiepe droogval in de zomer, mits de bodem voldoende 
+vochtig blijft.
+
+In Vlaanderen komt de soort voor in twee duidelijk te onderscheiden landschappelijke 
+en hydrologische contexten:
+  (A) Vochtige duinpannen in de kustduinen, waar de waterhuishouding wordt 
+      gestuurd door natuurlijke grondwaterfluctuaties en kalkrijk kwelwater.
+  (B) Overstromingsgevoelige graslanden en beek- of riviervalleien in het 
+      binnenland, waar periodieke overstromingen zorgen voor open pionierplekken 
+      en een tijdelijke terugzetting van concurrerende ruigtesoorten.
+
+Omdat de habitatvereisten en sturende abiotische processen tussen beide 
+systemen fundamenteel verschillen, wordt het potentiële leefgebied in het 
+habitatgeschiktheidsmodel opgesplitst in twee afzonderlijke modelsporen 
+(Spoor 1: binnenland/overstromingsvlaktes; Spoor 2: kustduinen), die na 
+ruimtelijke filtering en clustering worden samengevoegd tot één geïntegreerde 
+leefgebiedskaart.
+
+--------------------------------------------------------------------------------
+2. VERTALING NAAR DE MODELREGELS (TWEESPORENAANPAK)
+--------------------------------------------------------------------------------
+
+SPOOR 1: VOORTPLANTINGSGEBIED BUITEN DE DUINEN (OVERSTROMINGSGEVOELIGE VALLEIEN)
+* Biotoopselectie (BWK):
+  Selectie van vochtige tot natte, matig voedselrijke graslanden (hpr, hpr+) en 
+  vochtige duinvalleien/kalkrijke moerassige overgangszones (2190%).
+* Abiotische randvoorwaarde (Overstromingsgevoeligheid):
+  Buiten de duinen is kruipend moerasscherm strikt afhankelijk van periodieke 
+  inundatie om concurrentie door hoogopgaande grassen en ruigtekruiden te 
+  beperken. Daarom wordt een harde ruimtelijke doorsnede (AND-filter) gemaakt 
+  met de kaart van overstromingsgevoelige gebieden (OVSTRGEV). Enkel natte 
+  graslanden die effectief binnen overstromingsgevoelig gebied vallen, worden 
+  weerhouden.
+* Ruimtelijke samenhang & minimumoppervlakte:
+  Geschikte habitatcellen binnen een maximale onderlinge afstand van 20 meter 
+  worden samengevoegd tot één functioneel voortplantingscluster (dispersie- en 
+  uitwisselingsafstand via uitlopers en lokaal zaadtransport). Enkel clusters 
+  met een minimale oppervlakte van 0,16 hectare worden beschouwd als duurzaam 
+  optimaal leefgebied.
+
+SPOOR 2: VOORTPLANTINGSGEBIED BINNEN DE KUSTDUINEN
+* Biotoopselectie (BWK):
+  In de kustduinen komt de soort voor in een breder spectrum van vochtige tot 
+  natte duinbiotopen, kalkrijke wateren en mesotrofe poelen:
+    - Droge tot vochtige duingraslanden en duinvalleien: hd%, 2130%, hpr, hpr+, 2190%
+    - Kalkhoudende wateren en mesotrofe poelen: kn, 3140%, 3150%, mp, mp+, mp-, 2190_mp%
+* Abiotische randvoorwaarde:
+  In het duinmilieu wordt de waterstand niet bepaald door rivier- of 
+  beekoverstromingen, maar door de grondwatertafel en regenwaterlenzen. De 
+  overstromingsfilter uit Spoor 1 wordt hier daarom expliciet weggelaten.
+* Ruimtelijke samenhang & minimumoppervlakte:
+  Identiek aan Spoor 1: clustering binnen 20 meter en een minimumoppervlakte 
+  van 0,16 hectare per cluster.
+
+SAMENVOEGING & ECOREGIOFILTER
+Beide sporen worden begrensd op de relevante ecoregio's (kustduinen voor Spoor 2; 
+binnenlandse ecoregio's voor Spoor 1 — opmerking: in het oorspronkelijke 
+ANB2019-script stond door een vermoedelijke kopieerfout in beide sporen 
+'ecoregio = 1' gecodeerd). Tot slot worden de overblijvende clusters van beide 
+sporen met een logische OF-operatie (OR) gecombineerd tot de uiteindelijke 
+leefgebiedskaart voor Vlaanderen.
+
+--------------------------------------------------------------------------------
+3. MODELAANNAMES EN AANDACHTSPUNTEN BIJ INTERPRETATIE
+* Beheerafhankelijkheid: Kruipend moerasscherm is een typische pionier- en 
+  tredplant die buiten het bereik van natuurlijke overstromingen of extreme 
+  grondwaterschommelingen sterk afhankelijk is van begrazing, maaien of 
+  kleinschalige betreding om verruiging te voorkomen. De kaart toont het 
+  abiotisch en vegetatiekundig geschikte leefgebied, maar houdt geen rekening 
+  met het huidige maaibeheer.
+* Schaalniveau (10m-resolutie): Kleine, geïsoleerde poelen of smalle grachtkanten 
+  smaller dan enkele meters worden via de fractiebenadering meegenomen, maar 
+  kunnen pas een volwaardig cluster vormen wanneer ze samen met omliggend 
+  geschikt grasland binnen 20 meter de drempel van 0,16 hectare halen.
+================================================================================

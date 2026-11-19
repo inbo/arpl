@@ -1,0 +1,125 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: VROEDMEESTERPAD (OUD MODEL / RUST)
+Soort: Alytes obstetricans (amfibie / warmteminnend pioniermilieu, poelen & 
+       stenige/open hellingen, bermen en kleinschalig cultuurlandschap)
+Scriptversie: ANB/INBO 2018-2019 / Heel Vlaanderen (20 m resolutie, binaire grid)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Vroedmeesterpad is een warmteminnende, uitgesproken landbewonende pad met 
+een unieke voortplantingsstrategie: het mannetje draagt de eiersnoeren op zijn 
+achterspoten tot de larven klaar zijn om in het water afgezet te worden. De 
+soort komt in Vlaanderen voor in heuvelachtige, kleinschalige cultuurlandschappen, 
+groeven, spoorwegbermen, holle wegen en dorpsranden met visvrije, zonbeschenen 
+poelen en schuilplaatsen op het land (stenen, stapelmuurtjes, losse bodems, 
+taluds en ruigten).
+
+A. Voortplantings- / Waterbiotoop ('vroedmeesterpad_waterbiotoop1'):
+   Gecombineerde selectie uit twee bronnen:
+   1. BWK- & Natura 2000-selectie (zonder oppervlaktebeperking):
+      ae%, 3140%, 3150%, aer%, aev%, ao%, 3160%, 7140%, 7150%, aom%, 3110%, 
+      3130%, aoo%, kn%, ur%
+      (Eutrofe, mesotrofe en oligotrofe stilstaande wateren en kranswierwateren 
+      [ae, aer, aev, ao, aom, aoo, 3110, 3130, 3140, 3150, 3160], overgangsveen 
+      en slenkvegetaties [7140, 7150], poelen [kn] en bebouwde/urbaan 
+      ingekleurde karteringseenheden [ur%] wegens tuinvijvers en dorpspoelen).
+   2. Blauwe Laag (kleine waterelementen):
+      - Bron: `BlauweLaag_Plassen_06042017_20m_.asc` (waarde = 1).
+      - Oppervlaktefilter: Plassen geclusterd binnen 10 m (`fuzzyClusterIdU(..., 10)`) 
+        en gefilterd op kleine wateren <= 0,4 ha (`cFilterLeArea(..., 0.4)`).
+      - Ecologische functie: De larven van de vroedmeesterpad overwinteren vaak 
+        in het water en zijn zeer gevoelig voor predatie door vis. Kleine, 
+        visvrije poelen en tuinvijvers zijn daarom cruciaal.
+
+B. Zomer- en Overwinterings- / Landbiotoop ('vroedmeesterpad_landbiotoop_bwk'):
+   - BWK- & Natura 2000-selectie:
+       ha%, 2330%, 6230_ha%, hc%, 6410%, hk%, 6210%, hmo%, 6230%, hn%, hp%, 
+       hp+%, hpr%, hu%, 6120%, 6510%, kb%, kc%, kh%, khw%, kj%, kp%, kr%, kt%, 
+       kw%, sg%, 2310%, 4030%, rbbsg%, sk%, sp%, rbbsp%, sz%, ur%
+       (Heischrale graslanden, dotterbloemhooilanden, blauwgraslanden, 
+       kalkgraslanden, glanshaverhooilanden en structuurrijke/extensieve 
+       graslanden [ha, hc, hk, hmo, hn, hp, hp+, hpr, hu, 6120, 6210, 6230, 
+       6410, 6510], kleine landschapselementen zoals bomenrijen, spoorweg- 
+       en wegbermen, houtkanten, hagen, taluds en holle wegen [kb, kc, kh, 
+       khw, kj, kp, kr, kt, kw], brem- en doornstruwelen [sg, sk, sp, sz] en 
+       bebouwde omgeving / tuinen / steenhopen [ur%]).
+   - Ecologische functie: De opname van `ur%` in zowel water- als landbiotoop 
+     weerspiegelt de sterke binding van de vroedmeesterpad in Vlaanderen (o.a. 
+     Voerstreek, Haspengouw, Vlaamse Ardennen) aan dorpsranden, kerkhoven, 
+     oude muren, steenhopen en tuinvijvers.
+
+
+2. NEGATIEVE STOORFACTOREN (BEBOUWING & WEGENMETING)
+--------------------------------------------------------------------------------
+- Expliciete exclusielagen: Geen.
+  * Gesloten bos en intensieve akkers vallen weg via de BWK-biotoopselectie, 
+    terwijl dorpsbebouwing (`ur%`) net bewust is meegenomen als geschikt 
+    secundair leefgebied.
+
+
+3. META-POPULATIESTRUCTUUR & FUNCTIONELE KOPPELING (500 M REGEL)
+--------------------------------------------------------------------------------
+Het script hanteert een consistente ruimtelijke schaal van 500 m voor zowel 
+poelendichtheid, land-waterkoppeling als netwerkvorming:
+
+1. Poelendichtheid (minstens 4 poelen binnen 500 m):
+   - Functie: `GeUniqueCountInBuffer(vroedmeesterpad_waterbiotoop1_cluster, 500, meter, ..., 4)`
+   - Drempelwaarde: Een voortplantingswater is enkel geldig indien er binnen 
+     een straal van 500 m minstens 4 unieke waterclusters aanwezig zijn (= het 
+     eigen water + minstens 3 naburige voortplantingswateren).
+   - Ecologische functie: Vangt het risico op droogval (funest voor overwinterende 
+     larven) of visuitzetting in individuele poelen en tuinvijvers op.
+
+2. Wederzijdse koppeling Water <-> Land (max. 500 m afstand):
+   - Enkel geldige wateren die binnen 500 m van geschikt landbiotoop liggen 
+     (`vroedmeesterpad_waterbiotoop3`) én landbiotopen die binnen 500 m van een 
+     geldig voortplantingswater liggen (`vroedmeesterpad_landbiotoop1`) blijven 
+     behouden.
+   - *(Noot: De commentaarregel boven landbiotoop vermeldt "binnen landbiotoop 
+     van 1 ha", maar in de code wordt op het landbiotoop vooraf geen 1 ha-filter 
+     toegepast).*
+
+3. Netwerkclustering & Oppervlaktedrempel (>= 5 ha):
+   - Functie: `fuzzyClusterIdU(..., 500, meter)` gevolgd door `cFilterGeArea(..., 5, hectare)`
+   - Drempelwaarde: Het gecombineerde leefgebied (water + land) op onderlinge 
+     afstand van max. 500 m moet samen minstens **5 ha** (50.000 m2 = 125 
+     cellen van 20x20 m) bedragen.
+   - Ecologische functie: Vroedmeesterpadden zijn zeer plaatstrouw en kunnen in 
+     relatief kleinschalige, warme mozaïeklandschappen vanaf 5 ha al een 
+     levensvatbare deelpopulatie handhaven.
+
+
+4. GEOGRAFISCHE & ECOLOGISCHE AFBAKENING (ECOREGIO-FILTER)
+--------------------------------------------------------------------------------
+- Ecoregio-masker: `Ge('ecoregio.asc', 1)`
+  * Toepassing: Na het toepassen van het ecoregio-masker wordt het leefgebied 
+    opnieuw geclusterd op 500 m en gefilterd op >= 5 ha, zodat complexen die 
+    op de regiogrens worden afgesneden nog steeds de drempel van 5 ha halen.
+  * Ecologische functie: Beperkt de leefgebiedenkaart tot het natuurlijke en 
+    historische Vlaamse areaal (leemstreek: Voerstreek, zuidelijk Limburg / 
+    Haspengouw, Brabantse heuvelrug en Vlaamse Ardennen).
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit: Geïntegreerd op lokaal metapopulatieniveau (500 m voor 
+  poelendichtheid, land-waterkoppeling en netwerkvorming).
+  * Output is een binaire 0/1-kaart (`ANB2019_Vroedmeesterpad2018.asc`) zonder 
+    afzonderlijke bovenlokale dispersiebuffers rond de eindclusters.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Vroedmeesterpad (Alytes obstetricans)
+Schaal & Resolutie        : Heel Vlaanderen, 20 m raster (binair 0/1)
+Waterbiotoop              : BWK-wateren/poelen + urbaan (`ur%`) + Blauwe Laag <= 0,4 ha
+Poelendichtheid-eis       : Minstens 4 unieke waterclusters binnen 500 m (eigen + 3)
+Landbiotoop               : Kruidenrijke/schrale graslanden, bermen, taluds, 
+                            holle wegen, struwelen & dorpsranden (`ur%`)
+Stoorfactoren             : Geen expliciete exclusiebuffers (enkel via BWK)
+Koppeling Water <-> Land  : Max. 500 m onderlinge afstand (wederzijds)
+Netwerkclustering         : 500 m koppelingsafstand (`fuzzyClusterIdU`)
+Oppervlaktedrempel        : >= 5 ha totaal gecombineerd leefgebied (water + land)
+Geografische filter       : Ecoregio >= 1 (`ecoregio.asc`), met hertoetsing >= 5 ha
+================================================================================

@@ -1,0 +1,71 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: GOUDPLEVIER
+Soort: Pluvialis apricaria (overwinterende watervogel / open polders, slikken & graslanden)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Goudplevier is een karakteristieke doortrekker en wintergast van uitgestrekte, 
+open en vlakke landschappen met een korte vegetatie en slikrijke zones. 
+In Vlaanderen foerageert en rust de soort in grote groepen op natte en 
+overstroomde graslanden, slikken en schorren, open akkers en vochtige laagtes 
+met een hoog aanbod aan regenwormen en bodeminsecten.
+
+A. Foerageer- en rusthabitat ('foerageer_bwk'):
+   - BWK open akkers & slikken/schorren: bu%, da%, ds%, 1130%, 1140%, 1310%, 
+     1320%, 1330%, 3270%
+   - BWK natte & soortenrijke graslanden: hp%, hp+%, hpr%, hpr+%, hx%, rbbkam%, 
+     rbbzil%, 2190%
+   - Werkelijke oppervlakte: Per 10x10m rastercel worden de aanwezige BWK-fracties 
+     (BWK_FRAC) van de unieke geschikte codes opgeteld (geclampt op max. 1,0).
+
+
+2. RUIMTELIJKE FILTERING & BOVENLOKALE OPENHEID (GEEN TELGEBIEDSBEPERKING)
+--------------------------------------------------------------------------------
+- Telgebieden- en ecoregiofilter:
+    * In tegenstelling tot historische ANB-modellen worden de maskerlagen voor 
+      watervogeltelgebieden en ecoregio's NIET toegepast.
+    * Ecologische functie: Hierdoor wordt het volledige potentiële winterleefgebied 
+      in Vlaanderen gekarteerd in plaats van enkel de reeds getelde gebieden.
+- Negatieve verstoring- of bosfilters:
+    * Niet expliciet als aparte exclusiebuffer opgenomen; de vereiste openheid 
+      wordt afgedwongen via de strenge minimale clusteroppervlakte van 80 ha.
+
+
+3. LANDSCHAPSCLUSTERING (MINIMAAL 80 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (AfstandBiotopen_m): 50 m (fuzzy clustering via 25 m buffer)
+    * Geschikte percelen die door smalle sloten, perceelsranden of landwegen 
+      (< 50 m) van elkaar gescheiden zijn, functioneren voor foeragerende en 
+      rustende groepen als één aaneengesloten open landschap.
+- Oppervlaktedrempel (MinPatch_ha): >= 80 ha (800.000 m2) werkelijk habitat
+    * Clusters van geschikte foerageer- en rusthabitats worden enkel behouden 
+      indien de som van de werkelijke habitatoppervlakte (BWK_FRAC) binnen het 
+      netwerk minstens 80 ha bedraagt.
+    * Ecologische functie: Goudplevieren zijn extreem schuw en mijden kleinschalige 
+      en omsloten landschappen vanwege predatierisico door roofvogels. Alleen 
+      grootschalige, open complexen van minstens 80 ha bieden voldoende zichtveld 
+      en rust voor overwinterende groepen.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (Dispersiecap_m / ARPL): 250.000 m (250 km)
+    * Toepassing: ARPL / netwerkanalyses op landschapsniveau.
+    * Ecologische functie: Als mobiele langeafstandstrekker en wintergast 
+      verplaatst de Goudplevier zich moeiteloos over tientallen tot honderden 
+      kilometers tussen verschillende polder-, kust- en riviervalleisystemen 
+      afhankelijk van vorst, waterstanden en voedselbeschikbaarheid.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Goudplevier (Pluvialis apricaria) - wintervogel (_wv)
+Bronlaag habitat          : BWK foerageer_bwk (open graslanden, akkers, slikken/schorren)
+Externe waterlagen        : Geen (enkel BWK-codes)
+Negatieve filters         : Geen (openheid geborgd via 80 ha oppervlaktedrempel)
+Minimale clusterdrempel   : >= 80 ha werkelijk habitat
+Koppelafstand clustering  : 50 m tussen geschikte percelen
+Dispersieradius (ARPL)    : 250 km (250.000 m)
+================================================================================

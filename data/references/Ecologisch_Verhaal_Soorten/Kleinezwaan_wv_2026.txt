@@ -1,0 +1,73 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: KLEINE ZWAAN
+Soort: Cygnus columbianus bewickii (overwinterende watervogel / open polders, akkers & plassen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Kleine zwaan is een strikte wintergast van grootschalige, open en vlakke 
+polder- en riviervalleilandschappen. Overdag foerageert de soort in groepen op 
+vochtige, kortgrazige weilanden, overstroomde graslanden en oogstresten op 
+akkers (bieten-, aardappel- en maïsstoppels), terwijl grotere open waterpartijen, 
+kreken en plassen dienen als veilige slaap- en rustplaatsen.
+
+A. Foerageer- en rusthabitat BWK ('foerageer_bwk'):
+   - Open water, plassen & kreken: ae%, aer%, aev%, ah%, rbbah%, ap%, 3140%, 3150%
+   - Open graslanden: hp%, hp+%, hpr%, hpr+%, hx%, rbbkam%, rbbzil%
+   - Open akkers (oogstresten & wintergewassen): bl%, bs%, bu%
+   - Slikken, schorren & moeras: da%, 1310%, 1320%, 1330%, 2190%
+   - Werkelijke oppervlakte: Per 10x10m rastercel worden de BWK-fracties 
+     (BWK_FRAC) van de unieke geschikte codes opgeteld (geclampt op max. 1,0).
+
+
+2. RUIMTELIJKE FILTERING & BOVENLOKALE OPENHEID (GEEN TELGEBIEDSBEPERKING)
+--------------------------------------------------------------------------------
+- Telgebieden- en ecoregiofilter:
+    * In tegenstelling tot het historische ANB-model worden de maskerlagen voor 
+      watervogeltelgebieden ('leefgebied_kleinezwaan_20m') en ecoregio's NIET 
+      toegepast.
+    * Ecologische functie: Hierdoor wordt het volledige potentiële winter- en 
+      pleistergebied in Vlaanderen gekarteerd in plaats van enkel de reeds 
+      getelde gebieden.
+- Negatieve verstoring- of bosfilters:
+    * Niet expliciet als aparte exclusiebuffer opgenomen; de vereiste openheid 
+      en rust worden afgedwongen via de minimale clusteroppervlakte van 30 ha.
+
+
+3. LANDSCHAPSCLUSTERING (MINIMAAL 30 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (AfstandBiotopen_m): 50 m (fuzzy clustering via 25 m buffer)
+    * Aangrenzende graslanden, akkers, kreken en waterpartijen die door sloten, 
+      dijken of smalle landwegen (< 50 m) van elkaar gescheiden zijn, vormen voor 
+      foeragerende en rustende Kleine zwanen één functioneel leefgebied.
+- Oppervlaktedrempel (MinPatch_ha): >= 30 ha (300.000 m2) werkelijk habitat
+    * Clusters van geschikte foerageer- en rusthabitats worden enkel behouden 
+      indien de som van de werkelijke habitatoppervlakte (BWK_FRAC) binnen het 
+      netwerk minstens 30 ha bedraagt.
+    * Ecologische functie: Kleine zwanen zijn grote, verstoringsgevoelige vogels 
+      die een ruime aan- en aanvliegroute en open zicht nodig hebben. Alleen 
+      aaneengesloten open complexen van minstens 30 ha bieden voldoende rust, 
+      veiligheid en voedselzekerheid tijdens de winterperiode.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (Dispersiecap_m / ARPL): 250.000 m (250 km)
+    * Toepassing: ARPL / netwerkanalyses op landschapsniveau.
+    * Ecologische functie: Kleine zwanen verplaatsen zich dagelijks tussen 
+      slaapplaatsen en foerageergebieden en wisselen over tientallen tot 
+      honderden kilometers uit tussen polder-, kust- en riviervalleisystemen 
+      afhankelijk van vorst en waterstanden.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Kleine zwaan (Cygnus columbianus bewickii) - wintervogel (_wv)
+Bronlaag habitat          : BWK foerageer_bwk (open graslanden, akkers, water, slikken)
+Externe waterlagen        : Geen (enkel BWK-codes)
+Negatieve filters         : Geen (openheid geborgd via 30 ha oppervlaktedrempel)
+Minimale clusterdrempel   : >= 30 ha werkelijk habitat
+Koppelafstand clustering  : 50 m tussen geschikte percelen/waterpartijen
+Dispersieradius (ARPL)    : 250 km (250.000 m)
+================================================================================

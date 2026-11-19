@@ -1,0 +1,81 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: TOENDRARIETGANS
+Soort: Anser serrirostris (overwinterende watervogel / open poldergraslanden, akkers & plassen)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Toendrarietgans (voorheen aangeduid als Rietgans) is een wintergast van 
+uitgestrekte, open en rustige polder-, riviervallei- en beekdallandschappen. 
+Overdag foerageert de soort in groepen op vochtige tot natte graslanden en 
+open akkers (oogstresten van suikerbieten, maïs, aardappelen en wintergranen), 
+terwijl grote open waterpartijen, kreken, vennen en brede rivieren dienen als 
+veilige slaap- en rustplaatsen.
+
+A. Foerageer- en rusthabitat BWK ('foerageer_bwk'):
+   - Open water, plassen & kreken: ae%, aer%, aev%, ah%, rbbah%, 3140%, 3150%
+   - Vochtige en open graslanden: hc%, 6410%, rbbhc%, hp%, hp+%, hpr%, hpr+%, 
+     hx%, rbbkam%, rbbzil%, 2190%
+   - Open akkers (oogstresten & wintergewassen): bk%, bl%, bs%, bu%
+   - Werkelijke oppervlakte: Per 10x10m rastercel worden de BWK-fracties 
+     (BWK_FRAC) van de unieke geschikte codes opgeteld (geclampt op max. 1,0).
+
+B. Grote Waterlopen & Rivieren (Huetzon):
+   - Bron: Waterlopenkaart Vlaanderen (vlaanderen_huetzon_10m.tif)
+   - Selectieklassen (VHA-labels): Rzg, Rg (zeer grote en grote rivieren/kanalen)
+   - Koppeling: Additief (OR / opgeteld tot max. 1,0) samengevoegd met het 
+     BWK-foerageer- en rusthabitat vóór de landschapsclustering.
+
+
+2. RUIMTELIJKE FILTERING & BOVENLOKALE OPENHEID (GEEN TELGEBIEDSBEPERKING)
+--------------------------------------------------------------------------------
+- Telgebieden- en ecoregiofilter:
+    * In tegenstelling tot het historische ANB-model worden de maskerlagen voor 
+      watervogeltelgebieden ('leefgebied_rietgans_20m') en ecoregio's NIET 
+      toegepast.
+    * Ecologische functie: Hierdoor wordt het volledige potentiële winter- en 
+      pleistergebied in Vlaanderen gekarteerd in plaats van enkel de reeds 
+      getelde gebieden.
+- Negatieve verstoring- of bosfilters:
+    * Niet expliciet als aparte exclusiebuffer opgenomen; de vereiste 
+      grootschalige openheid en rust worden afgedwongen via de minimale 
+      clusteroppervlakte van 80 ha.
+
+
+3. LANDSCHAPSCLUSTERING (MINIMAAL 80 HA OP 50 M)
+--------------------------------------------------------------------------------
+- Zoekstraal clustering (AfstandBiotopen_m): 50 m (fuzzy clustering via 25 m buffer)
+    * Aangrenzende graslanden, akkers, plassen en rivierarmen die door sloten, 
+      dijken of smalle landwegen (< 50 m) van elkaar gescheiden zijn, vormen voor 
+      foeragerende en rustende Toendrarietganzen één functioneel leefgebied.
+- Oppervlaktedrempel (MinPatch_ha): >= 80 ha (800.000 m2) werkelijk habitat
+    * Clusters van geschikte foerageer- en rusthabitats worden enkel behouden 
+      indien de som van de werkelijke habitatoppervlakte (BWK_FRAC + grote 
+      rivieren) binnen het netwerk minstens 80 ha bedraagt.
+    * Ecologische functie: Overwinterende groepen Toendrarietganzen zijn zeer 
+      verstoringsgevoelig en vereisen grootschalige, overzichtelijke open 
+      complexen van minstens 80 ha met voldoende zichtveld, rust en veilige 
+      slaapplaatsen op open water.
+
+
+4. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit (Dispersiecap_m / ARPL): 250.000 m (250 km)
+    * Toepassing: ARPL / netwerkanalyses op landschapsniveau.
+    * Ecologische functie: Toendrarietganzen pendelen dagelijks tussen 
+      slaapplaatsen en foerageergebieden en verplaatsen zich over tientallen 
+      tot honderden kilometers tussen verschillende polder-, Kempense ven- en 
+      riviervalleisystemen afhankelijk van vorst en voedselbeschikbaarheid.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Toendrarietgans (Anser serrirostris) - wintervogel (_wv)
+Bronlaag habitat          : BWK foerageer_bwk (vochtige/open graslanden, akkers, water)
+Externe waterlagen        : Huetzon (Rzg, Rg)
+Negatieve filters         : Geen (openheid geborgd via 80 ha oppervlaktedrempel)
+Minimale clusterdrempel   : >= 80 ha werkelijk habitat
+Koppelafstand clustering  : 50 m tussen geschikte percelen/waterpartijen
+Dispersieradius (ARPL)    : 250 km (250.000 m)
+================================================================================

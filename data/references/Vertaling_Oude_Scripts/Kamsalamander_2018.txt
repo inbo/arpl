@@ -1,0 +1,129 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: KAMSALAMANDER (OUD MODEL / RUST)
+Soort: Triturus cristatus (amfibie / visvrije poelencomplexen met gevarieerd 
+       landbiotoop van bos, struweel, grasland & KLE's)
+Scriptversie: ANB/INBO 2018-2019 / Heel Vlaanderen (20 m resolutie, binaire grid)
+================================================================================
+
+1. KARAKTERISERING HABITATS & BRONLAGEN
+--------------------------------------------------------------------------------
+De Kamsalamander is een vrij grote watersalamander die sterk gebonden is aan 
+zonbeschenen, visvrije en vegetatierijke poelen in een kleinschalig, gevarieerd 
+cultuur- of boslandschap. Buiten het voortplantingsseizoen (zomer en winter) 
+verblijft de soort op het land onder dood hout, stenen, in houtkanten, struwelen 
+en loofbossen.
+
+A. Voortplantings- / Waterbiotoop ('kamsalamander_waterbiotoop1'):
+   Gecombineerde selectie uit twee bronnen, beide gefilterd op kleine wateren:
+   1. BWK- & Natura 2000-selectie:
+      ae%, aer%, aev%, 2190%, 3140%, 3150%, aom%, 3110%, 3130%, kn%, mp%, 
+      2190_mp%, mr%, 6430_hw%, 6430_mr%, 7140%, rbbmr%
+      (Eutrofe, mesotrofe en oligotrofe stilstaande wateren en kranswierwateren 
+      [ae, aer, aev, aom, 3110, 3130, 3140, 3150], vochtige duinvalleien [2190], 
+      poelen [kn], moeras- en rietvegetaties [mp, mr, 6430_hw/mr, rbbmr] en 
+      overgangsveen [7140]).
+      - Oppervlaktefilter BWK-wateren: Geclusterd binnen 10 m en gefilterd op 
+        kleine wateren <= 0,4 ha (`cFilterLeArea(..., 0.4, hectare)`).
+   2. Blauwe Laag (kleine waterelementen):
+      - Bron: `BlauweLaag_Plassen_06042017_20m_.asc` (waarde = 1).
+      - Oppervlaktefilter: Geclusterd binnen 10 m en gefilterd op <= 0,4 ha.
+   - Ecologische functie: Grotere plassen en vijvers herbergen doorgaans 
+     predatievis (zoals baars, snoek of zonnebaars), wat funest is voor de vrij 
+     zwemmende larven van de kamsalamander. Enkel kleine poelen (<= 0,4 ha) 
+     worden weerhouden.
+
+B. Zomer- en Overwinterings- / Landbiotoop ('kamsalamander_landbiotoop_bwk'):
+   - BWK- & Natura 2000-selectie:
+       hc%, 2190%, 6410%, rbbhc%, hf%, 6430%, hj%, hp%, hp+%, hpr%, hpr+%, hr%, 
+       kb%, kh%, khw%, kt%, ku%, 3270%, kw%, lhb%, lhi%, lh%, sd%, 2160%, 2170%, 
+       sf%, 2180%, 91E0%, rbbsf%, sp%, rbbsp%, sz%, va%, vn%, qe%, qs%, qa%, 
+       9120%, 9130%, 9160%
+       (Vochtige en kruidenrijke graslanden, dotterbloemhooilanden en 
+       blauwgraslanden [hc, 6410, hp+, hpr, hpr+], natte ruigten en verruigde 
+       graslanden [hf, 6430, hj, hr], kleine landschapselementen zoals 
+       bomenrijen, houtkanten, hagen en taluds [kb, kh, khw, kt, ku], 
+       hoogstamboomgaarden [lhb, lhi, lh], duin-, wilgen-, brem- en 
+       doornstruwelen [sd, sf, sp, sz, 2160, 2170, 91E0], alluviale en 
+       broekbossen [va, vn], beboste duinen [2180] en oudere eiken- en 
+       beukenbossen [qa, qe, qs, 9120, 9130, 9160]).
+   - Opmerking: Ook extensieve/structuurrijke productiegraslanden (`hp`) en 
+     hoogstamboomgaarden zijn hier opgenomen als onderdeel van het traditionele 
+     kleinschalige cultuurlandschap waarin de soort voorkomt.
+
+
+2. NEGATIEVE STOORFACTOREN (BEBOUWING & WEGENMETING)
+--------------------------------------------------------------------------------
+- Expliciete exclusielagen: Geen.
+  * Intensieve akkers, bebouwing en infrastructuur worden niet apart gebufferd, 
+    maar vallen weg via de BWK-biotoopselectie (en indirect via de poelen- 
+    en oppervlaktedrempels).
+
+
+3. META-POPULATIESTRUCTUUR & FUNCTIONELE KOPPELING (500 M REGEL)
+--------------------------------------------------------------------------------
+Het script bouwt het leefgebied op via drie opeenvolgende ecologische filters 
+op 500 m schaal:
+
+1. Poelendichtheid (minstens 6 poelen binnen 500 m):
+   - Functie: `GeUniqueCountInBuffer(kamsalamander_waterbiotoop1_cluster, 500, meter, ..., 6)`
+   - Drempelwaarde: Een voortplantingspoel is enkel geldig indien er binnen 
+     een straal van 500 m minstens 6 unieke poelclusters aanwezig zijn (= de 
+     eigen poel + minstens 5 naburige poelen).
+   - Ecologische functie: De kamsalamander vormt klassieke metapopulaties 
+     waarbij jaarlijks slechts een deel van de poelen succesvolle voortplanting 
+     kent (afhankelijk van droogval of tijdelijke predatie). Een hoge 
+     poelendichtheid is cruciaal voor populatiebehoud.
+
+2. Wederzijdse koppeling Water <-> Land (max. 500 m afstand):
+   - Enkel geldige poelen die binnen 500 m van geschikt landbiotoop liggen 
+     (`kamsalamander_waterbiotoop3`) én landbiotopen die binnen 500 m van een 
+     geldig poelencomplex liggen (`kamsalamander_landbiotoop1`) blijven behouden.
+   - Ecologische functie: Overbrugt de normale seizoensmigratie-afstand tussen 
+     voortplantingswater en zomer-/winterverblijfplaatsen op het land.
+
+3. Initiële netwerkclustering & Oppervlaktedrempel (>= 14 ha):
+   - Functie: `fuzzyClusterIdU(..., 500, meter)` gevolgd door `cFilterGeArea(..., 14, hectare)`
+   - Drempelwaarde: Gecombineerd leefgebied (water + land) binnen 500 m moet 
+     minstens 14 ha (140.000 m2) bedragen.
+
+
+4. GEOGRAFISCHE AFBAKENING & FINALE KERNFILTER (ECOREGIO + >= 50 HA)
+--------------------------------------------------------------------------------
+- Ecoregio-masker: `Ge('ecoregio.asc', 1)`
+  * Toepassing: Het gecombineerde leefgebied (>= 14 ha) wordt afgeknipt op de 
+    relevante ecoregio's (waarde >= 1).
+- Tweede, strengere clustering en oppervlaktedrempel (100 m / >= 50 ha):
+  * Functie: `FuzzyClusterIdU(..., 100, meter)` gevolgd door `cFilterGeArea(..., 50, hectare)`
+  * Ruimtelijke logica: Na het toepassen van de ecoregio worden de leefgebieden 
+    opnieuw geclusterd met een nauwere koppelingsafstand van **100 m** en 
+    gefilterd op een minimale oppervlakte van **50 ha** (500.000 m2 = 1.250 
+    cellen van 20x20 m).
+  * Ecologische functie: Waar de eerste stap (500 m / 14 ha) de functionele 
+    deelnetwerken van poelen en landhabitat selecteert, borgt deze eindfilter 
+    dat enkel grote, goed samenhangende landschapscomplexen (>= 50 ha binnen 
+    100 m) weerhouden worden die op lange termijn een robuuste metapopulatie 
+    kunnen dragen.
+
+
+5. BOVENLOKALE CONNECTIVITEIT & DISPERSIE
+--------------------------------------------------------------------------------
+- Dispersiecapaciteit: Geïntegreerd op metapopulatieniveau (500 m voor poelen- 
+  en landkoppeling; 100 m voor finale complexafbakening).
+  * Output is een binaire 0/1-kaart (`ANB2019_Kamsalamander2018.asc`) zonder 
+    afzonderlijke bovenlokale dispersiebuffers rond de eindclusters.
+
+
+6. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Kamsalamander (Triturus cristatus)
+Schaal & Resolutie        : Heel Vlaanderen, 20 m raster (binair 0/1)
+Waterbiotoop              : BWK-wateren/moerassen <= 0,4 ha + Blauwe Laag <= 0,4 ha
+Poelendichtheid-eis       : Minstens 6 unieke waterclusters binnen 500 m (eigen + 5)
+Landbiotoop               : Vochtige/extensieve graslanden, ruigten, KLE's, 
+                            hoogstamboomgaarden, struwelen & loofbossen
+Stoorfactoren             : Geen expliciete exclusiebuffers (enkel via BWK)
+Koppeling Water <-> Land  : Max. 500 m onderlinge afstand (wederzijds)
+Stap 1 Netwerkfilter      : Clustering op 500 m, minimale oppervlakte >= 14 ha
+Geografische filter       : Ecoregio >= 1 (`ecoregio.asc`)
+Stap 2 Finale kernfilter  : Herclustering op 100 m, minimale oppervlakte >= 50 ha
+================================================================================
