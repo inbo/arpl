@@ -6,7 +6,7 @@ library(dplyr)
 
 # --- CONFIGURATIE ---
 FORCE_OVERWRITE <- TRUE    # TRUE zodat alle bestanden met de nieuwe naam worden aangemaakt
-buffer_dist     <- 50000   # 50 km in meters
+buffer_dist     <- 10000   # 50 km in meters
 te_negeren_soorten <- c("blauwekiekendief", "blauwekiekendief_wv")
 
 map_rasters <- here("data/output/Vlaanderen/Rasters_Soorten/01_Potentieel_Leefgebied")

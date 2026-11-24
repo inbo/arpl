@@ -89,7 +89,7 @@ FORCE_OVERWRITE  <- FALSE     # TRUE bij eerste testrun zodat nieuwe codes/filte
 TEST_GEBIED <- NULL # Lambert 72 centrum (De Wijers / Vallei van de Abeek)
 
 soorten_selectie <- c(
-"europeseotter")
+"schavertje", "europeseotter", "europesebever", "europesehamster", "kolgans_wv", "grauwegans_wv", "toendrarietgans_wv", "kleinerietgans", "grauwekiekendief")
 # ==============================================================================
 
 # ------------------------------------------------------------------------------

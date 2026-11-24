@@ -392,11 +392,13 @@ bouw_biotoop_universeel <- function(soort_naam,
     }
     
     # 2-lgp-basis
+    lgp_als_basis <- FALSE
     if (is_leeg(r_huidig) && !is.na(get_param(rij, "LGP_Gewascodes", NA))) {
-      lgp_codes <- get_param(rij, "LGP_Gewascodes", NA)
-      codes_v <- strsplit(as.character(lgp_codes), "[,; ]+")[[1]]
+      lgp_str <- sub("^\\+\\s*", "", trimws(as.character(get_param(rij, "LGP_Gewascodes", NA))))
+      codes_v <- strsplit(lgp_str, "[,; ]+")[[1]]
       message(sprintf("       -> Basislaag initialiseren vanuit LGP-teelten (%s)...", paste(codes_v, collapse = ", ")))
       r_huidig <- haal_categorisch_masker(paths$lgp_landbouw, codes_v, master_grid, paths$dir_cache, "lgp")
+      lgp_als_basis <- TRUE
     }
     
     # 2-water: GRB waternabijheid
@@ -725,7 +727,7 @@ bouw_biotoop_universeel <- function(soort_naam,
     
     # 2D. LGP Gewassen
     lgp_codes <- get_param(rij, "LGP_Gewascodes", NA)
-    if (!is.na(lgp_codes)) {
+    if (!is.na(lgp_codes) && !lgp_als_basis) {
       lgp_str <- trimws(as.character(lgp_codes))
       is_additief <- grepl("^\\+", lgp_str)
       if (is_additief) lgp_str <- sub("^\\+\\s*", "", lgp_str)
@@ -958,7 +960,7 @@ bouw_biotoop_universeel <- function(soort_naam,
         
         # Gladde slang-specifiek: aangrenzend hooggroen binnen 50 m van open biotoop toevoegen als bosrand
         if (tolower(bestandsnaam) %in% c("gladdeslang", "coronellaaustriaca") &&
-            !is_leeg(r_huidig) {
+            !is_leeg(r_huidig)) {
           message("       -> Gladde slang-specifiek: aangrenzend hooggroen binnen 50 m als bosrand toevoegen...")
           f_gr_al2  <- hulp_align_gdal(paths$groenkaart, master_grid)
           r_gr2     <- terra::rast(f_gr_al2)
@@ -2322,32 +2324,41 @@ bouw_biotoop_universeel <- function(soort_naam,
         if (!is.na(min_buren_val) && min_buren_val > 0) {
           dispersie_m   <- as.numeric(get_param(rij, "Dispersiecap_m", NA))
           buur_straal_m <- dplyr::coalesce(actieradius_m, dispersie_m, 500)
-          message(sprintf("       -> Buurtoets: Patches (%.1f-%.1f ha) toetsen op >= %d buren binnen %dm...",
-                          min_opp_ha, kern_opp_ha, as.integer(min_buren_val), as.integer(buur_straal_m)))
+          message(sprintf("       -> Buurtoets: Patches (%.1f-%.1f ha) toetsen op >= %d patches (>= %.1f ha) binnen %dm...",
+                          min_opp_ha, kern_opp_ha, as.integer(min_buren_val), min_opp_ha, as.integer(buur_straal_m)))
           
           if (heeft_klein) {
-            cl_klein <- terra::mask(cl_raw, cl_raw %in% as.integer(ids_klein))
-            p_poly   <- terra::as.polygons(cl_klein, dissolve = TRUE)
+            ids_alle_min <- c(ids_groot, ids_klein)
+            cl_alle_min  <- terra::mask(cl_raw, cl_raw %in% as.integer(ids_alle_min))
+            p_poly_all   <- terra::as.polygons(cl_alle_min, dissolve = TRUE)
             
-            if (!is.null(p_poly) && nrow(p_poly) > 0) {
-              sf_poly  <- sf::st_as_sf(p_poly)
-              sf_buf   <- sf::st_buffer(sf_poly, dist = buur_straal_m)
-              int_list <- sf::st_intersects(sf_buf, sf_poly)
+            if (!is.null(p_poly_all) && nrow(p_poly_all) > 0) {
+              sf_poly_all   <- sf::st_as_sf(p_poly_all)
+              sf_buf_all    <- sf::st_buffer(sf_poly_all, dist = buur_straal_m)
+              int_list      <- sf::st_intersects(sf_buf_all, sf_poly_all)
               buren_telling <- lengths(int_list)
               
-              ok_idx <- which(buren_telling >= min_buren_val)
+              meta_kern_idx <- which(buren_telling >= min_buren_val)
               
-              if (length(ok_idx) > 0) {
-                valide_klein_ids <- as.vector(terra::values(p_poly)[[1]])[ok_idx]
-                r_klein_ok <- terra::mask(r_klein, cl_raw %in% as.integer(valide_klein_ids))
+              if (length(meta_kern_idx) > 0) {
+                # Alle patches >= min_opp_ha binnen buur_straal_m van een metapopulatiekern (min_buren_val) zijn geldig
+                bereikbare_idx   <- unique(unlist(int_list[meta_kern_idx]))
+                alle_ids_vec     <- as.vector(terra::values(p_poly_all)[[1]])
+                valide_klein_ids <- intersect(alle_ids_vec[bereikbare_idx], ids_klein)
+                
+                r_klein_ok <- if (length(valide_klein_ids) > 0) {
+                  terra::mask(r_klein, cl_raw %in% as.integer(valide_klein_ids))
+                } else {
+                  master_grid * NA_real_
+                }
               } else {
                 r_klein_ok <- master_grid * NA_real_
               }
-              rm(sf_poly, sf_buf, int_list, buren_telling, p_poly)
+              rm(sf_poly_all, sf_buf_all, int_list, buren_telling, p_poly_all)
             } else {
               r_klein_ok <- master_grid * NA_real_
             }
-            rm(cl_klein)
+            rm(cl_alle_min)
           } else {
             r_klein_ok <- master_grid * NA_real_
           }
@@ -2779,7 +2790,7 @@ bouw_biotoop_universeel <- function(soort_naam,
       kern_drempel_ha   <- as.numeric(get_param(rij, "Kern_MinOpp_ha", NA))
       
       if (gebruik_grb_water && !is.na(kern_drempel_ha) && kern_drempel_ha > 0 && 
-          !is_leeg(cl_huidig) {
+          !is_leeg(cl_huidig)) {
         
         message("       -> Landschapskwaliteit toetsen (< 75% bos, < 90% water) & terrestrische kerncheck...")
         
@@ -3215,7 +3226,7 @@ bouw_biotoop_universeel <- function(soort_naam,
               unlink(f_prox_k)
               
               if (grens_mom == "cluster_select" && doel_tp %in% names(cl_sporen) && 
-                  !is_leeg(cl_sporen[[doel_tp]]) {
+                  !is_leeg(cl_sporen[[doel_tp]])) {
                 message(sprintf("\n    🎯 Clusterselectie: Hele clusters van '%s' behouden die binnen %dm van '%s' liggen...", 
                                 doel_key, as.integer(grens_m), kern_tp))
                 cl_d <- cl_sporen[[doel_tp]]
