@@ -18,13 +18,14 @@ haal_categorisch_masker <- function(pad_raster,
   hash_codes  <- paste(sort(codes_clean), collapse = "_")
   # Beperk bestandsnaamlengte indien er veel codes zijn
   if (nchar(hash_codes) > 50) {
-    hash_codes <- digest::digest(hash_codes, algo = "crc32")
+    hash_codes <- sprintf("%s_%d", substr(hash_codes, 1, 35), sum(utf8ToInt(hash_codes)))
   }
   
-  f_cache <- file.path(dir_cache, sprintf("%s_%s.tif", naam_prefix, hash_codes))
-  
   if (file.exists(f_cache)) {
-    return(terra::rast(f_cache))
+    r_c <- suppressWarnings(terra::rast(f_cache))
+    if (terra::compareGeom(r_c, master_grid, stopOnError = FALSE)) {
+      return(r_c)
+    }
   }
   
   message(sprintf("    🛠️ Genereren van %s voor codes: %s...", naam_prefix, paste(codes_selectie, collapse = ", ")))
@@ -48,7 +49,7 @@ haal_categorisch_masker <- function(pad_raster,
     }
     values_raw <- tolower(trimws(as.character(leg[[kol_val]])))
     ok_ids <- c(ok_ids, leg[[kol_val]][values_raw %in% codes_zoek_chr])
-    ok_ids <- unique(na.omit(ok_ids))
+    ok_ids <- unique(as.integer(na.omit(ok_ids)))
   }
   
   # Fallback: als er geen VAT-tabel is, filter direct op de getallen

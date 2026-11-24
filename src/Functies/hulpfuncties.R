@@ -11,9 +11,9 @@ hulp_align_gdal <- function(f_in, master_grid) {
     INPUT             = f_in,
     TARGET_CRS        = "EPSG:31370",
     TARGET_EXTENT     = sprintf("%f,%f,%f,%f", e$xmin, e$xmax, e$ymin, e$ymax),
-    TARGET_RESOLUTION = 10,
+    TARGET_RESOLUTION = terra::res(master_grid)[1],
     RESAMPLING        = 0, # Nearest Neighbour
-    OPTIONS           = "COMPRESS=LZW",
+    CREATION_OPTIONS  = "COMPRESS=LZW",
     OUTPUT            = f_out,
     .quiet            = TRUE
   )
@@ -27,11 +27,11 @@ hulp_proximity_gdal <- function(f_in, max_dist_m) {
     "gdal:proximity",
     INPUT        = f_in,
     BAND         = 1,
-    VALUES       = "1",            # Enkel waarde 1 is bron
-    UNITS        = 0,              # Meters
-    MAX_DISTANCE = max_dist_m,     # <-- DIT MOET MAX_DISTANCE ZIJN!
-    NODATA       = 9999,           # Buiten bereik = 9999
-    DATA_TYPE    = 2,              # UInt16
+    VALUES       = "1",
+    UNITS        = 0,
+    MAX_DISTANCE = max_dist_m,
+    NODATA       = 65535,
+    DATA_TYPE    = 2, # UInt16 (tot 65.535 m)
     OUTPUT       = f_out,
     .quiet       = TRUE
   )
