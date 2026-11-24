@@ -18,19 +18,8 @@ terra::terraOptions(
 # ------------------------------------------------------------------------------
 # 1. Modules inladen
 # ------------------------------------------------------------------------------
-source(here::here("src", "Functies", "00_global_setup.R"))
-#source(here::here("src", "Functies", "bereken_arpl"))
-source(here::here("src", "Functies", "bouw_biotoop_universeel.R"))
-source(here::here("src", "Functies", "calc_ha_exact.R"))
-source(here::here("src", "Functies", "cluster_filter_universeel.R"))
-source(here::here("src", "Functies", "extract_bwk_laag.R"))
-source(here::here("src", "Functies", "haal_categorisch_masker.R"))
-source(here::here("src", "Functies", "hulp_morfologische_opening.R"))
-source(here::here("src", "Functies", "hulp_wederzijdse_koppeling.R"))
-source(here::here("src", "Functies", "hulpfuncties.R"))
-source(here::here("src", "Functies", "verwerk_soort.R"))
-source(here::here("src", "Functies", "vul_raster_vanuit_parquet.R"))
 
+source(here::here("src", "Functies", "00_global_setup.R"))
 
 # ==============================================================================
 # SUBSET TEST SCHAKELAAR VOOR SNELLE RUNS (SHAPEFILE, EXTENT OF XY-COÖRDINAAT)
@@ -95,18 +84,12 @@ prepareer_test_grid <- function(master_grid_full, studiegebied_input, buffer_m =
 #   - c(72000, 226000)                                      -> XY in Lambert 72 (EPSG:31370)
 #TEST_GEBIED <- NULL
 
-TEST_GEBIED      <- NULL
-#c(4.22, 51.15)
-#TEST_BUFFER_M    <- 10000
-FORCE_OVERWRITE  <- FALSE
-soorten_selectie <- c(# Niet gevonden in afstanden-tabel (26)
-  "parnassia", "purperorchis", "rondezegge",
-  "schedegeelster", "schubzegge", "veenbies", "walstrobremraap", "wijdbloeienderus", "wondklaver", "zeealsem",
-  # Typfout in Type-kolom (1)
-  "ongelijkbladigfonteinkruid",
-  # Onderbroken / Huet-aanpassing (1)
-  "slijkzegge", "europeseotter"
-)
+TEST_BUFFER_M    <- 0    # Ruime buffer van 5 km rond elk gebied (geen randeffecten)
+FORCE_OVERWRITE  <- FALSE     # TRUE bij eerste testrun zodat nieuwe codes/filters actief zijn
+TEST_GEBIED <- NULL # Lambert 72 centrum (De Wijers / Vallei van de Abeek)
+
+soorten_selectie <- c(
+"schavertje", "europeseotter", "europesebever", "europesehamster", "kolgans_wv", "grauwegans_wv", "toendrarietgans_wv", "kleinerietgans", "grauwekiekendief")
 # ==============================================================================
 
 # ------------------------------------------------------------------------------

@@ -1,0 +1,86 @@
+================================================================================
+ECOLOGISCHE SAMENVATTING & MODELPARAMETERS: SCHAVERTJE
+Soort: Stenobothrus stigmaticus (sprinkhaan / schrale grasland- & heidehabitats)
+Scriptversie: INBO / Heel Vlaanderen (10 m resolutie, Werkelijke Oppervlakte)
+================================================================================
+
+1. KARAKTERISERING HABITAT & SELECTIE
+--------------------------------------------------------------------------------
+- Type habitat: Kortgrazige, schrale en structuurrijke graslanden, droge tot 
+  matig vochtige heiden, jeneverbesstruwelen en open grijze duinen.
+- BWK-selectie:
+    2130%, 2150%, 2330%, 5130%, 6230%, ha%, hab%, had%, hd%, hn%, hnb%
+    (Grijze duinen, duinheiden, open grasland op landduinen, jeneverbesstruwelen, 
+    heischrale graslanden, droge en vergraste struikheide, droge duingraslanden)
+- Omgevingslaag (Bodemdrainage):
+    * Bron: Drainagekaart Vlaanderen (vlaanderen_drainage_n2khab_10m.tif)
+    * Selectieklassen: !g, h, i, h-i (uitsluiting van zeer natte en permanent 
+      waterverzadigde bodems; behoud van droge tot matig vochtige gronden).
+- Ecoregiofilter:
+    * Bron: Ecodistricten / Ecoregio's Vlaanderen (ecodistrict.tif)
+    * Toegestane ecoregio-codes: 1, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17
+      (alle Vlaamse ecoregio's buiten de Polders en het Schelde-estuarium).
+- Fusiemethode: Maskering van de BWK-laag met de geschikte drainageklassen en 
+  de geselecteerde ecoregio's.
+
+
+2. PRIMAIRE LANDSCHAPSCLUSTERING (PATCH-VORMING)
+--------------------------------------------------------------------------------
+- Overbruggingsafstand (dist_m / AfstandBiotopen_m): 50 m
+    * Cellen binnen 50 m worden gegroepeerd tot afzonderlijke leefgebiedpatches 
+      (directions = 4, via 50 m proximity buffer).
+- Minimale patchgrootte: >= 1 ha (10.000 m2) werkelijke oppervlakte.
+    * Patches kleiner dan 1 ha vallen af; patches van 1 tot 5 ha worden getoetst 
+      op aanwezigheid van een metapopulatienetwerk (zie stap 3).
+
+
+3. METAPOPULATIESTRUCTUUR & NETWERKEISEN (STAP 3)
+--------------------------------------------------------------------------------
+Omdat het Schavertje een weinig mobiele sprinkhaan is met een beperkte 
+dispersiecapaciteit, hanteert het model een tweesporenbeleid: zelfstandig 
+duurzame kernen versus onderling afhankelijke netwerkpopulaties.
+
+A. Grote, zelfstandige kernen (>= 5 ha):
+   - Patches met een geaccumuleerde werkelijke habitatoppervlakte >= 5 ha.
+   - Ecologische functie: Voldoende groot om een autonome, levenskrachtige 
+     populatie duurzaam in stand te houden zonder immigratie. Worden direct 
+     goedgekeurd als leefgebied.
+
+B. Kleine metapopulatiepatches (1 tot 5 ha) met netwerkeis:
+   - Patches met een werkelijke habitatoppervlakte tussen 1 ha en 5 ha.
+   - Koppelafstand (Actieradius_m): 500 m
+     * Elke patch (>= 1 ha) wordt gebufferd met 500 m.
+   - Netwerkeis: Minimaal 6 unieke patches (>= 1 ha) binnen 500 m afstand 
+     (unieke_buren_count >= 6; de patch zelf + minstens 5 naburige patches), 
+     inclusief de patches (>= 1 ha) binnen 500 m van een dergelijke 
+     metapopulatiekern.
+   - Ecologische functie: Een patch van 1-5 ha is te klein voor langdurige 
+     overleving op eigen kracht. Alleen in een dicht netwerk van minstens 6 
+     stapstenen binnen 500 m kan uitwisseling plaatsvinden en lokale 
+     uitsterving via rekolonisatie worden opgevangen.
+
+
+4. FINALE SAMENVOEGING & NETWERK-ID'S
+--------------------------------------------------------------------------------
+- Het definitieve leefgebied ontstaat door de optelling van:
+    1. Alle grote kernen (>= 5 ha)
+    2. Alle goedgekeurde kleine netwerkpatches (1-5 ha binnen 500 m van een 
+       metapopulatiekern met >= 6 patches >= 1 ha)
+- Afgetopt op maximaal 1.0 (werkelijke habitatoppervlakte).
+- Netwerk-ID's worden toegekend op de samengevoegde laag.
+
+
+5. BEKNOPT PARAMETEROVERZICHT
+--------------------------------------------------------------------------------
+Doelpopulatie             : Schavertje (Stenobothrus stigmaticus)
+Habitattype               : Schrale graslanden, droge/vochtige heiden & duinen
+Bodemfilter               : Drainageklassen != g, h, i, h-i (niet zeer nat)
+Ecoregiofilter            : Ecoregio's 1, 5 t.e.m. 17 (excl. Polders/estuarium)
+Primaire patchvorming     : 50 m zoekstraal, minimum 1 ha drempel
+Zelfstandige kernen       : Patches >= 5 ha (direct goedgekeurd)
+Metapopulatienetwerk      : Patches 1-5 ha
+Netwerk koppelafstand     : 500 m
+Drempelwaarde netwerk     : Minstens 6 patches (>= 1 ha) binnen 500 m
+Analytische netwerken     : Patches samengevoegd tot finale netwerk-ID's
+Dispersiecap_m            : 5000 m
+================================================================================

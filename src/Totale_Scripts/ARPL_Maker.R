@@ -13,7 +13,7 @@ library(data.table)
 
 terra::terraOptions(memfrac = 0.2, tempdir = tempdir(), verbose = FALSE)
 
-FORCE_OVERWRITE  <- FALSE  
+FORCE_OVERWRITE  <- TRUE  
 SPECIFIEKE_SOORT <- NULL 
 
 # Gebiedenlijst en bijhorende regiocodes voor territoria/waarnemingen
@@ -95,7 +95,7 @@ for (gb_naam in beschikbare_gebieden) {
   message("--------------------------------------------------")
   
   map_potentieel <- file.path(base_rerun_dir, gb_naam, "Potentieel_Leefgebied")
-  map_id         <- file.path(base_rerun_dir, gb_naam, "ID_Rasters") # Indien aanwezig in rerun, anders fallback
+  map_id         <- file.path(base_rerun_dir, gb_naam, "ID_Rasters")
   out_dir_arpl   <- file.path(base_rerun_dir, gb_naam, "ARPL")
   
   if (!dir.exists(out_dir_arpl)) dir.create(out_dir_arpl, recursive = TRUE)
@@ -104,9 +104,9 @@ for (gb_naam in beschikbare_gebieden) {
     next
   }
   
-  potentieel_tifs <- list.files(map_potentieel, pattern = "\\.tif$", full.names = TRUE)
+  potentieel_tifs <- list.files(map_potentieel, pattern = "^Habitat_Werkelijke_Oppervlaktes_.*\\.tif$", full.names = TRUE)
   if (length(potentieel_tifs) == 0) {
-    message("    ℹ️ Geen tif-bestanden gevonden in Potentieel_Leefgebied.")
+    message("    ℹ️ Geen 'Habitat_Werkelijke_Oppervlaktes_*.tif' bestanden gevonden.")
     next
   }
   
@@ -118,31 +118,28 @@ for (gb_naam in beschikbare_gebieden) {
     gc(verbose = FALSE)
     
     b_naam <- basename(f_pot)
-    is_wintervogel <- grepl("_wv", b_naam, ignore.case = TRUE)
+    is_wintervogel <- grepl("_wv\\.tif$", b_naam, ignore.case = TRUE)
     
-    # Soortnaam extraheren uit bestandsnaam:
-    # "Potentieel_Leefgebied_<soort>_<gebied>_buffer50km.tif" of generieke variant
+    # Soortnaam extraheren uit "Habitat_Werkelijke_Oppervlaktes_<soort>.tif"
     soort_clean <- tolower(b_naam) %>%
-      gsub("^potentieel_leefgebied_", "", .) %>%
-      gsub(paste0("_", tolower(gb_naam), ".*$"), "", .) %>%
-      gsub("_buffer.*$|_wv\\.tif$|\\.tif$", "", .) %>%
+      gsub("^habitat_werkelijke_oppervlaktes_", "", .) %>%
+      gsub("_wv\\.tif$|\\.tif$", "", .) %>%
       trimws()
     
     if (!is.null(SPECIFIEKE_SOORT) && tolower(trimws(SPECIFIEKE_SOORT)) != soort_clean) next
     
     bestands_suffix <- if (is_wintervogel) paste0(soort_clean, "_wv") else soort_clean
-    f_out_arpl <- file.path(out_dir_arpl, paste0("ARPL_", bestands_suffix, ".tif"))
+    f_out_arpl      <- file.path(out_dir_arpl, paste0("Habitat_ARPL_", bestands_suffix, ".tif"))
     
     if (!FORCE_OVERWRITE && file.exists(f_out_arpl)) {
-      message("    ⏩ Reeds verwerkt (overgeslagen): ", bestands_suffix)
+      message("    ⏩ Reeds verwerkt (overgeslagen): ", basename(f_out_arpl))
       next
     }
     
-    # ID-Raster opzoeken (controleert eerst in Rerun/<Gebied>/ID_Rasters, daarna fallback naar reguliere output)
+    # ID-Raster opzoeken
     f_id <- file.path(map_id, paste0("ID_Netwerken_", bestands_suffix, ".tif"))
     if (!file.exists(f_id)) f_id <- file.path(map_id, paste0("ID_Netwerken_", soort_clean, ".tif"))
     
-    # Fallback naar de klassieke outputmap mocht het ID-raster niet in de Rerun-map staan
     if (!file.exists(f_id)) {
       f_id <- here("data/output", gb_naam, "Rasters_Soorten/BWK_2025/00_ID_Rasters", paste0("ID_Netwerken_", bestands_suffix, ".tif"))
       if (!file.exists(f_id)) {

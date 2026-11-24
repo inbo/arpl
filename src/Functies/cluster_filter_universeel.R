@@ -39,7 +39,6 @@ cluster_filter_universeel <- function(masker, opp_laag, min_opp_ha, min_totale_o
       output                          = f_clump,
       title                           = "clumps",
       "-d"                            = FALSE,
-      "-c"                            = TRUE,
       GRASS_REGION_PARAMETER          = extent_str,
       GRASS_REGION_CELLSIZE_PARAMETER = 10,
       GRASS_RASTER_FORMAT_OPT         = "COMPRESS=LZW",
@@ -77,7 +76,6 @@ cluster_filter_universeel <- function(masker, opp_laag, min_opp_ha, min_totale_o
         MAX_DISTANCE = straal_m,
         NODATA       = if (use_byte) 255 else 9999,
         DATA_TYPE    = if (use_byte) 0 else 2,
-        OPTIONS      = "COMPRESS=PACKBITS",
         OUTPUT       = f_prox,
         .quiet       = TRUE
       )

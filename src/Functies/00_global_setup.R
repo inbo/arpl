@@ -58,7 +58,8 @@ PATHS <- list(
   lgp_landbouw        = here::here("data", "input", "Raster_Vlaanderen", "vlaanderen_lgp_gwscod_2025_10m.tif"),
   grb_wegen           = here::here("data", "input", "Raster_Vlaanderen", "GRB_Wegverbinding_at.tif"),
   
-  # Uitvoermoppen
+  # Uitvoermoppenµ
+  dir_output = here::here("data", "output", "Vlaanderen", "Rasters_Soorten"),
   out_id           = here::here("data", "output", "Vlaanderen", "Rasters_Soorten", "00_ID_Rasters"),
   out_opp          = here::here("data", "output", "Vlaanderen", "Rasters_Soorten", "01_Potentieel_Leefgebied"),
   out_arpl         = here::here("data", "output", "Vlaanderen", "Rasters_Soorten", "02_ARPL")
@@ -70,3 +71,11 @@ dir.create(PATHS$out_opp, showWarnings = FALSE, recursive = TRUE)
 dir.create(file.path(PATHS$out_opp, "Deellagen"), showWarnings = FALSE, recursive = TRUE)
 dir.create(PATHS$out_arpl, showWarnings = FALSE, recursive = TRUE)
 dir.create(PATHS$dir_cache, showWarnings = FALSE, recursive = TRUE)
+
+# ------------------------------------------------------------------------------
+# 1. Modules inladen
+# ------------------------------------------------------------------------------
+
+functie_files <- list.files(here::here("src", "Functies"), pattern = "\\.R$", full.names = TRUE)
+functie_files <- functie_files[!basename(functie_files) %in% c("00_global_setup.R", "bereken_arpl.R", "run_pipeline.R")]
+invisible(lapply(functie_files, source))

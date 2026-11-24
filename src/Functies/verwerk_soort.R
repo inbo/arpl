@@ -28,8 +28,8 @@ verwerk_soort <- function(soort_naam,
     stop(sprintf("❌ Soort '%s' niet gevonden in Excel afstanden-tabel!", soort_naam))
   }
   
-  # 2. Zorg dat paths$dir_output gegarandeerd ingevuld is
-  dir_uitvoer <- dplyr::coalesce(
+  # 2. Uitvoermap bepalen (NULL-veilig voor dplyr::coalesce)
+  kandidaat_paden <- c(
     paths$dir_output,
     paths$output_dir,
     paths$dir_out,
@@ -37,13 +37,16 @@ verwerk_soort <- function(soort_naam,
     paths$base_dir,
     paths$rasters_soorten
   )
+  kandidaat_paden <- kandidaat_paden[!is.na(kandidaat_paden) & kandidaat_paden != ""]
   
-  if (is.null(dir_uitvoer) || is.na(dir_uitvoer)) {
-    dir_uitvoer <- here::here("data", "output", "Vlaanderen", "Rasters_Soorten")
+  dir_uitvoer <- if (length(kandidaat_paden) > 0) {
+    kandidaat_paden[1]
+  } else {
+    here::here("data", "output", "Vlaanderen", "Rasters_Soorten")
   }
   paths$dir_output <- dir_uitvoer
   
-  # 3. Model draaien
+  # 3. Model draaien (enkel rekenwerk, geen export)
   res <- bouw_biotoop_universeel(
     soort_naam      = soort_naam,
     params_soort    = params_soort,
@@ -54,64 +57,66 @@ verwerk_soort <- function(soort_naam,
     force_overwrite = force_overwrite
   )
   
-  # 4. Directe exportverificatie (vangnet indien bouw_biotoop niet schreef)
+  # 4. Centrale export naar disk (1 / NA binaire kaarten)
   scenario_map <- if (!is.null(paths$scenario_naam) && paths$scenario_naam != "") paths$scenario_naam else NULL
   base_dir     <- if (!is.null(scenario_map)) file.path(paths$dir_output, scenario_map) else paths$dir_output
   
   dir_id   <- file.path(base_dir, "00_ID_Rasters")
   dir_leef <- file.path(base_dir, "01_Potentieel_Leefgebied")
-  dir_deel <- file.path(dir_leef, "Deellagen") # 📂 Map binnen 01_Potentieel_Leefgebied
+  dir_deel <- file.path(dir_leef, "Deellagen")
   
-  f_out_id  <- file.path(dir_id, paste0("ID_Netwerken_", bestandsnaam, ".tif"))
-  f_out_tot <- file.path(dir_leef, paste0("Potentieel_Leefgebied_", bestandsnaam, ".tif"))
+  dir.create(dir_id,   showWarnings = FALSE, recursive = TRUE)
+  dir.create(dir_leef, showWarnings = FALSE, recursive = TRUE)
+  dir.create(dir_deel, showWarnings = FALSE, recursive = TRUE)
   
-  # Alleen wegschrijven als bouw_biotoop dat nog niet gedaan heeft
-  if (!file.exists(f_out_tot) && !is.null(res$final_opp) && !all(is.na(suppressWarnings(terra::minmax(res$final_opp))))) {
-    dir.create(dir_id, showWarnings = FALSE, recursive = TRUE)
-    dir.create(dir_leef, showWarnings = FALSE, recursive = TRUE)
-    dir.create(dir_deel, showWarnings = FALSE, recursive = TRUE)
-    
-    # Export Netwerk ID
-    if (!is.null(res$cl_opp) && !all(is.na(suppressWarnings(terra::minmax(res$cl_opp))))) {
-      terra::writeRaster(
-        res$cl_opp,
-        filename  = f_out_id,
-        overwrite = TRUE,
-        gdal      = c("COMPRESS=LZW"),
-        datatype  = "INT4U",
-        NAflag    = 0
-      )
-      message(sprintf("    💾 [EXPORT] Netwerk-ID raster bewaard: %s", basename(f_out_id)))
-    }
-    
-    # Export Totaal Leefgebied
+  # 4A. Netwerk-ID raster
+  if (!is_leeg(res$cl_opp)) {
+    f_out_id <- file.path(dir_id, paste0("ID_Netwerken_", bestandsnaam, ".tif"))
     terra::writeRaster(
-      res$final_opp,
+      res$cl_opp,
+      filename  = f_out_id,
+      overwrite = TRUE,
+      gdal      = c("COMPRESS=LZW"),
+      datatype  = "INT4U",
+      NAflag    = 0
+    )
+    message(sprintf("    💾 [EXPORT] Netwerk-ID raster bewaard: %s", basename(f_out_id)))
+  }
+  
+  # 4B. Totaal Potentieel Leefgebied (1 / NA)
+  if (!is_leeg(res$final_opp)) {
+    f_out_tot <- file.path(dir_leef, paste0("Potentieel_Leefgebied_", bestandsnaam, ".tif"))
+    r_tot_bin <- terra::ifel(!is.na(res$final_opp) & res$final_opp > 0, 1L, NA_integer_)
+    terra::writeRaster(
+      r_tot_bin,
       filename  = f_out_tot,
       overwrite = TRUE,
       gdal      = c("COMPRESS=LZW"),
-      datatype  = "FLT4S",
-      NAflag    = -9999
+      datatype  = "INT1U",
+      NAflag    = 255
     )
-    message(sprintf("    💾 [EXPORT] Totaal leefgebied bewaard: %s", basename(f_out_tot)))
-    
-    # Export Deellagen naar 01_Potentieel_Leefgebied/Deellagen/
-    deellagen_namen <- setdiff(names(res), c("final_opp", "cl_opp", "gradatie"))
-    if (length(deellagen_namen) > 0) {
-      for (nm in deellagen_namen) {
-        r_deel <- res[[nm]]
-        if (!is.null(r_deel) && !all(is.na(suppressWarnings(terra::minmax(r_deel))))) {
-          f_out_deel <- file.path(dir_deel, paste0(bestandsnaam, "_", nm, ".tif"))
-          terra::writeRaster(
-            r_deel,
-            filename  = f_out_deel,
-            overwrite = TRUE,
-            gdal      = c("COMPRESS=LZW"),
-            datatype  = "FLT4S",
-            NAflag    = -9999
-          )
-          message(sprintf("    💾 [EXPORT] Deellaag bewaard: %s", basename(f_out_deel)))
-        }
+    rm(r_tot_bin)
+    message(sprintf("    💾 [EXPORT] Totaal leefgebied bewaard (1/NA): %s", basename(f_out_tot)))
+  }
+  
+  # 4C. Deellagen (enkel indien > 1 deellaag, elk als 1 / NA)
+  deellagen_namen <- setdiff(names(res), c("final_opp", "cl_opp", "gradatie"))
+  if (length(deellagen_namen) > 1) {
+    for (nm in deellagen_namen) {
+      r_deel <- res[[nm]]
+      if (!is_leeg(r_deel)) {
+        f_out_deel <- file.path(dir_deel, paste0(bestandsnaam, "_", gsub(":", "_", nm), ".tif"))
+        r_deel_bin <- terra::ifel(!is.na(r_deel) & r_deel > 0, 1L, NA_integer_)
+        terra::writeRaster(
+          r_deel_bin,
+          filename  = f_out_deel,
+          overwrite = TRUE,
+          gdal      = c("COMPRESS=LZW"),
+          datatype  = "INT1U",
+          NAflag    = 255
+        )
+        rm(r_deel_bin)
+        message(sprintf("    💾 [EXPORT] Deellaag bewaard (1/NA): %s", basename(f_out_deel)))
       }
     }
   }

@@ -3,11 +3,6 @@
 # Universele en veilige Parquet-naar-Raster toewijzing voor Vlaanderen én subsets
 # ==============================================================================
 
-library(terra)
-library(data.table)
-library(dplyr)
-library(stringr)
-
 vul_raster_vanuit_parquet <- function(ds_parquet, 
                                       codes_exact = character(0), 
                                       codes_bevat = character(0), 
@@ -18,7 +13,7 @@ vul_raster_vanuit_parquet <- function(ds_parquet,
                                       waarde_vast = NULL) {
   
   if (length(codes_exact) == 0 && length(codes_bevat) == 0) {
-    return(master_grid * NA)
+    return(terra::rast(master_grid) * NA_real_)
   }
   
   codes_exact_clean <- tolower(trimws(codes_exact))
@@ -72,7 +67,8 @@ vul_raster_vanuit_parquet <- function(ds_parquet,
     dplyr::collect() %>%
     data.table::as.data.table()
   
-  r_opp <- master_grid * NA
+  r_opp <- terra::rast(master_grid)
+  terra::values(r_opp) <- NA_real_
   if (nrow(tabel_sub) == 0) return(r_opp)
   
   # 3. Aggregatie berekenen
@@ -94,6 +90,7 @@ vul_raster_vanuit_parquet <- function(ds_parquet,
       r_opp[dt_gemapt$lokale_id] <- dt_gemapt$Waarde
     }
   } else {
+    dt_agg <- dt_agg[!is.na(cel_id) & cel_id >= 1 & cel_id <= terra::ncell(master_grid)]
     r_opp[dt_agg$cel_id] <- dt_agg$Waarde
   }
   
