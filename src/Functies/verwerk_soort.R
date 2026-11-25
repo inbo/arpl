@@ -99,14 +99,22 @@ verwerk_soort <- function(soort_naam,
     message(sprintf("    💾 [EXPORT] Totaal leefgebied bewaard (1/NA): %s", basename(f_out_tot)))
   }
   
-  # 4C. Deellagen (enkel indien > 1 deellaag, elk als 1 / NA)
+  # 4C. Deellagen (gegroepeerd op basis-Type, zodat Spoor B + D samensmelten tot 1 waterbiotoop)
   deellagen_namen <- setdiff(names(res), c("final_opp", "cl_opp", "gradatie"))
-  if (length(deellagen_namen) > 1) {
-    for (nm in deellagen_namen) {
-      r_deel <- res[[nm]]
-      if (!is_leeg(r_deel)) {
-        f_out_deel <- file.path(dir_deel, paste0(bestandsnaam, "_", gsub(":", "_", nm), ".tif"))
-        r_deel_bin <- terra::ifel(!is.na(r_deel) & r_deel > 0, 1L, NA_integer_)
+  basis_types_uit <- unique(sub(":[A-Z0-9]+$", "", deellagen_namen))
+  
+  if (length(basis_types_uit) > 1) {
+    for (bt in basis_types_uit) {
+      matching_keys <- deellagen_namen[deellagen_namen == bt | startsWith(deellagen_namen, paste0(bt, ":"))]
+      r_deel_sam <- NULL
+      for (mk in matching_keys) {
+        if (!is_leeg(res[[mk]])) {
+          r_deel_sam <- voeg_toe_geclamped(r_deel_sam, res[[mk]])
+        }
+      }
+      if (!is.null(r_deel_sam) && !is_leeg(r_deel_sam)) {
+        f_out_deel <- file.path(dir_deel, paste0(bestandsnaam, "_", bt, ".tif"))
+        r_deel_bin <- terra::ifel(!is.na(r_deel_sam) & r_deel_sam > 0, 1L, NA_integer_)
         terra::writeRaster(
           r_deel_bin,
           filename  = f_out_deel,
@@ -115,7 +123,7 @@ verwerk_soort <- function(soort_naam,
           datatype  = "INT1U",
           NAflag    = 255
         )
-        rm(r_deel_bin)
+        rm(r_deel_bin, r_deel_sam)
         message(sprintf("    💾 [EXPORT] Deellaag bewaard (1/NA): %s", basename(f_out_deel)))
       }
     }

@@ -85,11 +85,10 @@ prepareer_test_grid <- function(master_grid_full, studiegebied_input, buffer_m =
 #TEST_GEBIED <- NULL
 
 TEST_BUFFER_M    <- 0    # Ruime buffer van 5 km rond elk gebied (geen randeffecten)
-FORCE_OVERWRITE  <- FALSE     # TRUE bij eerste testrun zodat nieuwe codes/filters actief zijn
+FORCE_OVERWRITE  <- FALSE    # TRUE bij eerste testrun zodat nieuwe codes/filters actief zijn
 TEST_GEBIED <- NULL # Lambert 72 centrum (De Wijers / Vallei van de Abeek)
 
-soorten_selectie <- c(
-"schavertje", "europeseotter", "europesebever", "europesehamster", "kolgans_wv", "grauwegans_wv", "toendrarietgans_wv", "kleinerietgans", "grauwekiekendief")
+soorten_selectie <- c("europesebever", "europesehamster")
 # ==============================================================================
 
 # ------------------------------------------------------------------------------

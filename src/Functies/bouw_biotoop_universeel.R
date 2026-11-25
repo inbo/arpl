@@ -592,36 +592,23 @@ bouw_biotoop_universeel <- function(soort_naam,
           rm(r_wv)
           
           if (!is_leeg(m_wv)) {
-            # Buffer van 500 m rond VHA-waterlopen (via snelle GDAL proximity)
             f_vha_bin <- tempfile(fileext = ".tif")
-            f_vha_dst <- tempfile(fileext = ".tif")
-            terra::writeRaster(terra::ifel(!is.na(m_vha), 1L, 0L), f_vha_bin, overwrite = TRUE, datatype = "INT1U")
-            qgisprocess::qgis_run_algorithm(
-              "gdal:proximity",
-              INPUT     = f_vha_bin,
-              VALUES    = "1",
-              UNITS     = 0, # georeferenced units (meters)
-              MAX_DIST  = 500,
-              NODATA    = -9999,
-              DATA_TYPE = 6,
-              OUTPUT    = f_vha_dst,
-              .quiet    = TRUE
-            )
-            r_dst <- terra::rast(f_vha_dst)
-            m_buf500 <- terra::ifel(!is.na(r_dst) & r_dst <= 500, 1L, NA_integer_)
-            unlink(c(f_vha_bin, f_vha_dst))
+            terra::writeRaster(terra::ifel(!is.na(m_vha) & m_vha > 0, 1L, NA_integer_), f_vha_bin, overwrite = TRUE, datatype = "INT1U", NAflag = 255)
+            f_vha_dst <- hulp_proximity_gdal(f_vha_bin, 500)
+            unlink(f_vha_bin)
+            
+            r_dst    <- terra::rast(f_vha_dst)
+            m_buf500 <- terra::ifel(!is.na(r_dst) & r_dst >= 0 & r_dst <= 500, 1L, NA_integer_)
+            unlink(f_vha_dst)
             rm(r_dst)
             
-            # Clump watervlakken en filter op opp > 1000 m² (0.10 ha) én overlap met 500m-buffer
             r_clumps <- terra::patches(terra::ifel(!is.na(m_wv), 1L, NA_integer_), directions = 8)
             opp_tbl  <- terra::zonal(m_wv, r_clumps, fun = "sum", na.rm = TRUE)
-            # 1 cel = 100 m² -> som van fracties * 100 = oppervlakte in m²
             geldige_ids <- opp_tbl[opp_tbl[, 2] * 100 > 1000, 1]
             
             if (length(geldige_ids) > 0) {
               r_wv_groot <- terra::ifel(r_clumps %in% geldige_ids, r_clumps, NA_integer_)
-              # Welke van die grote plassen raken de 500m-buffer rond VHA?
-              ids_binnen_500 <- unique(terra::values(terra::mask(r_wv_groot, m_buf500), na.rm = TRUE))
+              ids_binnen_500 <- unique(na.omit(as.vector(terra::values(terra::mask(r_wv_groot, m_buf500)))))
               if (length(ids_binnen_500) > 0) {
                 m_wv_ok <- terra::ifel(r_clumps %in% ids_binnen_500, m_wv, NA_real_)
                 r_huidig <- voeg_toe_geclamped(r_huidig, m_wv_ok)
