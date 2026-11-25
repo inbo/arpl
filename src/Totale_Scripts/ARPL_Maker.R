@@ -1,5 +1,5 @@
 # ==============================================================================
-# ENKEL ARPL MAKER PER SOORT (RERUN STRUKTUUR)
+# ENKEL ARPL MAKER PER SOORT (RERUN STRUCTUUR)
 # ==============================================================================
 
 library(here)
@@ -34,11 +34,8 @@ broedvogels_lijst <- c(
   "wulp", "zomertortel", "zwartespecht", "zwartkopmeeuw"
 )
 
-master_grid_pad <- here("data/input/Raster_Vlaanderen/Vlaanderen_MasterGrid_10m.tif")
-master_grid      <- terra::rast(master_grid_pad)[[1]]
-
 df_afstanden <- read_excel(here("data/input/Excel_files/Soorten_bwk_afstanden.xlsx")) %>% 
-  mutate(Soort_clean = tolower(gsub(" ", "", trimws(Soort))))
+  mutate(Soort_clean = tolower(gsub("[_ ]", "", trimws(Soort))))
 
 # --- HULPFUNCTIES ---
 vind_waarnemingen_bestand <- function(map_pad, patroon_zoek) {
@@ -112,21 +109,22 @@ for (gb_naam in beschikbare_gebieden) {
   
   for (f_pot in potentieel_tifs) {
     graphics.off()
-    if (requireNamespace("terra", quietly = TRUE)) {
-      terra::tmpFiles(current = TRUE, orphan = TRUE, old = TRUE, remove = TRUE)
-    }
+    terra::tmpFiles(current = TRUE, orphan = TRUE, old = TRUE, remove = TRUE)
     gc(verbose = FALSE)
     
     b_naam <- basename(f_pot)
     is_wintervogel <- grepl("_wv\\.tif$", b_naam, ignore.case = TRUE)
     
-    # Soortnaam extraheren uit "Habitat_Werkelijke_Oppervlaktes_<soort>.tif"
+    # Soortnaam extraheren mét eventuele underscores voor bestandsnamen
     soort_clean <- tolower(b_naam) %>%
       gsub("^habitat_werkelijke_oppervlaktes_", "", .) %>%
       gsub("_wv\\.tif$|\\.tif$", "", .) %>%
       trimws()
     
-    if (!is.null(SPECIFIEKE_SOORT) && tolower(trimws(SPECIFIEKE_SOORT)) != soort_clean) next
+    # Sleutel zonder underscores om te matchen met broedvogels_lijst & df_afstanden
+    soort_match <- gsub("[_ ]", "", soort_clean)
+    
+    if (!is.null(SPECIFIEKE_SOORT) && gsub("[_ ]", "", tolower(SPECIFIEKE_SOORT)) != soort_match) next
     
     bestands_suffix <- if (is_wintervogel) paste0(soort_clean, "_wv") else soort_clean
     f_out_arpl      <- file.path(out_dir_arpl, paste0("Habitat_ARPL_", bestands_suffix, ".tif"))
@@ -136,59 +134,59 @@ for (gb_naam in beschikbare_gebieden) {
       next
     }
     
-    # ID-Raster opzoeken
-    f_id <- file.path(map_id, paste0("ID_Netwerken_", bestands_suffix, ".tif"))
-    if (!file.exists(f_id)) f_id <- file.path(map_id, paste0("ID_Netwerken_", soort_clean, ".tif"))
+    # Laad r_pot direct als basis-raster (bevat al het gebied + 10 km buffer)
+    r_pot <- terra::rast(f_pot)
     
-    if (!file.exists(f_id)) {
-      f_id <- here("data/output", gb_naam, "Rasters_Soorten/BWK_2025/00_ID_Rasters", paste0("ID_Netwerken_", bestands_suffix, ".tif"))
-      if (!file.exists(f_id)) {
-        f_id <- here("data/output", gb_naam, "Rasters_Soorten/BWK_2025/00_ID_Rasters", paste0("ID_Netwerken_", soort_clean, ".tif"))
-      }
-    }
-    
-    if (!file.exists(f_id)) {
-      message("    ⚠️ ID-raster ontbreekt voor: ", bestands_suffix)
-      next
-    }
-    
-    cl_max <- tryCatch(terra::rast(f_id), error = function(e) NULL)
-    if (is.null(cl_max)) {
-      message("    ❌ Fout bij openen ID-raster: ", basename(f_id))
-      next
-    }
-    
-    id_col_naam <- names(cl_max)[1]
-    
-    # Waarnemingen ophalen
-    is_broedvogel <- soort_clean %in% broedvogels_lijst
-    if (is_broedvogel) {
-      map_zoek <- here("data/input/Territoria_Soorten")
-      bestand_zoek <- paste0(info$code, "_Territoria_", soort_clean, ".csv")
-      is_csv_komma <- TRUE
-    } else {
-      map_zoek <- here("data/input/Waarnemingen_Soorten", gb_naam)
-      bestand_zoek <- paste0("Waarnemingen_", soort_clean, ".csv")
-      is_csv_komma <- FALSE
-    }
-    
-    waarnemingen_path <- vind_waarnemingen_bestand(map_zoek, bestand_zoek)
-    v_pts <- laad_waarnemingen_punten(waarnemingen_path, is_csv_komma)
-    
-    # ARPL Berekening
     if (is_wintervogel) {
-      r_pot <- terra::rast(f_pot)
-      arpl_export_rast <- terra::ifel(!is.na(r_pot) & r_pot > 0, 1, NA)
+      # Wintervogels: volledige potentiële leefgebied overnemen
+      arpl_export_rast <- terra::ifel(!is.na(r_pot) & r_pot > 0, 1L, NA_integer_)
+      
     } else {
-      row_dist <- df_afstanden %>% filter(Soort_clean == soort_clean)
+      # Broedvogels & overige soorten: filteren op ID-netwerken binnen dispersiebuffer
+      f_id <- file.path(map_id, paste0("ID_Netwerken_", bestands_suffix, ".tif"))
+      if (!file.exists(f_id)) {
+        f_id <- here("data/output", gb_naam, "Rasters_Soorten/BWK_2025/00_ID_Rasters", paste0("ID_Netwerken_", bestands_suffix, ".tif"))
+      }
+      
+      if (!file.exists(f_id)) {
+        message("    ⚠️ ID-raster ontbreekt voor: ", bestands_suffix)
+        next
+      }
+      
+      cl_max <- tryCatch(terra::rast(f_id), error = function(e) NULL)
+      if (is.null(cl_max)) {
+        message("    ❌ Fout bij openen ID-raster: ", basename(f_id))
+        next
+      }
+      
+      id_col_naam <- names(cl_max)[1]
+      
+      # Waarnemingen ophalen
+      is_broedvogel <- soort_match %in% broedvogels_lijst
+      if (is_broedvogel) {
+        map_zoek <- here("data/input/Territoria_Soorten")
+        bestand_zoek <- paste0(info$code, "_Territoria_", soort_clean, ".csv")
+        is_csv_komma <- TRUE
+      } else {
+        map_zoek <- here("data/input/Waarnemingen_Soorten", gb_naam)
+        bestand_zoek <- paste0("Waarnemingen_", soort_clean, ".csv")
+        is_csv_komma <- FALSE
+      }
+      
+      waarnemingen_path <- vind_waarnemingen_bestand(map_zoek, bestand_zoek)
+      v_pts <- laad_waarnemingen_punten(waarnemingen_path, is_csv_komma)
+      
+      row_dist <- df_afstanden %>% filter(Soort_clean == soort_match)
       buffer_m <- if (nrow(row_dist) > 0) row_dist$Dispersiecap_m[1] else 500
+      
+      # Leeg raster met exact dezelfde extent/resolutie als r_pot
+      leeg_raster <- terra::rast(r_pot, vals = NA_integer_)
       
       if (!is.na(buffer_m) && buffer_m >= 250000) {
         if (!is.null(v_pts) && length(v_pts) > 0) {
-          r_pot <- terra::rast(f_pot)
-          arpl_export_rast <- terra::ifel(!is.na(r_pot) & r_pot > 0, 1, NA)
+          arpl_export_rast <- terra::ifel(!is.na(r_pot) & r_pot > 0, 1L, NA_integer_)
         } else {
-          arpl_export_rast <- terra::rast(master_grid, vals = NA)
+          arpl_export_rast <- leeg_raster
         }
       } else {
         if (!is.null(v_pts) && !all(is.na(suppressWarnings(terra::minmax(cl_max))))) {
@@ -199,21 +197,21 @@ for (gb_naam in beschikbare_gebieden) {
             ids_arpl  <- if (!is.null(ext_blobs) && nrow(ext_blobs) > 0) unique(na.omit(ext_blobs[[id_col_naam]])) else c()
             
             if (length(ids_arpl) > 0) {
-              arpl_export_rast <- terra::ifel(cl_max %in% ids_arpl, 1, NA)
+              # Zekerheidscheck: alleen pixels binnen zowel cl_max (ids_arpl) als r_pot behouden
+              arpl_export_rast <- terra::ifel(cl_max %in% ids_arpl & !is.na(r_pot) & r_pot > 0, 1L, NA_integer_)
             } else {
-              arpl_export_rast <- terra::rast(master_grid, vals = NA)
+              arpl_export_rast <- leeg_raster
             }
           } else {
-            arpl_export_rast <- terra::rast(master_grid, vals = NA)
+            arpl_export_rast <- leeg_raster
           }
         } else {
-          arpl_export_rast <- terra::rast(master_grid, vals = NA)
+          arpl_export_rast <- leeg_raster
         }
       }
     }
     
-    # Harmonisatie en export
-    arpl_export_rast <- terra::extend(arpl_export_rast, master_grid, fill = NA)
+    # Direct wegschrijven (behoudt exact de extent en resolutie van r_pot)
     terra::writeRaster(
       arpl_export_rast,
       f_out_arpl,
@@ -223,7 +221,8 @@ for (gb_naam in beschikbare_gebieden) {
       NAflag = 255
     )
     
-    message("    [OK] ARPL opgeslagen: ", basename(f_out_arpl))
+    type_label <- if (is_wintervogel) "Wintervogel" else "Broedvogel/Overig"
+    message(sprintf("    [OK] [%s] ARPL opgeslagen: %s", type_label, basename(f_out_arpl)))
   }
 }
 

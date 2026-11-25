@@ -6,8 +6,8 @@ library(dplyr)
 
 # --- CONFIGURATIE ---
 FORCE_OVERWRITE <- TRUE    # TRUE zodat alle bestanden met de nieuwe naam worden aangemaakt
-buffer_dist     <- 10000   # 50 km in meters
-te_negeren_soorten <- c("blauwekiekendief", "blauwekiekendief_wv")
+buffer_dist     <- 10000   # 10000 = 10 km (zet op 50000 voor 50 km)
+te_negeren_soorten <- c("blauwekiekendief") # Strip _wv hier niet nodig, gebeurt automatisch
 
 map_rasters <- here("data/output/Vlaanderen/Rasters_Soorten/01_Potentieel_Leefgebied")
 map_ids     <- here("data/output/Vlaanderen/Rasters_Soorten/00_ID_Rasters")
@@ -29,22 +29,35 @@ df_excel <- read_excel(pad_excel)
 soort_kolom <- colnames(df_excel)[2]
 
 df_excel <- df_excel %>%
-  mutate(Soort_clean = tolower(gsub("[_ ]", "", trimws(as.character(.data[[soort_kolom]]))))) %>%
+  mutate(
+    # 1. Verwijder eventuele _wv suffix uit de Excel-naam zodat we de zuivere basisnaam hebben
+    Soort_basis = sub("_wv$", "", trimws(as.character(.data[[soort_kolom]])), ignore.case = TRUE),
+    # 2. Maak schoon (geen spaties/underscores, kleine letters) voor robuuste matching
+    Soort_clean = tolower(gsub("[_ ]", "", Soort_basis))
+  ) %>%
   filter(!is.na(Soort_clean) & Soort_clean != "")
 
 alle_pot_tifs <- list.files(map_rasters, pattern = "\\.tif$", full.names = TRUE)
 alle_id_tifs  <- if (dir.exists(map_ids)) list.files(map_ids, pattern = "\\.tif$", full.names = TRUE) else character(0)
 
-vind_vlaanderen_tifs <- function(soort_id, bestanden_vec, prefix) {
+# Functie die gegarandeerd EERST broedvogel en DAARNA wintervogel (_wv) teruggeeft
+vind_vlaanderen_tifs <- function(soort_clean_id, bestanden_vec, prefix) {
   if (length(bestanden_vec) == 0) return(character(0))
-  b_clean <- gsub("[_ ]", "", tolower(basename(bestanden_vec)))
   
-  kandidaten <- unique(c(
-    gsub("[_ ]", "", tolower(paste0(prefix, soort_id, ".tif"))),
-    gsub("[_ ]", "", tolower(paste0(prefix, soort_id, "_wv.tif")))
-  ))
+  # Strip prefix en .tif van de bestandsnamen op schijf
+  namen_zonder_ext <- tools::file_path_sans_ext(basename(bestanden_vec))
+  namen_zonder_pref <- sub(paste0("^", prefix), "", namen_zonder_ext, ignore.case = TRUE)
   
-  return(bestanden_vec[b_clean %in% kandidaten])
+  # Check of het een wintervogel is (_wv op het einde) en bepaal de schone basisnaam
+  is_wv <- grepl("_wv$", namen_zonder_pref, ignore.case = TRUE)
+  basis_schijf <- tolower(gsub("[_ ]", "", sub("_wv$", "", namen_zonder_pref, ignore.case = TRUE)))
+  
+  # Zoek los van elkaar de broedvogel-hit en de wintervogel-hit
+  bv_hit <- bestanden_vec[basis_schijf == soort_clean_id & !is_wv]
+  wv_hit <- bestanden_vec[basis_schijf == soort_clean_id & is_wv]
+  
+  # Retourneer in strikte volgorde: eerst broedvogel (indien aanwezig), dan wintervogel (indien aanwezig)
+  return(c(bv_hit, wv_hit))
 }
 
 # --- VERWERKING PER GEBIED ---
@@ -59,7 +72,7 @@ for (gebied_naam in gebieden_lijst) {
     filter(suppressWarnings(as.numeric(.data[[kol_match]])) == 1) %>%
     pull(Soort_clean) %>%
     unique() %>%
-    setdiff(te_negeren_soorten)
+    setdiff(tolower(gsub("[_ ]", "", sub("_wv$", "", te_negeren_soorten, ignore.case = TRUE))))
   
   message("\n==================================================")
   message(sprintf(" 📍 GEBIED: %s (%d actieve soorten in Excel)", gebied_naam, length(actieve_soorten)))
@@ -78,21 +91,22 @@ for (gebied_naam in gebieden_lijst) {
     tiff_paden <- vind_vlaanderen_tifs(soort_id, alle_pot_tifs, "Potentieel_Leefgebied_")
     
     if (length(tiff_paden) == 0) {
-      warning(sprintf("    ⚠️ Geen Vlaanderen-raster gevonden voor: %s", soort_id))
+      warning(sprintf("    ⚠️ Geen broed- of wintervogelraster gevonden voor: %s", soort_id))
       next
     }
     
+    # Loopt nu automatisch: 1) alleen BV, 2) alleen WV, of 3) eerst BV en dan WV
     for (tiff_pad in tiff_paden) {
-      # Zet "Potentieel_Leefgebied_boompieper" -> "boompieper" (en "..._wulp_wv" -> "wulp_wv")
       soort_suffix <- sub("^Potentieel_Leefgebied_", "", tools::file_path_sans_ext(basename(tiff_pad)), ignore.case = TRUE)
+      type_label   <- if (grepl("_wv$", soort_suffix, ignore.case = TRUE)) "Wintervogel" else "Broedvogel"
       out_pad_pot  <- file.path(map_out_pot, paste0("Habitat_Werkelijke_Oppervlaktes_", soort_suffix, ".tif"))
       
       if (!FORCE_OVERWRITE && file.exists(out_pad_pot)) {
-        message(sprintf("    ⏩ Reeds aanwezig (overgeslagen): %s", basename(out_pad_pot)))
+        message(sprintf("    ⏩ [%s] Reeds aanwezig (overgeslagen): %s", type_label, basename(out_pad_pot)))
         next
       }
       
-      message(sprintf("    ✂️ Bijsnijden: %s -> %s", soort_suffix, basename(out_pad_pot)))
+      message(sprintf("    ✂️ [%s] Bijsnijden: %s -> %s", type_label, soort_suffix, basename(out_pad_pot)))
       
       r <- rast(tiff_pad)
       gebied_proj <- if (st_crs(gebied) != st_crs(r)) st_transform(gebied, st_crs(r)) else gebied
@@ -103,7 +117,7 @@ for (gebied_naam in gebieden_lijst) {
       writeRaster(r_cropped, out_pad_pot, overwrite = TRUE, gdal = c("COMPRESS=LZW"), datatype = "INT1U", NAflag = 255)
       rm(r, r_cropped)
       
-      # Bijhorend ID-raster bijsnijden
+      # Bijhorend ID-raster bijsnijden (werkt automatisch voor zowel BV als _wv)
       id_naam_doel <- sub("^Potentieel_Leefgebied_", "ID_Netwerken_", basename(tiff_pad), ignore.case = TRUE)
       id_hit <- alle_id_tifs[tolower(basename(alle_id_tifs)) == tolower(id_naam_doel)]
       
